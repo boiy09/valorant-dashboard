@@ -14,18 +14,16 @@ export async function GET(req: NextRequest) {
   if (!user && session.user.email) {
     user = await prisma.user.findUnique({ where: { email: session.user.email } });
   }
-  if (!user) return Response.json({ error: "유저를 찾을 수 없어요." }, { status: 404 });
+  if (!user) {
+    return Response.json({ error: "사용자를 찾을 수 없습니다." }, { status: 404 });
+  }
 
-  // 최근 30일 기준
   const since = new Date();
   since.setDate(since.getDate() - 29);
   since.setHours(0, 0, 0, 0);
 
-  const guildFilter = guildDiscordId
-    ? { guild: { discordId: guildDiscordId } }
-    : {};
+  const guildFilter = guildDiscordId ? { guild: { discordId: guildDiscordId } } : {};
 
-  // 주간 활동 데이터 (최근 7일)
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 6);
   weekAgo.setHours(0, 0, 0, 0);
@@ -40,23 +38,23 @@ export async function GET(req: NextRequest) {
     select: { joinedAt: true, duration: true },
   });
 
-  // 요일별 집계
   const weeklyMap: Record<string, number> = {};
   for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    weeklyMap[d.toISOString().slice(0, 10)] = 0;
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    weeklyMap[date.toISOString().slice(0, 10)] = 0;
   }
-  for (const a of weeklyActivities) {
-    const key = a.joinedAt.toISOString().slice(0, 10);
-    if (key in weeklyMap) weeklyMap[key] += a.duration ?? 0;
+
+  for (const activity of weeklyActivities) {
+    const key = activity.joinedAt.toISOString().slice(0, 10);
+    if (key in weeklyMap) weeklyMap[key] += activity.duration ?? 0;
   }
+
   const weeklyData = Object.entries(weeklyMap).map(([date, seconds]) => ({
     date,
     hours: Math.round((seconds / 3600) * 10) / 10,
   }));
 
-  // 출석 데이터 (최근 30일)
   const sinceDate = since.toISOString().slice(0, 10);
   const attendances = await prisma.dailyAttendance.findMany({
     where: {
@@ -66,9 +64,8 @@ export async function GET(req: NextRequest) {
     },
     select: { date: true },
   });
-  const attendanceDates = attendances.map((a) => a.date);
+  const attendanceDates = attendances.map((attendance) => attendance.date);
 
-  // 총 활동시간
   const totalActivity = await prisma.voiceActivity.aggregate({
     where: {
       userId: user.id,
@@ -78,7 +75,6 @@ export async function GET(req: NextRequest) {
     _sum: { duration: true },
   });
 
-  // 이번달 활동시간
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);

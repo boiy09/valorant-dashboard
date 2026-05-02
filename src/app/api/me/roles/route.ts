@@ -1,6 +1,20 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
+const ASSIST_ROLE_KEYWORDS = ["어시스트", "assistant", "assist", "staff", "스태프", "매니저"];
+
+function normalizeRole(role: string) {
+  return role.trim().toLowerCase();
+}
+
+function hasKeywordMatch(roles: string[], keywords: string[]) {
+  const normalizedRoles = roles.map(normalizeRole);
+  return normalizedRoles.some((role) =>
+    keywords.some((keyword) => role.includes(keyword.toLowerCase()))
+  );
+}
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -19,7 +33,7 @@ export async function GET() {
   });
 
   const roles = member?.roles ? member.roles.split(",").filter(Boolean) : [];
-  const isAdmin = roles.some(r => r === "관리자" || r === "어시스트");
+  const isAdmin = hasKeywordMatch(roles, ADMIN_ROLE_KEYWORDS) || hasKeywordMatch(roles, ASSIST_ROLE_KEYWORDS);
 
   return Response.json({ roles, isAdmin });
 }

@@ -1,5 +1,6 @@
 import { config } from "dotenv";
-config({ path: ".env.local" });
+config();
+config({ path: ".env.local", override: false });
 import { Client, GatewayIntentBits, Collection } from "discord.js";
 import { loadCommands } from "./loader";
 import { registerEvents } from "./events/index";

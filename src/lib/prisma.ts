@@ -1,9 +1,16 @@
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
+
+const fallbackUrl =
+  "postgresql://postgres:password@localhost:5432/valorant_dashboard?schema=public";
 
 function createPrisma() {
-  const url = process.env.DATABASE_URL ?? "file:./dev.db";
-  const adapter = new PrismaLibSql({ url });
+  const connectionString =
+    process.env.DATABASE_URL?.startsWith("postgresql://")
+      ? process.env.DATABASE_URL
+      : fallbackUrl;
+  const adapter = new PrismaPg({ connectionString });
+
   return new PrismaClient({ adapter, log: ["error"] });
 }
 

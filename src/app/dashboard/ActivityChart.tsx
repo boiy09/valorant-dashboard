@@ -1,13 +1,13 @@
 "use client";
 
+import { Bar } from "react-chartjs-2";
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
   BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  LinearScale,
   Tooltip,
 } from "chart.js";
-import { Bar } from "react-chartjs-2";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
@@ -27,8 +27,8 @@ const DAY_LABELS: Record<string, string> = {
 };
 
 export default function ActivityChart({ data }: { data: WeeklyData[] }) {
-  const labels = data.map((d) => {
-    const day = new Date(d.date).getDay().toString();
+  const labels = data.map((item) => {
+    const day = new Date(item.date).getDay().toString();
     return DAY_LABELS[day];
   });
 
@@ -36,8 +36,8 @@ export default function ActivityChart({ data }: { data: WeeklyData[] }) {
     labels,
     datasets: [
       {
-        data: data.map((d) => d.hours),
-        backgroundColor: data.map((d) => (d.hours > 0 ? "#ff4655" : "#2a3540")),
+        data: data.map((item) => item.hours),
+        backgroundColor: data.map((item) => (item.hours > 0 ? "#ff4655" : "#2a3540")),
         borderRadius: 3,
         borderSkipped: false,
       },
@@ -47,11 +47,14 @@ export default function ActivityChart({ data }: { data: WeeklyData[] }) {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: {
-      callbacks: {
-        label: (ctx: any) => `${ctx.raw}시간`,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (context: { raw: number }) => `${context.raw}시간`,
+        },
       },
-    }},
+    },
     scales: {
       x: {
         grid: { display: false },
@@ -67,7 +70,7 @@ export default function ActivityChart({ data }: { data: WeeklyData[] }) {
 
   return (
     <div style={{ height: "80px" }}>
-      <Bar data={chartData} options={options as any} />
+      <Bar data={chartData} options={options as never} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 
 interface Member {
   id: string;
@@ -12,13 +12,19 @@ interface Member {
   isOnline: boolean;
 }
 
-function roleType(roles: string[]): "관리자" | "어시스트" | "일반" {
+type RoleGroup = "관리자" | "어시스트" | "일반";
+type SectionKey = "관리자" | "어시스트" | "온라인" | "오프라인";
+
+function roleType(roles: string[]): RoleGroup {
   if (roles.includes("관리자")) return "관리자";
   if (roles.includes("어시스트")) return "어시스트";
   return "일반";
 }
 
-const SECTION_STYLES = {
+const SECTION_STYLES: Record<
+  SectionKey,
+  { label: string; dot: string; text: string; ring: string }
+> = {
   관리자: { label: "관리자", dot: "bg-[#ff4655]", text: "text-[#ff4655]", ring: "ring-1 ring-[#ff4655]/60" },
   어시스트: { label: "어시스트", dot: "bg-orange-400", text: "text-orange-400", ring: "ring-1 ring-orange-400/60" },
   온라인: { label: "온라인", dot: "bg-green-400", text: "text-[#7b8a96]", ring: "" },
@@ -31,25 +37,24 @@ export default function MemberSidebar() {
 
   useEffect(() => {
     fetch("/api/members")
-      .then(r => r.ok ? r.json() : { members: [] })
-      .then(d => setMembers(d.members ?? []))
+      .then((response) => (response.ok ? response.json() : { members: [] }))
+      .then((data) => setMembers(data.members ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  const admins    = members.filter(m => roleType(m.roles) === "관리자");
-  const assists   = members.filter(m => roleType(m.roles) === "어시스트");
-  const onlines   = members.filter(m => roleType(m.roles) === "일반" && m.isOnline);
-  const offlines  = members.filter(m => roleType(m.roles) === "일반" && !m.isOnline);
+  const admins = members.filter((member) => roleType(member.roles) === "관리자");
+  const assists = members.filter((member) => roleType(member.roles) === "어시스트");
+  const onlines = members.filter((member) => roleType(member.roles) === "일반" && member.isOnline);
+  const offlines = members.filter((member) => roleType(member.roles) === "일반" && !member.isOnline);
+  const onlineCount = members.filter((member) => member.isOnline).length;
 
-  const onlineCount = members.filter(m => m.isOnline).length;
-
-  const sections: { key: string; members: Member[] }[] = [
+  const sections = [
     { key: "관리자", members: admins },
     { key: "어시스트", members: assists },
     { key: "온라인", members: onlines },
     { key: "오프라인", members: offlines },
-  ].filter(s => s.members.length > 0);
+  ] as const satisfies ReadonlyArray<{ key: SectionKey; members: Member[] }>;
 
   return (
     <aside className="w-52 flex-shrink-0">
@@ -59,7 +64,9 @@ export default function MemberSidebar() {
           {!loading && (
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-              <span className="text-[#7b8a96] text-[10px]">{onlineCount} / {members.length}</span>
+              <span className="text-[#7b8a96] text-[10px]">
+                {onlineCount} / {members.length}
+              </span>
             </div>
           )}
         </div>
@@ -87,17 +94,18 @@ export default function MemberSidebar() {
           ) : (
             <div className="member-scroll overflow-y-auto max-h-[calc(100vh-10rem)]">
               {sections.map(({ key, members: sectionMembers }) => {
-                const style = SECTION_STYLES[key as keyof typeof SECTION_STYLES];
+                const style = SECTION_STYLES[key];
+
                 return (
                   <div key={key}>
                     <div className="px-3 pt-2.5 pb-1 flex items-center gap-1.5">
                       <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                       <span className={`text-[9px] tracking-widest uppercase font-bold ${style.text}`}>
-                        {style.label} — {sectionMembers.length}
+                        {style.label} · {sectionMembers.length}
                       </span>
                     </div>
-                    {sectionMembers.map(m => (
-                      <MemberRow key={m.id} member={m} sectionKey={key} />
+                    {sectionMembers.map((member) => (
+                      <MemberRow key={member.id} member={member} sectionKey={key} />
                     ))}
                   </div>
                 );
@@ -110,10 +118,10 @@ export default function MemberSidebar() {
   );
 }
 
-function MemberRow({ member, sectionKey }: { member: Member; sectionKey: string }) {
+function MemberRow({ member, sectionKey }: { member: Member; sectionKey: SectionKey }) {
   const displayName = member.name || "?";
   const initial = displayName.charAt(0).toUpperCase();
-  const style = SECTION_STYLES[sectionKey as keyof typeof SECTION_STYLES];
+  const style = SECTION_STYLES[sectionKey];
   const isOffline = sectionKey === "오프라인";
 
   return (
@@ -130,9 +138,7 @@ function MemberRow({ member, sectionKey }: { member: Member; sectionKey: string 
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs text-[#ece8e1] truncate">{displayName}</div>
-        {member.riotId && (
-          <div className="text-[9px] text-[#4a5a68] truncate">{member.riotId}</div>
-        )}
+        {member.riotId && <div className="text-[9px] text-[#4a5a68] truncate">{member.riotId}</div>}
       </div>
     </div>
   );

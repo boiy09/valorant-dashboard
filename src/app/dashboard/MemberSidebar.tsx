@@ -15,9 +15,37 @@ interface Member {
 type RoleGroup = "관리자" | "어시스트" | "일반";
 type SectionKey = "관리자" | "어시스트" | "온라인" | "오프라인";
 
-function roleType(roles: string[]): RoleGroup {
-  if (roles.includes("관리자")) return "관리자";
-  if (roles.includes("어시스트")) return "어시스트";
+const ADMIN_ROLE_KEYWORDS = [
+  "관리자",
+  "admin",
+  "administrator",
+  "운영진",
+  "운영자",
+];
+
+const ASSIST_ROLE_KEYWORDS = [
+  "어시스트",
+  "assistant",
+  "assist",
+  "staff",
+  "스태프",
+  "매니저",
+];
+
+function normalizeRoleName(role: string) {
+  return role.trim().toLowerCase();
+}
+
+function hasMatchingRole(roles: string[], keywords: string[]) {
+  const normalizedRoles = roles.map(normalizeRoleName);
+  return normalizedRoles.some((role) =>
+    keywords.some((keyword) => role.includes(keyword.toLowerCase()))
+  );
+}
+
+function getRoleGroup(roles: string[]): RoleGroup {
+  if (hasMatchingRole(roles, ADMIN_ROLE_KEYWORDS)) return "관리자";
+  if (hasMatchingRole(roles, ASSIST_ROLE_KEYWORDS)) return "어시스트";
   return "일반";
 }
 
@@ -25,10 +53,30 @@ const SECTION_STYLES: Record<
   SectionKey,
   { label: string; dot: string; text: string; ring: string }
 > = {
-  관리자: { label: "관리자", dot: "bg-[#ff4655]", text: "text-[#ff4655]", ring: "ring-1 ring-[#ff4655]/60" },
-  어시스트: { label: "어시스트", dot: "bg-orange-400", text: "text-orange-400", ring: "ring-1 ring-orange-400/60" },
-  온라인: { label: "온라인", dot: "bg-green-400", text: "text-[#7b8a96]", ring: "" },
-  오프라인: { label: "오프라인", dot: "bg-[#3a4a56]", text: "text-[#4a5a68]", ring: "" },
+  관리자: {
+    label: "관리자",
+    dot: "bg-[#ff4655]",
+    text: "text-[#ff4655]",
+    ring: "ring-1 ring-[#ff4655]/60",
+  },
+  어시스트: {
+    label: "어시스트",
+    dot: "bg-orange-400",
+    text: "text-orange-400",
+    ring: "ring-1 ring-orange-400/60",
+  },
+  온라인: {
+    label: "온라인",
+    dot: "bg-green-400",
+    text: "text-[#7b8a96]",
+    ring: "",
+  },
+  오프라인: {
+    label: "오프라인",
+    dot: "bg-[#3a4a56]",
+    text: "text-[#4a5a68]",
+    ring: "",
+  },
 };
 
 export default function MemberSidebar() {
@@ -43,10 +91,14 @@ export default function MemberSidebar() {
       .finally(() => setLoading(false));
   }, []);
 
-  const admins = members.filter((member) => roleType(member.roles) === "관리자");
-  const assists = members.filter((member) => roleType(member.roles) === "어시스트");
-  const onlines = members.filter((member) => roleType(member.roles) === "일반" && member.isOnline);
-  const offlines = members.filter((member) => roleType(member.roles) === "일반" && !member.isOnline);
+  const admins = members.filter((member) => getRoleGroup(member.roles) === "관리자");
+  const assists = members.filter((member) => getRoleGroup(member.roles) === "어시스트");
+  const onlines = members.filter(
+    (member) => getRoleGroup(member.roles) === "일반" && member.isOnline
+  );
+  const offlines = members.filter(
+    (member) => getRoleGroup(member.roles) === "일반" && !member.isOnline
+  );
   const onlineCount = members.filter((member) => member.isOnline).length;
 
   const sections = [
@@ -60,7 +112,9 @@ export default function MemberSidebar() {
     <aside className="w-52 flex-shrink-0">
       <div className="sticky top-6 bg-[#111c24] border border-[#2a3540] rounded overflow-hidden">
         <div className="px-3 py-2.5 border-b border-[#2a3540] flex items-center justify-between">
-          <span className="text-[#7b8a96] text-[10px] tracking-widest uppercase">서버 멤버</span>
+          <span className="text-[#7b8a96] text-[10px] tracking-widest uppercase">
+            서버 멤버
+          </span>
           {!loading && (
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
@@ -125,20 +179,32 @@ function MemberRow({ member, sectionKey }: { member: Member; sectionKey: Section
   const isOffline = sectionKey === "오프라인";
 
   return (
-    <div className={`flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.03] transition-colors ${isOffline ? "opacity-40" : ""}`}>
+    <div
+      className={`flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.03] transition-colors ${isOffline ? "opacity-40" : ""}`}
+    >
       <div className="relative flex-shrink-0">
         {member.image ? (
-          <img src={member.image} alt={displayName} className={`w-6 h-6 rounded-full object-cover ${style.ring}`} />
+          <img
+            src={member.image}
+            alt={displayName}
+            className={`w-6 h-6 rounded-full object-cover ${style.ring}`}
+          />
         ) : (
-          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-[#2a3540] text-[#7b8a96] ${style.ring}`}>
+          <div
+            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-[#2a3540] text-[#7b8a96] ${style.ring}`}
+          >
             {initial}
           </div>
         )}
-        <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#111c24] ${style.dot}`} />
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#111c24] ${style.dot}`}
+        />
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs text-[#ece8e1] truncate">{displayName}</div>
-        {member.riotId && <div className="text-[9px] text-[#4a5a68] truncate">{member.riotId}</div>}
+        {member.riotId && (
+          <div className="text-[9px] text-[#4a5a68] truncate">{member.riotId}</div>
+        )}
       </div>
     </div>
   );

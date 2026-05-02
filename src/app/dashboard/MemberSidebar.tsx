@@ -15,22 +15,8 @@ interface Member {
 type RoleGroup = "관리자" | "어시스트" | "일반";
 type SectionKey = "관리자" | "어시스트" | "온라인" | "오프라인";
 
-const ADMIN_ROLE_KEYWORDS = [
-  "관리자",
-  "admin",
-  "administrator",
-  "운영진",
-  "운영자",
-];
-
-const ASSIST_ROLE_KEYWORDS = [
-  "어시스트",
-  "assistant",
-  "assist",
-  "staff",
-  "스태프",
-  "매니저",
-];
+const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
+const ASSIST_ROLE_KEYWORDS = ["어시스트", "assistant", "assist", "staff", "스태프", "매니저"];
 
 function normalizeRoleName(role: string) {
   return role.trim().toLowerCase();
@@ -51,28 +37,32 @@ function getRoleGroup(roles: string[]): RoleGroup {
 
 const SECTION_STYLES: Record<
   SectionKey,
-  { label: string; dot: string; text: string; ring: string }
+  { label: string; emoji: string; dot: string; text: string; ring: string }
 > = {
   관리자: {
     label: "관리자",
+    emoji: "🛡️",
     dot: "bg-[#ff4655]",
     text: "text-[#ff4655]",
     ring: "ring-1 ring-[#ff4655]/60",
   },
   어시스트: {
     label: "어시스트",
+    emoji: "🧩",
     dot: "bg-orange-400",
     text: "text-orange-400",
     ring: "ring-1 ring-orange-400/60",
   },
   온라인: {
     label: "온라인",
+    emoji: "🟢",
     dot: "bg-green-400",
     text: "text-[#7b8a96]",
     ring: "",
   },
   오프라인: {
     label: "오프라인",
+    emoji: "⚫",
     dot: "bg-[#3a4a56]",
     text: "text-[#4a5a68]",
     ring: "",
@@ -112,9 +102,7 @@ export default function MemberSidebar() {
     <aside className="w-52 flex-shrink-0">
       <div className="sticky top-6 bg-[#111c24] border border-[#2a3540] rounded overflow-hidden">
         <div className="px-3 py-2.5 border-b border-[#2a3540] flex items-center justify-between">
-          <span className="text-[#7b8a96] text-[10px] tracking-widest uppercase">
-            서버 멤버
-          </span>
+          <span className="text-[#7b8a96] text-[10px] tracking-widest uppercase">서버 멤버</span>
           {!loading && (
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
@@ -153,7 +141,9 @@ export default function MemberSidebar() {
                 return (
                   <div key={key}>
                     <div className="px-3 pt-2.5 pb-1 flex items-center gap-1.5">
-                      <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                      <span className="text-[10px]" aria-hidden="true">
+                        {style.emoji}
+                      </span>
                       <span className={`text-[9px] tracking-widest uppercase font-bold ${style.text}`}>
                         {style.label} · {sectionMembers.length}
                       </span>
@@ -180,7 +170,9 @@ function MemberRow({ member, sectionKey }: { member: Member; sectionKey: Section
 
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.03] transition-colors ${isOffline ? "opacity-40" : ""}`}
+      className={`flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.03] transition-colors ${
+        isOffline ? "opacity-40" : ""
+      }`}
     >
       <div className="relative flex-shrink-0">
         {member.image ? (
@@ -202,9 +194,7 @@ function MemberRow({ member, sectionKey }: { member: Member; sectionKey: Section
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs text-[#ece8e1] truncate">{displayName}</div>
-        {member.riotId && (
-          <div className="text-[9px] text-[#4a5a68] truncate">{member.riotId}</div>
-        )}
+        {member.riotId && <div className="text-[9px] text-[#4a5a68] truncate">{member.riotId}</div>}
       </div>
     </div>
   );

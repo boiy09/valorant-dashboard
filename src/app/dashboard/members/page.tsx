@@ -12,22 +12,8 @@ interface Member {
   joinedAt: string;
 }
 
-const ADMIN_ROLE_KEYWORDS = [
-  "관리자",
-  "admin",
-  "administrator",
-  "운영진",
-  "운영자",
-];
-
-const ASSIST_ROLE_KEYWORDS = [
-  "어시스트",
-  "assistant",
-  "assist",
-  "staff",
-  "스태프",
-  "매니저",
-];
+const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
+const ASSIST_ROLE_KEYWORDS = ["어시스트", "assistant", "assist", "staff", "스태프", "매니저"];
 
 function normalizeText(value: string) {
   return value.trim().toLowerCase();
@@ -127,35 +113,45 @@ export default function MembersPage() {
         </div>
       ) : (
         <>
-          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
             <input
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="이름, 라이엇 ID, 역할로 검색..."
-              className="val-input w-full lg:flex-1 px-4 py-2.5 text-sm text-white bg-[#1a242d] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655]"
+              className="val-input w-full px-4 py-2.5 text-sm text-white bg-[#1a242d] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655]"
             />
 
-            <div className="w-full lg:w-72">
-              <select
-                value={selectedRole}
-                onChange={(event) => setSelectedRole(event.target.value)}
-                className="val-input w-full px-4 py-2.5 text-sm text-white bg-[#1a242d] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655]"
-              >
-                <option value="all">전체 역할</option>
-                {roleOptions.map((option) => (
-                  <option key={option.role} value={option.role}>
-                    {option.role} ({option.count})
-                  </option>
-                ))}
-              </select>
+            <div className="bg-[#111c24] border border-[#2a3540] rounded overflow-hidden">
+              <div className="px-3 py-2 border-b border-[#2a3540] flex items-center justify-between">
+                <span className="text-[#7b8a96] text-[10px] tracking-widest uppercase">
+                  🎭 역할 필터
+                </span>
+                <span className="text-[#7b8a96] text-[10px]">
+                  {selectedRole === "all" ? "전체" : selectedRole}
+                </span>
+              </div>
+              <div className="px-3 py-2.5">
+                <select
+                  value={selectedRole}
+                  onChange={(event) => setSelectedRole(event.target.value)}
+                  className="val-input w-full px-3 py-2 text-sm text-white bg-[#1a242d] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655]"
+                >
+                  <option value="all">전체 역할</option>
+                  {roleOptions.map((option) => (
+                    <option key={option.role} value={option.role}>
+                      {option.role} ({option.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
           {admins.length > 0 && (
             <div className="mb-6">
               <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">
-                관리자 ({admins.length})
+                🛡️ 관리자 ({admins.length})
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {admins.map((member) => (
@@ -168,7 +164,7 @@ export default function MembersPage() {
           {assists.length > 0 && (
             <div className="mb-6">
               <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">
-                어시스트 ({assists.length})
+                🧩 어시스트 ({assists.length})
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {assists.map((member) => (
@@ -180,7 +176,7 @@ export default function MembersPage() {
 
           <div>
             <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">
-              멤버 ({rest.length})
+              👥 멤버 ({rest.length})
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {rest.map((member) => (

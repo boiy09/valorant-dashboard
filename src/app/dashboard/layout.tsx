@@ -8,21 +8,21 @@ import HeaderRiotLink from "./HeaderRiotLink";
 import MemberSidebar from "./MemberSidebar";
 
 const BASE_TABS = [
-  { href: "/dashboard", label: "대시보드", icon: "D" },
-  { href: "/dashboard/valorant", label: "전적", icon: "V" },
-  { href: "/dashboard/stats", label: "통계 분석", icon: "S" },
-  { href: "/dashboard/scrim", label: "내전", icon: "Q" },
-  { href: "/dashboard/schedule", label: "일정", icon: "C" },
-  { href: "/dashboard/announce", label: "공지", icon: "N" },
-  { href: "/dashboard/vote", label: "투표", icon: "T" },
-  { href: "/dashboard/points", label: "포인트", icon: "P" },
-  { href: "/dashboard/market", label: "장터", icon: "M" },
-  { href: "/dashboard/highlight", label: "하이라이트", icon: "H" },
-  { href: "/dashboard/search", label: "전적 검색", icon: "F" },
-  { href: "/dashboard/members", label: "멤버", icon: "U" },
+  { href: "/dashboard", label: "대시보드", emoji: "🏠" },
+  { href: "/dashboard/valorant", label: "전적", emoji: "🎯" },
+  { href: "/dashboard/stats", label: "통계 분석", emoji: "📊" },
+  { href: "/dashboard/scrim", label: "내전", emoji: "⚔️" },
+  { href: "/dashboard/schedule", label: "일정", emoji: "📅" },
+  { href: "/dashboard/announce", label: "공지", emoji: "📢" },
+  { href: "/dashboard/vote", label: "투표", emoji: "🗳️" },
+  { href: "/dashboard/points", label: "포인트", emoji: "💎" },
+  { href: "/dashboard/market", label: "장터", emoji: "🛒" },
+  { href: "/dashboard/highlight", label: "하이라이트", emoji: "🎬" },
+  { href: "/dashboard/search", label: "전적 검색", emoji: "🔎" },
+  { href: "/dashboard/members", label: "멤버", emoji: "👥" },
 ];
 
-const ADMIN_TAB = { href: "/dashboard/admin", label: "관리", icon: "A" };
+const ADMIN_TAB = { href: "/dashboard/admin", label: "관리", emoji: "🛠️" };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -51,7 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const tabs = isAdmin ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS;
   const activeHref = [...tabs]
-    .sort((a, b) => b.href.length - a.href.length)
+    .sort((left, right) => right.href.length - left.href.length)
     .find((tab) => pathname === tab.href || pathname.startsWith(tab.href + "/"))?.href;
 
   return (
@@ -101,8 +101,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     : "text-[#7b8a96] hover:text-[#ece8e1] hover:bg-white/[0.03]"
                 }`}
               >
-                <span className="leading-none">{tab.icon}</span>
-                {tab.label}
+                <span className="leading-none text-sm" aria-hidden="true">
+                  {tab.emoji}
+                </span>
+                <span>{tab.label}</span>
               </Link>
             );
           })}

@@ -1,0 +1,372 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+
+  discordId    String?  @unique
+  riotPuuid    String?
+  riotGameName String?
+  riotTagLine  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  riotAccounts    RiotAccount[]
+  guilds          GuildMember[]
+  trackedBy       TrackedPlayer[]
+  voiceActivities VoiceActivity[]
+  attendances     DailyAttendance[]
+  scrimPlayers    ScrimPlayer[]
+  scrimElos       ScrimElo[]
+  warnings        Warning[]
+  applications    MemberApplication[]
+  pointTx         PointTransaction[]
+  queueEntries    ScrimQueueEntry[]
+  voteResponses   VoteResponse[]
+  marketPosts     MarketPost[]
+  highlights      Highlight[]
+}
+
+model RiotAccount {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  puuid     String   @unique
+  gameName  String
+  tagLine   String
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+  @@index([userId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+}
+
+model Guild {
+  id              String   @id @default(cuid())
+  discordId       String   @unique
+  name            String
+  notifyChannelId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  members         GuildMember[]
+  trackedPlayers  TrackedPlayer[]
+  rankRoles       RankRole[]
+  voiceActivities VoiceActivity[]
+  attendances     DailyAttendance[]
+  scrimSessions   ScrimSession[]
+  announcements   Announcement[]
+  warnings        Warning[]
+  applications    MemberApplication[]
+  pointTx         PointTransaction[]
+  scrimQueue      ScrimQueueEntry[]
+  scrimElos       ScrimElo[]
+  scrimEvents     ScrimEvent[]
+  votes           Vote[]
+  marketPosts     MarketPost[]
+  highlights      Highlight[]
+}
+
+model GuildMember {
+  id       String   @id @default(cuid())
+  user     User     @relation(fields: [userId], references: [id])
+  userId   String
+  guild    Guild    @relation(fields: [guildId], references: [id])
+  guildId  String
+  roles    String   @default("")
+  nickname String?
+  isOnline Boolean  @default(false)
+  joinedAt DateTime @default(now())
+  @@unique([userId, guildId])
+}
+
+model TrackedPlayer {
+  id          String   @id @default(cuid())
+  guild       Guild    @relation(fields: [guildId], references: [id])
+  guildId     String
+  user        User?    @relation(fields: [userId], references: [id])
+  userId      String?
+  riotPuuid   String
+  gameName    String
+  tagLine     String
+  lastMatchId String?
+  lastTier    String?
+  createdAt   DateTime @default(now())
+  @@unique([guildId, riotPuuid])
+}
+
+model RankRole {
+  id      String @id @default(cuid())
+  guild   Guild  @relation(fields: [guildId], references: [id])
+  guildId String
+  tier    String
+  roleId  String
+  @@unique([guildId, tier])
+}
+
+// 음성 채널 활동
+model VoiceActivity {
+  id          String    @id @default(cuid())
+  user        User      @relation(fields: [userId], references: [id])
+  userId      String
+  guild       Guild     @relation(fields: [guildId], references: [id])
+  guildId     String
+  channelId   String
+  channelName String
+  joinedAt    DateTime  @default(now())
+  leftAt      DateTime?
+  duration    Int?
+  @@index([userId, guildId])
+  @@index([guildId, joinedAt])
+}
+
+// 일별 출석
+model DailyAttendance {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  guild     Guild    @relation(fields: [guildId], references: [id])
+  guildId   String
+  date      String
+  createdAt DateTime @default(now())
+  @@unique([userId, guildId, date])
+  @@index([guildId, date])
+}
+
+// 내전 세션
+model ScrimSession {
+  id        String        @id @default(cuid())
+  guild     Guild         @relation(fields: [guildId], references: [id])
+  guildId   String
+  title     String        @default("내전")
+  status    String        @default("waiting")
+  map       String?
+  winnerId  String?
+  createdBy String
+  startedAt DateTime?
+  endedAt   DateTime?
+  createdAt DateTime      @default(now())
+  players   ScrimPlayer[]
+}
+
+model ScrimPlayer {
+  id        String       @id @default(cuid())
+  session   ScrimSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId String
+  user      User         @relation(fields: [userId], references: [id])
+  userId    String
+  team      String
+  kills     Int?
+  deaths    Int?
+  assists   Int?
+  @@unique([sessionId, userId])
+}
+
+// 내전 ELO
+model ScrimElo {
+  id      String @id @default(cuid())
+  user    User   @relation(fields: [userId], references: [id])
+  userId  String
+  guild   Guild  @relation(fields: [guildId], references: [id])
+  guildId String
+  elo     Int    @default(1000)
+  wins    Int    @default(0)
+  losses  Int    @default(0)
+  draws   Int    @default(0)
+  @@unique([userId, guildId])
+}
+
+// 내전 큐
+model ScrimQueueEntry {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  guild     Guild    @relation(fields: [guildId], references: [id])
+  guildId   String
+  joinedAt  DateTime @default(now())
+  @@unique([userId, guildId])
+}
+
+// 내전 일정
+model ScrimEvent {
+  id          String   @id @default(cuid())
+  guild       Guild    @relation(fields: [guildId], references: [id])
+  guildId     String
+  title       String
+  description String?
+  scheduledAt DateTime
+  createdBy   String
+  notified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  @@index([guildId, scheduledAt])
+}
+
+// 공지
+model Announcement {
+  id        String   @id @default(cuid())
+  guild     Guild    @relation(fields: [guildId], references: [id])
+  guildId   String
+  title     String
+  content   String
+  authorId  String
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  @@index([guildId, createdAt])
+}
+
+// 경고/제재
+model Warning {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  guild     Guild    @relation(fields: [guildId], references: [id])
+  guildId   String
+  reason    String
+  issuedBy  String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  @@index([userId, guildId])
+}
+
+// 가입 심사
+model MemberApplication {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  guild       Guild    @relation(fields: [guildId], references: [id])
+  guildId     String
+  riotId      String
+  mainAgent   String
+  playtime    String
+  motivation  String
+  status      String   @default("pending") // pending | approved | rejected
+  reviewedBy  String?
+  reviewNote  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([userId, guildId])
+  @@index([guildId, status])
+}
+
+// 클랜 포인트
+model PointTransaction {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  guild     Guild    @relation(fields: [guildId], references: [id])
+  guildId   String
+  amount    Int
+  reason    String
+  type      String   // attendance | scrim_win | manual | penalty
+  createdAt DateTime @default(now())
+  @@index([userId, guildId])
+  @@index([guildId, createdAt])
+}
+
+// 투표
+model Vote {
+  id        String       @id @default(cuid())
+  guild     Guild        @relation(fields: [guildId], references: [id])
+  guildId   String
+  title     String
+  createdBy String
+  endsAt    DateTime
+  createdAt DateTime     @default(now())
+  options   VoteOption[]
+  responses VoteResponse[]
+  @@index([guildId, endsAt])
+}
+
+model VoteOption {
+  id        String         @id @default(cuid())
+  vote      Vote           @relation(fields: [voteId], references: [id], onDelete: Cascade)
+  voteId    String
+  label     String
+  responses VoteResponse[]
+}
+
+model VoteResponse {
+  id       String     @id @default(cuid())
+  vote     Vote       @relation(fields: [voteId], references: [id], onDelete: Cascade)
+  voteId   String
+  option   VoteOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  optionId String
+  user     User       @relation(fields: [userId], references: [id])
+  userId   String
+  @@unique([voteId, userId])
+}
+
+// 중고 마켓
+model MarketPost {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  guild       Guild    @relation(fields: [guildId], references: [id])
+  guildId     String
+  title       String
+  description String
+  price       Int?
+  category    String   @default("기타") // 계정 | 코인 | 아이템 | 기타
+  status      String   @default("sale") // sale | reserved | sold
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([guildId, status])
+}
+
+// 하이라이트 갤러리
+model Highlight {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  guild       Guild    @relation(fields: [guildId], references: [id])
+  guildId     String
+  title       String
+  description String?
+  url         String
+  type        String   @default("clip") // clip | screenshot
+  likes       Int      @default(0)
+  createdAt   DateTime @default(now())
+  @@index([guildId, createdAt])
+}

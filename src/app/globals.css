@@ -1,26 +1,94 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --val-red: #ff4655;
+  --val-red-dark: #cc3644;
+  --val-bg: #0f1923;
+  --val-bg-2: #1a242d;
+  --val-bg-3: #111c24;
+  --val-border: #2a3540;
+  --val-text: #ece8e1;
+  --val-muted: #7b8a96;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: var(--val-bg);
+  color: var(--val-text);
+  font-family: Arial, Helvetica, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.val-card {
+  background: var(--val-bg-2);
+  border: 1px solid var(--val-border);
+  position: relative;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+
+.val-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--val-red) 0%, transparent 60%);
+}
+
+.val-btn {
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  transition: all 0.15s ease;
+}
+
+.val-btn:hover {
+  filter: brightness(1.1);
+}
+
+.val-input {
+  background: var(--val-bg-3);
+  border: 1px solid var(--val-border);
+  color: var(--val-text);
+  transition: border-color 0.15s;
+}
+
+.val-input:focus {
+  outline: none;
+  border-color: var(--val-red);
+}
+
+.val-win { color: #4ade80; }
+.val-loss { color: var(--val-red); }
+.val-draw { color: #94a3b8; }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes pulse-red {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-fade-in { animation: fadeInUp 0.4s ease forwards; }
+.animate-pulse-red { animation: pulse-red 2s ease infinite; }
+
+.rank-badge {
+  background: linear-gradient(135deg, var(--val-bg-3) 0%, var(--val-bg-2) 100%);
+  border: 1px solid var(--val-border);
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+}
+
+.stat-highlight {
+  background: linear-gradient(135deg, rgba(255,70,85,0.08) 0%, transparent 60%);
+  border-left: 2px solid var(--val-red);
 }

@@ -8,18 +8,9 @@ interface Member {
   name: string;
   image: string | null;
   roles: string[];
+  roleCategory: "관리자" | "어시스트" | "일반";
   riotId: string | null;
   isOnline: boolean;
-}
-
-const ADMIN_ROLE_NAMES  = (process.env.NEXT_PUBLIC_DISCORD_ADMIN_ROLES  ?? "관리자").split(",").map(s => s.trim().toLowerCase());
-const ASSIST_ROLE_NAMES = (process.env.NEXT_PUBLIC_DISCORD_ASSIST_ROLES ?? "어시스트").split(",").map(s => s.trim().toLowerCase());
-
-function roleType(roles: string[]): "관리자" | "어시스트" | "일반" {
-  const normalized = roles.map(r => r.trim().toLowerCase());
-  if (normalized.some(r => ADMIN_ROLE_NAMES.includes(r)))  return "관리자";
-  if (normalized.some(r => ASSIST_ROLE_NAMES.includes(r))) return "어시스트";
-  return "일반";
 }
 
 const SECTION_STYLES = {
@@ -41,10 +32,10 @@ export default function MemberSidebar() {
       .finally(() => setLoading(false));
   }, []);
 
-  const admins    = members.filter(m => roleType(m.roles) === "관리자");
-  const assists   = members.filter(m => roleType(m.roles) === "어시스트");
-  const onlines   = members.filter(m => roleType(m.roles) === "일반" && m.isOnline);
-  const offlines  = members.filter(m => roleType(m.roles) === "일반" && !m.isOnline);
+  const admins    = members.filter(m => m.roleCategory === "관리자");
+  const assists   = members.filter(m => m.roleCategory === "어시스트");
+  const onlines   = members.filter(m => m.roleCategory === "일반" && m.isOnline);
+  const offlines  = members.filter(m => m.roleCategory === "일반" && !m.isOnline);
 
   const onlineCount = members.filter(m => m.isOnline).length;
 

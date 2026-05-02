@@ -12,9 +12,13 @@ interface Member {
   isOnline: boolean;
 }
 
+const ADMIN_ROLE_NAMES  = (process.env.NEXT_PUBLIC_DISCORD_ADMIN_ROLES  ?? "관리자").split(",").map(s => s.trim().toLowerCase());
+const ASSIST_ROLE_NAMES = (process.env.NEXT_PUBLIC_DISCORD_ASSIST_ROLES ?? "어시스트").split(",").map(s => s.trim().toLowerCase());
+
 function roleType(roles: string[]): "관리자" | "어시스트" | "일반" {
-  if (roles.includes("관리자")) return "관리자";
-  if (roles.includes("어시스트")) return "어시스트";
+  const normalized = roles.map(r => r.trim().toLowerCase());
+  if (normalized.some(r => ADMIN_ROLE_NAMES.includes(r)))  return "관리자";
+  if (normalized.some(r => ASSIST_ROLE_NAMES.includes(r))) return "어시스트";
   return "일반";
 }
 
@@ -115,6 +119,7 @@ function MemberRow({ member, sectionKey }: { member: Member; sectionKey: string 
   const initial = displayName.charAt(0).toUpperCase();
   const style = SECTION_STYLES[sectionKey as keyof typeof SECTION_STYLES];
   const isOffline = sectionKey === "오프라인";
+  const isStaff = sectionKey === "관리자" || sectionKey === "어시스트";
 
   return (
     <div className={`flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.03] transition-colors ${isOffline ? "opacity-40" : ""}`}>
@@ -126,7 +131,15 @@ function MemberRow({ member, sectionKey }: { member: Member; sectionKey: string 
             {initial}
           </div>
         )}
-        <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#111c24] ${style.dot}`} />
+        {/* 관리자/어시스트: 역할 색 큰 점 + 온라인 여부 작은 보조 점 */}
+        {isStaff ? (
+          <>
+            <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#111c24] ${style.dot}`} />
+            <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-[#111c24] ${member.isOnline ? "bg-green-400" : "bg-[#3a4a56]"}`} />
+          </>
+        ) : (
+          <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#111c24] ${style.dot}`} />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs text-[#ece8e1] truncate">{displayName}</div>

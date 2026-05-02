@@ -16,6 +16,7 @@ interface ActivityData {
 interface RankingEntry {
   rank: number;
   name: string;
+  seconds: number;
   hours: number;
   minutes: number;
   image: string | null;
@@ -25,6 +26,12 @@ function fmtTime(seconds: number) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   return hours === 0 ? `${minutes}m` : `${hours}h ${minutes}m`;
+}
+
+function fmtRankingTime(seconds: number, hours: number, minutes: number) {
+  if (seconds < 60) return `${seconds}s`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 function isActivityData(value: unknown): value is ActivityData {
@@ -162,7 +169,7 @@ export default function ActivityPageClient() {
                     )}
                     <span className="flex-1 truncate text-sm text-white">{entry.name}</span>
                     <span className="whitespace-nowrap text-xs font-bold text-[#ff4655]">
-                      {entry.hours > 0 ? `${entry.hours}h ${entry.minutes}m` : `${entry.minutes}m`}
+                      {fmtRankingTime(entry.seconds, entry.hours, entry.minutes)}
                     </span>
                   </div>
                 ))}

@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
     .map((item, index) => ({
       rank: index + 1,
       ...item,
+      seconds: item.seconds,
       hours: Math.floor(item.seconds / 3600),
       minutes: Math.floor((item.seconds % 3600) / 60),
     }));

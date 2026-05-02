@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-const ADMIN_KEYWORDS  = (process.env.DISCORD_ADMIN_ROLES  ?? "관리자").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-const ASSIST_KEYWORDS = (process.env.DISCORD_ASSIST_ROLES ?? "어시스트").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+const ADMIN_KEYWORDS  = ["__관리자__", ...(process.env.DISCORD_ADMIN_ROLES  ?? "관리자").split(",").map(s => s.trim().toLowerCase()).filter(Boolean)];
+const ASSIST_KEYWORDS = ["__어시스트__", ...(process.env.DISCORD_ASSIST_ROLES ?? "어시스트").split(",").map(s => s.trim().toLowerCase()).filter(Boolean)];
 
 function getRoleCategory(rolesStr: string): "관리자" | "어시스트" | "일반" {
   const roles = rolesStr.split(",").map(r => r.trim().toLowerCase()).filter(Boolean);

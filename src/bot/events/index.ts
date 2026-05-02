@@ -1,6 +1,30 @@
-import { Events, PresenceStatus } from "discord.js";
+import { Events, PermissionFlagsBits } from "discord.js";
 import type { BotClient } from "../index";
 import { prisma } from "../../lib/prisma";
+
+function buildRolesString(member: import("discord.js").GuildMember): string {
+  const names = member.roles.cache
+    .filter(r => r.name !== "@everyone")
+    .map(r => r.name);
+
+  const perms = member.permissions;
+  const isAdmin =
+    perms.has(PermissionFlagsBits.Administrator) ||
+    perms.has(PermissionFlagsBits.ManageGuild);
+  const isAssist =
+    !isAdmin && (
+      perms.has(PermissionFlagsBits.ManageMessages) ||
+      perms.has(PermissionFlagsBits.KickMembers) ||
+      perms.has(PermissionFlagsBits.BanMembers) ||
+      perms.has(PermissionFlagsBits.ManageRoles) ||
+      perms.has(PermissionFlagsBits.MuteMembers)
+    );
+
+  if (isAdmin)  names.push("__관리자__");
+  if (isAssist) names.push("__어시스트__");
+
+  return names.join(",");
+}
 
 export function registerEvents(client: BotClient) {
   client.once(Events.ClientReady, async (c) => {
@@ -22,10 +46,7 @@ export function registerEvents(client: BotClient) {
             update: { name: member.user.displayName, image: member.user.displayAvatarURL() },
             create: { discordId: member.user.id, email, name: member.user.displayName, image: member.user.displayAvatarURL() },
           });
-          const roles = member.roles.cache
-            .filter(r => r.name !== "@everyone")
-            .map(r => r.name)
-            .join(",");
+          const roles = buildRolesString(member);
           await prisma.guildMember.upsert({
             where: { userId_guildId: { userId: user.id, guildId: dbGuild.id } },
             update: { roles, nickname: member.nickname ?? undefined },
@@ -154,10 +175,7 @@ export function registerEvents(client: BotClient) {
           update: { name: member.user.displayName, image: member.user.displayAvatarURL() },
           create: { discordId: member.user.id, email, name: member.user.displayName, image: member.user.displayAvatarURL() },
         });
-        const roles = member.roles.cache
-          .filter(r => r.name !== "@everyone")
-          .map(r => r.name)
-          .join(",");
+        const roles = buildRolesString(member);
         await prisma.guildMember.upsert({
           where: { userId_guildId: { userId: user.id, guildId: dbGuild.id } },
           update: { roles, nickname: member.nickname ?? undefined },
@@ -207,10 +225,7 @@ export function registerEvents(client: BotClient) {
     if (!guild) return;
     const user = await prisma.user.findUnique({ where: { discordId: member.user.id } });
     if (!user) return;
-    const roles = member.roles.cache
-      .filter(r => r.name !== "@everyone")
-      .map(r => r.name)
-      .join(",");
+    const roles = buildRolesString(member);
     await prisma.guildMember.upsert({
       where: { userId_guildId: { userId: user.id, guildId: guild.id } },
       update: { roles, nickname: member.nickname ?? undefined },

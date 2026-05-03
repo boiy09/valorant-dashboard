@@ -1,19 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+type RiotRegion = "KR" | "AP";
 
 interface RiotAccountItem {
   id: string;
+  region: RiotRegion;
   riotId: string;
-  isPrimary: boolean;
 }
 
-const MAX = 5;
+const REGIONS: RiotRegion[] = ["KR", "AP"];
 
 export default function HeaderRiotLink() {
   const [accounts, setAccounts] = useState<RiotAccountItem[]>([]);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [region, setRegion] = useState<RiotRegion>("KR");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [initialized, setInitialized] = useState(false);
@@ -30,13 +33,32 @@ export default function HeaderRiotLink() {
   }, []);
 
   useEffect(() => {
-    function handler(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    function handleMouseDown(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
     }
 
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
   }, []);
+
+  const accountByRegion = useMemo(() => {
+    const map = new Map<RiotRegion, RiotAccountItem>();
+    for (const account of accounts) {
+      map.set(account.region, account);
+    }
+    return map;
+  }, [accounts]);
+
+  const connectedCount = accounts.length;
+  const summaryLabel =
+    connectedCount === 0
+      ? "라이엇 연동"
+      : REGIONS.map((key) => {
+          const account = accountByRegion.get(key);
+          return `${key}:${account ? "연결됨" : "비어 있음"}`;
+        }).join(" · ");
 
   async function safeJson(response: Response) {
     try {
@@ -55,19 +77,18 @@ export default function HeaderRiotLink() {
       const response = await fetch("/api/user/riot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ riotId: input }),
+        body: JSON.stringify({ riotId: input, region }),
       });
       const data = await safeJson(response);
 
       if (!response.ok) {
-        setError(data.error ?? "연동 중 오류가 발생했어요.");
+        setError(data.error ?? "라이엇 계정 연동 중 오류가 발생했습니다.");
       } else {
-        setAccounts((prev) => [...prev, data.account]);
+        setAccounts((prev) => [...prev.filter((account) => account.region !== data.account.region), data.account]);
         setInput("");
-        setError("");
       }
     } catch {
-      setError("네트워크 오류가 발생했어요.");
+      setError("네트워크 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
@@ -75,151 +96,129 @@ export default function HeaderRiotLink() {
 
   async function handleRemove(id: string) {
     setLoading(true);
+    setError("");
 
     try {
-      await fetch("/api/user/riot", {
+      const response = await fetch("/api/user/riot", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-    } catch {}
+      const data = await safeJson(response);
 
-    setLoading(false);
-    setAccounts((prev) => {
-      const next = prev.filter((account) => account.id !== id);
-      const wasPrimary = prev.find((account) => account.id === id)?.isPrimary;
-
-      if (wasPrimary && next.length > 0) next[0] = { ...next[0], isPrimary: true };
-      return next;
-    });
-  }
-
-  async function handleSetPrimary(id: string) {
-    setLoading(true);
-
-    try {
-      await fetch("/api/user/riot", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      setAccounts((prev) => prev.map((account) => ({ ...account, isPrimary: account.id === id })));
-    } catch {}
-
-    setLoading(false);
+      if (!response.ok) {
+        setError(data.error ?? "계정 삭제 중 오류가 발생했습니다.");
+      } else {
+        setAccounts((prev) => prev.filter((account) => account.id !== id));
+      }
+    } catch {
+      setError("네트워크 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (!initialized) return null;
 
-  const primary = accounts.find((account) => account.isPrimary);
-  const hasAccounts = accounts.length > 0;
+  const regionDisabled = Boolean(accountByRegion.get(region));
 
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((value) => !value)}
         className={`flex items-center gap-1.5 text-xs border px-2.5 py-1 rounded transition-colors ${
-          hasAccounts
+          connectedCount > 0
             ? "border-[#2a3540] hover:border-[#ff4655]/50"
             : "border-[#ff4655]/40 hover:border-[#ff4655] text-[#ff4655]"
         }`}
       >
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${hasAccounts ? "bg-green-400" : "bg-[#ff4655]"}`} />
-        <span className={`truncate max-w-[110px] ${hasAccounts ? "text-green-400 font-medium" : ""}`}>
-          {primary ? primary.riotId : "라이엇 연동"}
+        <span
+          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+            connectedCount > 0 ? "bg-green-400" : "bg-[#ff4655]"
+          }`}
+        />
+        <span className={`truncate max-w-[170px] ${connectedCount > 0 ? "text-green-400 font-medium" : ""}`}>
+          {summaryLabel}
         </span>
-        {accounts.length > 1 && <span className="text-[#7b8a96] text-[10px]">+{accounts.length - 1}</span>}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 bg-[#111c24] border border-[#2a3540] rounded shadow-xl z-50 w-72">
+        <div className="absolute right-0 top-full mt-1.5 bg-[#111c24] border border-[#2a3540] rounded shadow-xl z-50 w-80">
           <div className="p-3 border-b border-[#2a3540]">
             <div className="flex items-center justify-between mb-0.5">
               <span className="text-[#7b8a96] text-xs tracking-widest uppercase">라이엇 계정</span>
-              <span className="text-[#7b8a96] text-[10px]">
-                {accounts.length}/{MAX}
-              </span>
+              <span className="text-[#7b8a96] text-[10px]">{connectedCount}/2 연결</span>
+            </div>
+            <div className="text-[#7b8a96] text-[11px]">
+              디스코드 계정당 한섭(KR)과 아섭(AP) 계정을 각각 1개씩 연결할 수 있습니다.
             </div>
           </div>
 
-          {accounts.length > 0 && (
-            <div className="p-2 flex flex-col gap-1 border-b border-[#2a3540]">
-              {accounts.map((account) => (
-                <div
-                  key={account.id}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded ${
-                    account.isPrimary ? "bg-[#ff4655]/10" : "hover:bg-white/[0.03]"
-                  }`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                      account.isPrimary ? "bg-[#ff4655]" : "bg-[#2a3540]"
-                    }`}
-                  />
-                  <span
-                    className={`flex-1 text-xs truncate ${
-                      account.isPrimary ? "text-white font-bold" : "text-[#7b8a96]"
-                    }`}
-                  >
-                    {account.riotId}
-                  </span>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    {!account.isPrimary && (
+          <div className="p-2 flex flex-col gap-2 border-b border-[#2a3540]">
+            {REGIONS.map((key) => {
+              const account = accountByRegion.get(key);
+              return (
+                <div key={key} className="rounded border border-[#2a3540] bg-[#0f1923] px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[#ff4655] text-[10px] tracking-widest uppercase">
+                        {key === "KR" ? "KR · 한섭" : "AP · 아섭"}
+                      </div>
+                      <div className="text-white text-sm font-bold mt-0.5">
+                        {account ? account.riotId : "아직 연결된 계정이 없습니다"}
+                      </div>
+                    </div>
+                    {account && (
                       <button
-                        onClick={() => handleSetPrimary(account.id)}
+                        onClick={() => handleRemove(account.id)}
                         disabled={loading}
-                        title="대표 계정으로 설정"
-                        className="text-[10px] text-[#7b8a96] hover:text-[#ff4655] transition-colors disabled:opacity-40 px-1"
+                        className="text-[11px] text-[#7b8a96] hover:text-[#ff4655] transition-colors disabled:opacity-40"
                       >
-                        대표
+                        삭제
                       </button>
                     )}
-                    {account.isPrimary && (
-                      <span className="text-[10px] text-[#ff4655] px-1" title="대표 계정">
-                        대표
-                      </span>
-                    )}
-                    <button
-                      onClick={() => handleRemove(account.id)}
-                      disabled={loading}
-                      title="연동 해제"
-                      className="text-[10px] text-[#7b8a96] hover:text-[#ff4655] transition-colors disabled:opacity-40 px-1"
-                    >
-                      삭제
-                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
 
-          {accounts.length < MAX ? (
-            <div className="p-3">
-              <div className="text-[#7b8a96] text-[10px] mb-2">계정 추가</div>
-              <form onSubmit={handleAdd} className="flex flex-col gap-2">
+          <div className="p-3">
+            <div className="text-[#7b8a96] text-[10px] mb-2">계정 추가</div>
+            <form onSubmit={handleAdd} className="flex flex-col gap-2">
+              <div className="grid grid-cols-[90px_1fr] gap-2">
+                <select
+                  value={region}
+                  onChange={(event) => setRegion(event.target.value as RiotRegion)}
+                  className="px-3 py-2 text-xs text-white bg-[#0f1923] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655]"
+                >
+                  <option value="KR">KR · 한섭</option>
+                  <option value="AP">AP · 아섭</option>
+                </select>
                 <input
                   type="text"
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
-                  placeholder="닉네임#태그 (예: Player#KR1)"
+                  placeholder="예: Player#KR1"
                   className="px-3 py-2 text-xs text-white bg-[#0f1923] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655] w-full"
                   required
                 />
-                {error && <div className="text-[#ff4655] text-[10px]">{error}</div>}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="bg-[#ff4655] text-white text-xs font-bold py-1.5 rounded disabled:opacity-50"
-                >
-                  {loading ? "확인 중..." : "연동하기"}
-                </button>
-              </form>
-            </div>
-          ) : (
-            <div className="p-3 text-center text-[#7b8a96] text-xs">
-              최대 {MAX}개 계정까지 연동 가능해요.
-            </div>
-          )}
+              </div>
+              {regionDisabled && (
+                <div className="text-[#7b8a96] text-[10px]">
+                  선택한 지역에는 이미 계정이 연결되어 있습니다. 먼저 삭제 후 다시 연결해주세요.
+                </div>
+              )}
+              {error && <div className="text-[#ff4655] text-[10px]">{error}</div>}
+              <button
+                type="submit"
+                disabled={loading || regionDisabled}
+                className="bg-[#ff4655] text-white text-xs font-bold py-1.5 rounded disabled:opacity-50"
+              >
+                {loading ? "확인 중..." : "연동하기"}
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </div>

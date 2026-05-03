@@ -45,9 +45,11 @@ model RiotAccount {
   puuid     String   @unique
   gameName  String
   tagLine   String
+  region    String   @default("KR")
   isPrimary Boolean  @default(false)
   createdAt DateTime @default(now())
   @@index([userId])
+  @@unique([userId, region])
 }
 
 model Account {

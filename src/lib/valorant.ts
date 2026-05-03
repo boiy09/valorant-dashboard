@@ -134,7 +134,7 @@ function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-function parseRiotId(input: string) {
+export function parseRiotId(input: string) {
   const [gameName, tagLine] = input.split("#");
   if (!gameName || !tagLine) return null;
   return { gameName: gameName.trim(), tagLine: tagLine.trim() };
@@ -213,7 +213,6 @@ export async function getRecentMatches(
     const players = asArray<any>(match.players);
     const me = players.find((player) => player?.puuid === puuid) ?? {};
     const stats = me?.stats ?? {};
-    const damage = stats?.damage ?? {};
 
     return {
       matchId: toString(match?.metadata?.match_id, ""),
@@ -281,9 +280,7 @@ export async function getLeaderboard(
   platform: ValorantPlatform = "pc",
   size = 10
 ): Promise<LeaderboardEntry[]> {
-  const response = await henrikClient.get(
-    `/v3/leaderboard/${region}/${platform}?size=${size}`
-  );
+  const response = await henrikClient.get(`/v3/leaderboard/${region}/${platform}?size=${size}`);
   const players = asArray<any>(response.data?.data?.players);
 
   return players.map((player) => ({
@@ -391,7 +388,10 @@ export async function getQueueStatus(
   }));
 }
 
-export async function getVctSchedule(league = "vct_pacific", limit = 5): Promise<EsportsMatchSummary[]> {
+export async function getVctSchedule(
+  league = "vct_pacific",
+  limit = 5
+): Promise<EsportsMatchSummary[]> {
   const response = await henrikClient.get(
     `/v1/esports/schedule?league=${encodeURIComponent(league)}`
   );
@@ -417,5 +417,3 @@ export async function getVctSchedule(league = "vct_pacific", limit = 5): Promise
     };
   });
 }
-
-export { parseRiotId };

@@ -12,11 +12,11 @@ function average(numbers: number[]) {
 
 export const data = new SlashCommandBuilder()
   .setName("전적")
-  .setDescription("발로란트 기본 전적을 조회합니다.")
+  .setDescription("발로란트 기본 전적을 조회해.")
   .addStringOption((option) =>
     option
       .setName("라이엇아이디")
-      .setDescription("예: 플레이어#KR1")
+      .setDescription("예: Player#KR1")
       .setRequired(true)
   );
 
@@ -27,14 +27,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const riotId = parseRiotId(input);
 
   if (!riotId) {
-    return interaction.editReply("라이엇 아이디 형식이 잘못됐어요. 예: `플레이어#KR1`");
+    return interaction.editReply("라이엇 ID 형식이 잘못됐어. `플레이어#KR1` 형식으로 입력해줘.");
   }
 
   try {
-    const { profile, rank, recentMatches } = await getPlayerStats(
-      riotId.gameName,
-      riotId.tagLine
-    );
+    const { profile, rank, recentMatches } = await getPlayerStats(riotId.gameName, riotId.tagLine);
 
     const wins = recentMatches.filter((match) => match.result === "승리").length;
     const kdaValues = recentMatches.map(
@@ -80,19 +77,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           inline: true,
         },
         {
-          name: "최근 5판 승률",
-          value: recentMatches.length
-            ? `${Math.round((wins / recentMatches.length) * 100)}%`
-            : "정보 없음",
+          name: "최근 5경기 승률",
+          value: recentMatches.length ? `${Math.round((wins / recentMatches.length) * 100)}%` : "정보 없음",
           inline: true,
         },
         {
-          name: "최근 5판 평균 KDA",
+          name: "최근 5경기 평균 KDA",
           value: recentMatches.length ? average(kdaValues).toFixed(2) : "정보 없음",
           inline: true,
         },
         {
-          name: "최근 5판 평균 헤드샷률",
+          name: "최근 5경기 평균 헤드샷률",
           value: recentMatches.length ? `${average(hsValues).toFixed(1)}%` : "정보 없음",
           inline: true,
         },
@@ -121,11 +116,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ embeds: [embed] });
   } catch (error: any) {
     if (error?.response?.status === 404) {
-      await interaction.editReply("해당 플레이어를 찾지 못했어요. 닉네임과 태그를 다시 확인해 주세요.");
+      await interaction.editReply("해당 플레이어를 찾지 못했어. 닉네임과 태그를 다시 확인해줘.");
       return;
     }
 
     console.error(error);
-    await interaction.editReply("전적을 불러오는 중 오류가 났어요. 잠시 후 다시 시도해 주세요.");
+    await interaction.editReply("전적을 불러오는 중 오류가 발생했어. 잠시 후 다시 시도해줘.");
   }
 }

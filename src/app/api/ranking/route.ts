@@ -24,18 +24,37 @@ export async function GET(req: NextRequest) {
       ...guildFilter,
     },
     include: {
-      user: { select: { id: true, name: true, discordId: true, image: true } },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          discordId: true,
+          image: true,
+          guilds: {
+            select: {
+              nickname: true,
+              guild: { select: { discordId: true } },
+            },
+          },
+        },
+      },
     },
   });
 
   const userMap = new Map<string, { name: string; discordId: string | null; image: string | null; seconds: number }>();
   for (const a of activities) {
+    const guildNickname =
+      a.user.guilds.find((member) =>
+        guildDiscordId ? member.guild.discordId === guildDiscordId : Boolean(member.nickname)
+      )?.nickname ?? null;
+    const displayName = guildNickname ?? a.user.name ?? "Unknown";
+
     const existing = userMap.get(a.userId);
     if (existing) {
       existing.seconds += a.duration ?? 0;
     } else {
       userMap.set(a.userId, {
-        name: a.user.name ?? "Unknown",
+        name: displayName,
         discordId: a.user.discordId,
         image: a.user.image,
         seconds: a.duration ?? 0,

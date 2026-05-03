@@ -7,17 +7,17 @@ import { getPlayerByRiotId, getRecentMatches, parseRiotId } from "../../lib/valo
 
 export const data = new SlashCommandBuilder()
   .setName("매치")
-  .setDescription("최근 매치 기록을 조회합니다.")
+  .setDescription("최근 매치 기록을 조회해.")
   .addStringOption((option) =>
     option
       .setName("라이엇아이디")
-      .setDescription("예: 플레이어#KR1")
+      .setDescription("예: Player#KR1")
       .setRequired(true)
   )
   .addIntegerOption((option) =>
     option
       .setName("개수")
-      .setDescription("조회할 경기 수 (기본 5, 최대 10)")
+      .setDescription("조회할 경기 수. 기본 5, 최대 10")
       .setMinValue(1)
       .setMaxValue(10)
   );
@@ -30,7 +30,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const riotId = parseRiotId(input);
 
   if (!riotId) {
-    return interaction.editReply("라이엇 아이디 형식이 잘못됐어요. 예: `플레이어#KR1`");
+    return interaction.editReply("라이엇 ID 형식이 잘못됐어. `플레이어#KR1` 형식으로 입력해줘.");
   }
 
   try {
@@ -38,7 +38,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const matches = await getRecentMatches(profile.puuid, count);
 
     if (!matches.length) {
-      return interaction.editReply("최근 매치 기록이 아직 없어요.");
+      return interaction.editReply("최근 매치 기록이 아직 없어.");
     }
 
     const wins = matches.filter((match) => match.result === "승리").length;
@@ -89,11 +89,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ embeds: [embed] });
   } catch (error: any) {
     if (error?.response?.status === 404) {
-      await interaction.editReply("해당 플레이어를 찾지 못했어요.");
+      await interaction.editReply("해당 플레이어를 찾지 못했어.");
       return;
     }
 
     console.error(error);
-    await interaction.editReply("최근 매치를 불러오는 중 오류가 났어요.");
+    await interaction.editReply("최근 매치를 불러오는 중 오류가 발생했어.");
   }
 }

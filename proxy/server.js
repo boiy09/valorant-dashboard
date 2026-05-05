@@ -447,57 +447,59 @@ app.post('/auth/browser', async (req, res) => {
     });
     const page = await context.newPage();
 
-    // 토큰 캡처용
+    // 토큰 캡처용 - framenavigated에서 URL 직접 파싱
     let capturedTokens = null;
-    page.on('framenavigated', async (frame) => {
-      if (frame === page.mainFrame()) {
+    const tokenCapturePromise = new Promise((resolve) => {
+      page.on('framenavigated', async (frame) => {
+        if (frame !== page.mainFrame()) return;
         const url = frame.url();
-        if (url.includes('playvalorant.com/opt_in')) {
-          try {
-            const hash = await page.evaluate(() => window.location.hash).catch(() => '');
-            if (hash) capturedTokens = parseHashTokens(hash);
-            console.log('[browser] 토큰 캡처:', capturedTokens ? '성공' : '해시 없음', url.substring(0, 80));
-          } catch (e) {
-            console.error('[browser] 토큰 캡처 오류:', e.message);
+        console.log('[browser] 네비게이션:', url.substring(0, 200));
+        if (url.includes('playvalorant.com')) {
+          // 1) URL에서 직접 해시 파싱
+          const hashIdx = url.indexOf('#');
+          if (hashIdx !== -1) {
+            capturedTokens = parseHashTokens(url.slice(hashIdx));
+            console.log('[browser] URL 해시에서 토큰:', capturedTokens ? '성공' : '파싱 실패');
           }
+          // 2) JS evaluate 폴백
+          if (!capturedTokens) {
+            const hash = await page.evaluate(() => window.location.hash).catch(() => '');
+            console.log('[browser] JS hash:', hash.substring(0, 100));
+            if (hash) capturedTokens = parseHashTokens(hash);
+          }
+          if (capturedTokens) resolve(capturedTokens);
         }
-      }
+      });
+      // 15초 후 타임아웃 resolve (null로)
+      setTimeout(() => resolve(null), 15000);
     });
 
     await doLogin(page, username, password);
     console.log('[browser] 로그인 제출 완료, 결과 대기...');
 
-    // 결과 판단: 리다이렉트 or MFA or 오류
-    await page.waitForTimeout(3000);
-    const currentUrl = page.url();
-    console.log('[browser] 현재 URL:', currentUrl.substring(0, 100));
+    // MFA 여부 먼저 확인 (2초 대기)
+    await page.waitForTimeout(2000);
+    const mfaInput = await page.$('input[name="code"], input[id="code"], input[aria-label*="code" i], input[placeholder*="code" i]');
+    if (mfaInput) {
+      const sessionId = crypto.randomUUID();
+      browserSessions.set(sessionId, { browser, page, context, tokenCapturePromise });
+      scheduleSessionCleanup(sessionId, browser);
+      console.log('[browser] MFA 필요, sessionId:', sessionId);
+      return res.json({ status: 'mfa', sessionId });
+    }
 
-    // 성공: playvalorant.com으로 리다이렉트됨
-    if (currentUrl.includes('playvalorant.com') || capturedTokens) {
-      if (!capturedTokens) {
-        const hash = await page.evaluate(() => window.location.hash).catch(() => '');
-        capturedTokens = parseHashTokens(hash);
-      }
+    // 토큰 대기 (최대 15초)
+    capturedTokens = await tokenCapturePromise;
+    const currentUrl = page.url();
+    console.log('[browser] 최종 URL:', currentUrl.substring(0, 150));
+
+    if (capturedTokens) {
       const cookies = await context.cookies('https://auth.riotgames.com');
       const ssidCookie = cookies.find(c => c.name === 'ssid');
       const ssid = ssidCookie ? `ssid=${ssidCookie.value}` : '';
       await browser.close();
-
-      if (!capturedTokens) {
-        return res.json({ status: 'error', message: '토큰을 추출하지 못했습니다.' });
-      }
       console.log('[browser] 로그인 성공!');
       return res.json({ status: 'success', ...capturedTokens, cookies: ssid });
-    }
-
-    // MFA 확인
-    const mfaInput = await page.$('input[name="code"], input[id="code"], input[aria-label*="code" i], input[placeholder*="code" i]');
-    if (mfaInput) {
-      const sessionId = crypto.randomUUID();
-      browserSessions.set(sessionId, { browser, page, context });
-      scheduleSessionCleanup(sessionId, browser);
-      console.log('[browser] MFA 필요, sessionId:', sessionId);
-      return res.json({ status: 'mfa', sessionId });
     }
 
     // 오류 메시지 확인

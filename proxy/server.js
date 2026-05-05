@@ -404,28 +404,28 @@ async function doLogin(page, username, password) {
   console.log('[browser] Riot 로그인 페이지 이동...');
   await page.goto(RIOT_AUTH_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
+  // 페이지 제목/URL 확인
+  console.log('[browser] 현재 URL:', page.url());
+
   // 사용자 이름 입력
   await page.waitForSelector('input[name="username"]', { timeout: 15000 });
   await page.fill('input[name="username"]', username);
   console.log('[browser] 아이디 입력 완료');
 
-  // 다음 버튼 클릭
-  await page.click('button[type="submit"]');
-  await page.waitForTimeout(1000);
+  // Enter로 제출 (버튼 타입에 무관하게 동작)
+  await page.press('input[name="username"]', 'Enter');
+  await page.waitForTimeout(2000);
+  console.log('[browser] 아이디 제출 후 URL:', page.url());
 
-  // 비밀번호 입력 (별도 단계로 나오는 경우)
+  // 비밀번호 입력
+  const pwSelector = 'input[name="password"], input[type="password"]';
   try {
-    await page.waitForSelector('input[name="password"]', { timeout: 8000 });
-    await page.fill('input[name="password"]', password);
+    await page.waitForSelector(pwSelector, { timeout: 8000 });
+    await page.fill(pwSelector, password);
     console.log('[browser] 비밀번호 입력 완료');
-    await page.click('button[type="submit"]');
-  } catch {
-    // username + password가 같은 페이지에 있는 경우
-    const pwField = await page.$('input[type="password"]');
-    if (pwField) {
-      await pwField.fill(password);
-      await page.click('button[type="submit"]');
-    }
+    await page.press(pwSelector, 'Enter');
+  } catch (e) {
+    console.error('[browser] 비밀번호 필드 없음:', e.message);
   }
 }
 

@@ -228,7 +228,19 @@ app.post('/qr/init', async (req, res) => {
 
   try {
     const deviceId = crypto.randomUUID();
+    const nonce = crypto.randomBytes(16).toString('hex');
     console.log('[proxy] QR init, deviceId:', deviceId);
+
+    const body = {
+      acr_values: 'urn:riot:gold',
+      claims: '',
+      client_id: 'riot-client',
+      nonce,
+      redirect_uri: 'http://localhost/redirect',
+      response_type: 'code',
+      scope: 'openid link ban lol_region account',
+      prompt: 'login',
+    };
 
     const response = await fetch(QR_AUTH_URL, {
       method: 'POST',
@@ -237,7 +249,7 @@ app.post('/qr/init', async (req, res) => {
         'Content-Type': 'application/json',
         'X-Riot-Device-Id': deviceId,
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify(body),
     });
 
     const text = await response.text();

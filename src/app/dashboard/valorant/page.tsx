@@ -21,6 +21,8 @@ const REGION_LABELS: Record<RiotRegion, string> = {
   AP: "아섭",
 };
 
+const REGIONS_ORDER: RiotRegion[] = ["KR", "AP"];
+
 async function findUser(discordId: string, email?: string | null) {
   let user = await prisma.user.findUnique({
     where: { discordId },
@@ -43,6 +45,10 @@ async function findUser(discordId: string, email?: string | null) {
   }
 
   return user;
+}
+
+function toQueryRegion(region: RiotRegion): "kr" | "ap" {
+  return region === "AP" ? "ap" : "kr";
 }
 
 function buildSummary(matches: MatchStats[]) {
@@ -75,9 +81,10 @@ function EmptyRegionCard({ region }: { region: RiotRegion }) {
         </div>
         <span className="text-[#7b8a96] text-xs">미연동</span>
       </div>
-      <div className="text-white font-bold mb-1">연결된 라이엇 계정이 없습니다</div>
+      <div className="text-white font-bold mb-1">연결된 라이엇 계정이 없습니다.</div>
       <div className="text-[#7b8a96] text-sm">
-        상단의 <span className="text-[#ff4655]">라이엇 연동</span> 메뉴에서 {REGION_LABELS[region]} 계정을 연결해주세요.
+        상단 <span className="text-[#ff4655]">라이엇 연동</span> 메뉴에서 {REGION_LABELS[region]} 계정을
+        연결해 주세요.
       </div>
     </div>
   );
@@ -85,11 +92,7 @@ function EmptyRegionCard({ region }: { region: RiotRegion }) {
 
 function RegionMatchList({ matches }: { matches: MatchStats[] }) {
   if (matches.length === 0) {
-    return (
-      <div className="val-card p-4 text-[#7b8a96] text-sm">
-        최근 매치 데이터가 아직 없습니다.
-      </div>
-    );
+    return <div className="val-card p-4 text-[#7b8a96] text-sm">최근 매치 데이터가 아직 없습니다.</div>;
   }
 
   return (
@@ -138,9 +141,7 @@ function RegionMatchList({ matches }: { matches: MatchStats[] }) {
               </div>
               <div className="text-[#7b8a96] text-xs">{match.agent}</div>
             </div>
-            <div className="hidden sm:block text-[#7b8a96] text-sm w-16 flex-shrink-0">
-              {match.map}
-            </div>
+            <div className="hidden sm:block text-[#7b8a96] text-sm w-16 flex-shrink-0">{match.map}</div>
             <div className="flex-1">
               <span className="text-white font-bold">{match.kills}</span>
               <span className="text-[#7b8a96] text-sm"> / </span>
@@ -165,6 +166,7 @@ function RegionMatchList({ matches }: { matches: MatchStats[] }) {
 
 function RegionSection({ data }: { data: RegionStats }) {
   const summary = buildSummary(data.recentMatches);
+  const [gameName, tagLine] = data.riotId.split("#");
 
   return (
     <section className="mb-8">
@@ -263,15 +265,16 @@ function RegionSection({ data }: { data: RegionStats }) {
 
       <div>
         <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3 flex items-center gap-2">
-          <span>심화 전적 통계</span>
+          <span>상세 전적 통계</span>
           <span className="text-[#ff4655] text-[10px] bg-[#ff4655]/10 px-1.5 py-0.5 rounded">
             최근 20경기
           </span>
         </div>
         <TrackerStats
           key={`${data.region}-${data.riotId}`}
-          gameName={data.riotId.split("#")[0]}
-          tagLine={data.riotId.split("#")[1]}
+          gameName={gameName}
+          tagLine={tagLine}
+          region={data.region}
         />
       </div>
     </section>
@@ -288,8 +291,8 @@ export default async function ValorantPage() {
   const accountStats = await Promise.all(
     accounts.map(async (account) => {
       const [rank, recentMatches] = await Promise.all([
-        getRankByPuuid(account.puuid).catch(() => null),
-        getRecentMatches(account.puuid, 10).catch(() => []),
+        getRankByPuuid(account.puuid, toQueryRegion(account.region as RiotRegion)).catch(() => null),
+        getRecentMatches(account.puuid, 10, toQueryRegion(account.region as RiotRegion)).catch(() => []),
       ]);
 
       return {
@@ -325,22 +328,17 @@ export default async function ValorantPage() {
         </div>
       )}
 
-      {sortedStats.length > 0 && (
-        <>
-          {(["KR", "AP"] as RiotRegion[]).map((region) => {
-            const section = sortedStats.find((item) => item.region === region);
-            return section ? (
-              <RegionSection key={region} data={section} />
-            ) : (
-              <div key={region} className="mb-8">
-                <EmptyRegionCard region={region} />
-              </div>
-            );
-          })}
-        </>
-      )}
+      {sortedStats.length > 0 &&
+        (["KR", "AP"] as RiotRegion[]).map((region) => {
+          const section = sortedStats.find((item) => item.region === region);
+          return section ? (
+            <RegionSection key={region} data={section} />
+          ) : (
+            <div key={region} className="mb-8">
+              <EmptyRegionCard region={region} />
+            </div>
+          );
+        })}
     </div>
   );
 }
-
-const REGIONS_ORDER: RiotRegion[] = ["KR", "AP"];

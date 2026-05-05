@@ -3,35 +3,58 @@ import {
   EmbedBuilder,
   SlashCommandBuilder,
 } from "discord.js";
-import { getPlayerStats, parseRiotId } from "../../lib/valorant";
+import { getPlayerStats } from "../../lib/valorant";
+import { resolveRiotTarget } from "../utils/linkedRiotAccount";
 
 function average(numbers: number[]) {
   if (!numbers.length) return 0;
   return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
 }
 
+function regionLabel(region: "KR" | "AP") {
+  return region === "AP" ? "아섭(AP)" : "한섭(KR)";
+}
+
+function resultEmoji(result: string) {
+  if (result === "승리") return "✅";
+  if (result === "패배") return "❌";
+  return "➖";
+}
+
 export const data = new SlashCommandBuilder()
   .setName("전적")
-  .setDescription("발로란트 기본 전적을 조회해.")
+  .setDescription("발로란트 기본 전적을 조회합니다.")
   .addStringOption((option) =>
     option
       .setName("라이엇아이디")
       .setDescription("예: Player#KR1")
-      .setRequired(true)
+      .setRequired(false)
+  )
+  .addStringOption((option) =>
+    option
+      .setName("지역")
+      .setDescription("연결된 KR/AP 계정 중 어느 쪽을 조회할지 선택합니다.")
+      .addChoices(
+        { name: "한섭(KR)", value: "KR" },
+        { name: "아섭(AP)", value: "AP" }
+      )
+      .setRequired(false)
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
 
-  const input = interaction.options.getString("라이엇아이디", true);
-  const riotId = parseRiotId(input);
-
-  if (!riotId) {
-    return interaction.editReply("라이엇 ID 형식이 잘못됐어. `플레이어#KR1` 형식으로 입력해줘.");
+  const resolved = await resolveRiotTarget(interaction);
+  if (!resolved.ok) {
+    return interaction.editReply(resolved.message);
   }
 
   try {
-    const { profile, rank, recentMatches } = await getPlayerStats(riotId.gameName, riotId.tagLine);
+    const { profile, rank, recentMatches } = await getPlayerStats(
+      resolved.target.gameName,
+      resolved.target.tagLine,
+      resolved.target.region === "AP" ? "ap" : "kr"
+    );
 
     const wins = recentMatches.filter((match) => match.result === "승리").length;
     const kdaValues = recentMatches.map(
@@ -54,6 +77,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const embed = new EmbedBuilder()
       .setColor(0xff4655)
       .setTitle(`${profile.gameName}#${profile.tagLine}`)
+      .setDescription(`${regionLabel(resolved.target.region)} 계정 기준 전적`)
       .setThumbnail(profile.card ?? null)
       .addFields(
         {
@@ -78,7 +102,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         },
         {
           name: "최근 5경기 승률",
-          value: recentMatches.length ? `${Math.round((wins / recentMatches.length) * 100)}%` : "정보 없음",
+          value: recentMatches.length
+            ? `${Math.round((wins / recentMatches.length) * 100)}%`
+            : "정보 없음",
           inline: true,
         },
         {
@@ -107,7 +133,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           .slice(0, 5)
           .map(
             (match) =>
-              `${match.result === "승리" ? "승" : match.result === "패배" ? "패" : "무"} · **${match.agent}** · ${match.map} · ${match.kills}/${match.deaths}/${match.assists}`
+              `${resultEmoji(match.result)} **${match.agent}** · ${match.map} · ${match.kills}/${match.deaths}/${match.assists}`
           )
           .join("\n"),
       });
@@ -116,11 +142,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ embeds: [embed] });
   } catch (error: any) {
     if (error?.response?.status === 404) {
-      await interaction.editReply("해당 플레이어를 찾지 못했어. 닉네임과 태그를 다시 확인해줘.");
+      await interaction.editReply("해당 플레이어를 찾지 못했습니다. 게임명과 태그를 다시 확인해 주세요.");
       return;
     }
 
-    console.error(error);
-    await interaction.editReply("전적을 불러오는 중 오류가 발생했어. 잠시 후 다시 시도해줘.");
+    console.error(`전적 명령 오류 [${interaction.user.id}]:`, error);
+    await interaction.editReply("전적을 불러오는 중 오류가 발생했습니다. 잠시 뒤 다시 시도해 주세요.");
   }
 }

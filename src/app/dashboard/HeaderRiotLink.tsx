@@ -12,6 +12,10 @@ interface RiotAccountItem {
 
 const REGIONS: RiotRegion[] = ["KR", "AP"];
 
+function regionLabel(region: RiotRegion) {
+  return region === "KR" ? "한섭" : "아섭";
+}
+
 export default function HeaderRiotLink() {
   const [accounts, setAccounts] = useState<RiotAccountItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -82,9 +86,12 @@ export default function HeaderRiotLink() {
       const data = await safeJson(response);
 
       if (!response.ok) {
-        setError(data.error ?? "라이엇 계정 연동 중 오류가 발생했습니다.");
+        setError(data.error ?? "라이엇 계정 연결 중 오류가 발생했습니다.");
       } else {
-        setAccounts((prev) => [...prev.filter((account) => account.region !== data.account.region), data.account]);
+        setAccounts((prev) => [
+          ...prev.filter((account) => account.region !== data.account.region),
+          data.account,
+        ]);
         setInput("");
       }
     } catch {
@@ -107,7 +114,7 @@ export default function HeaderRiotLink() {
       const data = await safeJson(response);
 
       if (!response.ok) {
-        setError(data.error ?? "계정 삭제 중 오류가 발생했습니다.");
+        setError(data.error ?? "계정 해제 중 오류가 발생했습니다.");
       } else {
         setAccounts((prev) => prev.filter((account) => account.id !== id));
       }
@@ -162,7 +169,7 @@ export default function HeaderRiotLink() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-[#ff4655] text-[10px] tracking-widest uppercase">
-                        {key === "KR" ? "KR · 한섭" : "AP · 아섭"}
+                        {key} · {regionLabel(key)}
                       </div>
                       <div className="text-white text-sm font-bold mt-0.5">
                         {account ? account.riotId : "아직 연결된 계정이 없습니다"}
@@ -174,7 +181,7 @@ export default function HeaderRiotLink() {
                         disabled={loading}
                         className="text-[11px] text-[#7b8a96] hover:text-[#ff4655] transition-colors disabled:opacity-40"
                       >
-                        삭제
+                        해제
                       </button>
                     )}
                   </div>
@@ -206,7 +213,7 @@ export default function HeaderRiotLink() {
               </div>
               {regionDisabled && (
                 <div className="text-[#7b8a96] text-[10px]">
-                  선택한 지역에는 이미 계정이 연결되어 있습니다. 먼저 삭제 후 다시 연결해주세요.
+                  선택한 지역에는 이미 계정이 연결되어 있습니다. 먼저 해제한 뒤 다시 연결해 주세요.
                 </div>
               )}
               {error && <div className="text-[#ff4655] text-[10px]">{error}</div>}

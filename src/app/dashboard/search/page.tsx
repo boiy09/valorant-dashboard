@@ -3,9 +3,12 @@
 import { useState } from "react";
 import TrackerStats from "../TrackerStats";
 
+type RiotRegion = "KR" | "AP";
+
 interface PlayerResult {
   gameName: string;
   tagLine: string;
+  region: RiotRegion;
   rank: {
     tierName: string;
     rr: number;
@@ -27,12 +30,13 @@ interface PlayerResult {
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
+  const [region, setRegion] = useState<RiotRegion>("KR");
   const [result, setResult] = useState<PlayerResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSearch(event: React.FormEvent) {
+    event.preventDefault();
     if (!query.trim()) return;
 
     setLoading(true);
@@ -40,16 +44,18 @@ export default function SearchPage() {
     setResult(null);
 
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`);
-      const data = await res.json();
+      const response = await fetch(
+        `/api/search?q=${encodeURIComponent(query.trim())}&region=${region}`
+      );
+      const data = await response.json();
 
-      if (!res.ok) {
-        setError(data.error ?? "검색에 실패했어.");
+      if (!response.ok) {
+        setError(data.error ?? "검색에 실패했습니다.");
       } else {
         setResult(data);
       }
     } catch {
-      setError("서버 오류가 발생했어.");
+      setError("서버 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
@@ -62,14 +68,24 @@ export default function SearchPage() {
           VALORANT DASHBOARD
         </div>
         <h1 className="text-2xl font-black text-white">전적 검색</h1>
-        <p className="text-[#7b8a96] text-sm mt-0.5">라이엇 ID로 다른 플레이어 전적 조회</p>
+        <p className="text-[#7b8a96] text-sm mt-0.5">
+          라이엇 ID와 지역을 선택해서 다른 플레이어 전적을 조회합니다.
+        </p>
       </div>
 
-      <form onSubmit={handleSearch} className="flex gap-3 mb-8">
+      <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3 mb-8">
+        <select
+          value={region}
+          onChange={(event) => setRegion(event.target.value as RiotRegion)}
+          className="val-input w-full sm:w-36 px-4 py-3 text-white bg-[#1a242d] border border-[#2a3540] rounded focus:outline-none text-sm"
+        >
+          <option value="KR">KR · 한섭</option>
+          <option value="AP">AP · 아섭</option>
+        </select>
         <input
           type="text"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(event) => setQuery(event.target.value)}
           placeholder="이름#태그 (예: Player#KR1)"
           className="val-input flex-1 px-4 py-3 text-white placeholder-[#4a5a68] bg-[#1a242d] border border-[#2a3540] rounded focus:outline-none text-sm"
         />
@@ -98,8 +114,11 @@ export default function SearchPage() {
                   {result.gameName}
                   <span className="text-[#7b8a96] font-normal text-lg">#{result.tagLine}</span>
                 </div>
+                <div className="text-[#7b8a96] text-sm mt-1">
+                  조회 지역: {result.region === "KR" ? "한섭(KR)" : "아섭(AP)"}
+                </div>
                 {result.rank ? (
-                  <div className="flex items-center gap-4 mt-2">
+                  <div className="flex items-center gap-4 mt-2 flex-wrap">
                     <span className="text-white font-bold">{result.rank.tierName}</span>
                     <span className="text-[#ff4655] font-bold">{result.rank.rr} RR</span>
                     <span className="text-[#7b8a96] text-sm">
@@ -107,7 +126,7 @@ export default function SearchPage() {
                     </span>
                   </div>
                 ) : (
-                  <div className="text-[#7b8a96] text-sm mt-1">랭크 정보 없음</div>
+                  <div className="text-[#7b8a96] text-sm mt-1">랭크 정보가 없습니다.</div>
                 )}
               </div>
             </div>
@@ -183,12 +202,12 @@ export default function SearchPage() {
 
           <div className="mt-4">
             <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3 flex items-center gap-2">
-              <span>심화 전적 통계</span>
+              <span>상세 전적 통계</span>
               <span className="text-[#ff4655] text-[10px] bg-[#ff4655]/10 px-1.5 py-0.5 rounded">
                 최근 20경기
               </span>
             </div>
-            <TrackerStats gameName={result.gameName} tagLine={result.tagLine} />
+            <TrackerStats gameName={result.gameName} tagLine={result.tagLine} region={result.region} />
           </div>
         </div>
       )}

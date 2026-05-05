@@ -132,6 +132,7 @@ model TrackedPlayer {
   riotPuuid   String
   gameName    String
   tagLine     String
+  region      String   @default("KR")
   lastMatchId String?
   lastTier    String?
   createdAt   DateTime @default(now())

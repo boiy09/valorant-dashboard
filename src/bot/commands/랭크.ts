@@ -3,7 +3,12 @@ import {
   EmbedBuilder,
   SlashCommandBuilder,
 } from "discord.js";
-import { getPlayerByRiotId, getRankByPuuid, parseRiotId } from "../../lib/valorant";
+import { getPlayerByRiotId, getRankByPuuid } from "../../lib/valorant";
+import { resolveRiotTarget } from "../utils/linkedRiotAccount";
+
+function regionLabel(region: "KR" | "AP") {
+  return region === "AP" ? "아섭(AP)" : "한섭(KR)";
+}
 
 export const data = new SlashCommandBuilder()
   .setName("랭크")
@@ -11,26 +16,42 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName("라이엇아이디")
-      .setDescription("예: 플레이어#KR1")
-      .setRequired(true)
+      .setDescription("예: Player#KR1")
+      .setRequired(false)
+  )
+  .addStringOption((option) =>
+    option
+      .setName("지역")
+      .setDescription("연결된 KR/AP 계정 중 어느 쪽을 조회할지 선택합니다.")
+      .addChoices(
+        { name: "한섭(KR)", value: "KR" },
+        { name: "아섭(AP)", value: "AP" }
+      )
+      .setRequired(false)
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
 
-  const input = interaction.options.getString("라이엇아이디", true);
-  const riotId = parseRiotId(input);
-
-  if (!riotId) {
-    return interaction.editReply("라이엇 아이디 형식이 잘못됐어요. 예: `플레이어#KR1`");
+  const resolved = await resolveRiotTarget(interaction);
+  if (!resolved.ok) {
+    return interaction.editReply(resolved.message);
   }
 
   try {
-    const profile = await getPlayerByRiotId(riotId.gameName, riotId.tagLine);
-    const rank = await getRankByPuuid(profile.puuid);
+    const profile = await getPlayerByRiotId(
+      resolved.target.gameName,
+      resolved.target.tagLine
+    );
+    const rank = await getRankByPuuid(
+      profile.puuid,
+      resolved.target.region === "AP" ? "ap" : "kr"
+    );
 
     if (!rank) {
-      return interaction.editReply("랭크 정보를 아직 찾지 못했어요. 배치 전이거나 API 응답이 비어 있을 수 있어요.");
+      return interaction.editReply(
+        "랭크 정보를 아직 찾지 못했습니다. 배치 전이거나 API 응답이 비어 있을 수 있습니다."
+      );
     }
 
     const losses = Math.max(rank.games - rank.wins, 0);
@@ -39,6 +60,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const embed = new EmbedBuilder()
       .setColor(0xff4655)
       .setTitle(`${profile.gameName}#${profile.tagLine} 랭크`)
+      .setDescription(`${regionLabel(resolved.target.region)} 계정 기준 랭크`)
       .setThumbnail(profile.card ?? null)
       .addFields(
         {
@@ -68,7 +90,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         },
         {
           name: "랭크 경기 수",
-          value: `${rank.games}판`,
+          value: `${rank.games}경기`,
           inline: true,
         }
       )
@@ -78,11 +100,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ embeds: [embed] });
   } catch (error: any) {
     if (error?.response?.status === 404) {
-      await interaction.editReply("해당 플레이어를 찾지 못했어요.");
+      await interaction.editReply("해당 플레이어를 찾지 못했습니다.");
       return;
     }
 
-    console.error(error);
-    await interaction.editReply("랭크 정보를 불러오는 중 오류가 났어요.");
+    console.error(`랭크 명령 오류 [${interaction.user.id}]:`, error);
+    await interaction.editReply("랭크 정보를 불러오는 중 오류가 발생했습니다.");
   }
 }

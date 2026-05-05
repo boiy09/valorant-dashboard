@@ -9,9 +9,12 @@ const henrikClient = axios.create({
 
 const CACHE_TTL_MS = 1000 * 60 * 10;
 
+type SupportedRegion = "KR" | "AP";
+
 interface TrackerSummaryResponse {
   gameName: string;
   tagLine: string;
+  region: SupportedRegion;
   stats: {
     matchesPlayed: number;
     winRate: number;
@@ -51,8 +54,12 @@ interface TrackerSummaryResponse {
 const responseCache = new Map<string, { data: TrackerSummaryResponse; cachedAt: number }>();
 const inflightRequests = new Map<string, Promise<TrackerSummaryResponse>>();
 
-function buildCacheKey(gameName: string, tagLine: string) {
-  return `${gameName.trim().toLowerCase()}#${tagLine.trim().toLowerCase()}`;
+function normalizeRegion(region: string | null): SupportedRegion {
+  return region?.toUpperCase() === "AP" ? "AP" : "KR";
+}
+
+function buildCacheKey(gameName: string, tagLine: string, region: SupportedRegion) {
+  return `${gameName.trim().toLowerCase()}#${tagLine.trim().toLowerCase()}@${region}`;
 }
 
 function getCachedResponse(cacheKey: string) {
@@ -75,26 +82,49 @@ function getCachedResponse(cacheKey: string) {
   };
 }
 
-async function fetchTrackerSummary(gameName: string, tagLine: string): Promise<TrackerSummaryResponse> {
+function resolveRegions(preferredRegion: SupportedRegion) {
+  const first = preferredRegion.toLowerCase() as Lowercase<SupportedRegion>;
+  const second = first === "kr" ? "ap" : "kr";
+  return [first, second] as const;
+}
+
+async function fetchTrackerSummary(
+  gameName: string,
+  tagLine: string,
+  preferredRegion: SupportedRegion
+): Promise<TrackerSummaryResponse> {
   const profileResponse = await henrikClient.get(
     `/v1/account/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
   );
   const puuid = profileResponse.data.data.puuid;
 
-  let matchesResponse = await henrikClient.get(`/v3/by-puuid/matches/kr/${puuid}?size=20`);
-  let region = "kr";
+  let matchesResponse: any = null;
+  let matchedRegion: Lowercase<SupportedRegion> = "kr";
 
-  if (!matchesResponse.data.data?.length) {
-    const apResponse = await henrikClient
-      .get(`/v3/by-puuid/matches/ap/${puuid}?size=20`)
+  for (const region of resolveRegions(preferredRegion)) {
+    const response = await henrikClient
+      .get(`/v4/by-puuid/matches/${region}/pc/${puuid}?size=20`)
       .catch(() => null);
-    if (apResponse?.data?.data?.length) {
-      matchesResponse = apResponse;
-      region = "ap";
+
+    if (response?.data?.data?.length) {
+      matchesResponse = response;
+      matchedRegion = region;
+      break;
+    }
+
+    if (!matchesResponse && response) {
+      matchesResponse = response;
+      matchedRegion = region;
     }
   }
 
-  const mmrResponse = await henrikClient.get(`/v2/by-puuid/mmr/${region}/${puuid}`).catch(() => null);
+  if (!matchesResponse) {
+    throw new Error("최근 경기 데이터를 불러오지 못했습니다.");
+  }
+
+  const mmrResponse = await henrikClient
+    .get(`/v2/by-puuid/mmr/${matchedRegion}/${puuid}`)
+    .catch(() => null);
   const matches: any[] = matchesResponse.data.data ?? [];
 
   let totalKills = 0;
@@ -221,6 +251,7 @@ async function fetchTrackerSummary(gameName: string, tagLine: string): Promise<T
   return {
     gameName,
     tagLine,
+    region: matchedRegion.toUpperCase() as SupportedRegion,
     stats,
     agents,
     seasons,
@@ -257,6 +288,8 @@ export async function GET(req: NextRequest) {
 
   const gameName = req.nextUrl.searchParams.get("gameName");
   const tagLine = req.nextUrl.searchParams.get("tagLine");
+  const region = normalizeRegion(req.nextUrl.searchParams.get("region"));
+
   if (!gameName || !tagLine) {
     return Response.json({ error: "gameName과 tagLine이 필요합니다." }, { status: 400 });
   }
@@ -265,7 +298,7 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "Henrik API 키가 설정되지 않았습니다." }, { status: 503 });
   }
 
-  const cacheKey = buildCacheKey(gameName, tagLine);
+  const cacheKey = buildCacheKey(gameName, tagLine, region);
   const cached = getCachedResponse(cacheKey);
   if (cached) {
     return jsonResponse(cached.data, {
@@ -280,19 +313,32 @@ export async function GET(req: NextRequest) {
   if (existingRequest) {
     try {
       const sharedData = await existingRequest;
-      return jsonResponse({ ...sharedData, cached: true }, { headers: { "X-Tracker-Cache": "SHARED" } });
+      return jsonResponse(
+        { ...sharedData, cached: true },
+        { headers: { "X-Tracker-Cache": "SHARED" } }
+      );
     } catch (error: any) {
       const status = error?.response?.status;
-      if (status === 404) return Response.json({ error: "플레이어를 찾을 수 없습니다." }, { status: 404 });
-      if (status === 429) return Response.json({ error: "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요." }, { status: 429 });
-      if (status === 401 || status === 403) {
-        return Response.json({ error: "Henrik API 권한이 유효하지 않습니다." }, { status: 503 });
+      if (status === 404) {
+        return Response.json({ error: "플레이어를 찾을 수 없습니다." }, { status: 404 });
       }
-      return Response.json({ error: "데이터를 가져오지 못했습니다." }, { status: 500 });
+      if (status === 429) {
+        return Response.json(
+          { error: "요청 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요." },
+          { status: 429 }
+        );
+      }
+      if (status === 401 || status === 403) {
+        return Response.json(
+          { error: "Henrik API 권한이 유효하지 않습니다." },
+          { status: 503 }
+        );
+      }
+      return Response.json({ error: "통계 정보를 불러오지 못했습니다." }, { status: 500 });
     }
   }
 
-  const requestPromise = fetchTrackerSummary(gameName, tagLine);
+  const requestPromise = fetchTrackerSummary(gameName, tagLine, region);
   inflightRequests.set(cacheKey, requestPromise);
 
   try {
@@ -302,17 +348,19 @@ export async function GET(req: NextRequest) {
   } catch (error: any) {
     const status = error?.response?.status;
     console.error("Tracker summary error:", error?.message);
-    if (status === 404) return Response.json({ error: "플레이어를 찾을 수 없습니다." }, { status: 404 });
+    if (status === 404) {
+      return Response.json({ error: "플레이어를 찾을 수 없습니다." }, { status: 404 });
+    }
     if (status === 429) {
       return Response.json(
-        { error: "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요." },
+        { error: "요청 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요." },
         { status: 429 }
       );
     }
     if (status === 401 || status === 403) {
       return Response.json({ error: "Henrik API 권한이 유효하지 않습니다." }, { status: 503 });
     }
-    return Response.json({ error: "데이터를 가져오지 못했습니다." }, { status: 500 });
+    return Response.json({ error: "통계 정보를 불러오지 못했습니다." }, { status: 500 });
   } finally {
     inflightRequests.delete(cacheKey);
   }

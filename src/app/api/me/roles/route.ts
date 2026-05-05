@@ -22,7 +22,9 @@ export async function GET() {
   if (!session?.user?.id) return Response.json({ roles: [], isAdmin: false });
 
   let user = await prisma.user.findUnique({ where: { discordId: session.user.id } });
-  if (!user && session.user.email) user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  if (!user && session.user.email) {
+    user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  }
   if (!user) return Response.json({ roles: [], isAdmin: false });
 
   const guild = await prisma.guild.findFirst();
@@ -32,8 +34,9 @@ export async function GET() {
     where: { userId_guildId: { userId: user.id, guildId: guild.id } },
   });
 
-  const roles = member?.roles ? member.roles.split(",").filter(Boolean) : [];
-  const isAdmin = hasKeywordMatch(roles, ADMIN_ROLE_KEYWORDS) || hasKeywordMatch(roles, ASSIST_ROLE_KEYWORDS);
+  const roles = member?.roles ? member.roles.split(",").map((role) => role.trim()).filter(Boolean) : [];
+  const isAdmin =
+    hasKeywordMatch(roles, ADMIN_ROLE_KEYWORDS) || hasKeywordMatch(roles, ASSIST_ROLE_KEYWORDS);
 
   return Response.json({ roles, isAdmin });
 }

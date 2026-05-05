@@ -8,6 +8,7 @@ const henrikClient = axios.create({
 
 export type ValorantRegion = "kr" | "ap" | "na" | "eu" | "latam" | "br";
 export type ValorantPlatform = "pc" | "console";
+export type MatchResult = "승리" | "패배" | "무효";
 
 export interface PlayerProfile {
   puuid: string;
@@ -35,7 +36,7 @@ export interface MatchStats {
   mode: string;
   agent: string;
   agentIcon: string;
-  result: "승리" | "패배" | "무승부";
+  result: MatchResult;
   kills: number;
   deaths: number;
   assists: number;
@@ -140,10 +141,10 @@ export function parseRiotId(input: string) {
   return { gameName: gameName.trim(), tagLine: tagLine.trim() };
 }
 
-function getMatchResult(match: any, puuid: string): MatchStats["result"] {
+function getMatchResult(match: any, puuid: string): MatchResult {
   const players = asArray<any>(match.players);
   const me = players.find((player) => player?.puuid === puuid);
-  if (!me) return "무승부";
+  if (!me) return "무효";
 
   const teams = asArray<any>(match.teams);
   const myTeam = teams.find((team) => team?.team_id === me.team_id);
@@ -151,7 +152,7 @@ function getMatchResult(match: any, puuid: string): MatchStats["result"] {
 
   if (myTeam?.won === true || myTeam?.has_won === true) return "승리";
   if (otherTeam?.won === true || otherTeam?.has_won === true) return "패배";
-  return "무승부";
+  return "무효";
 }
 
 export async function getPlayerByRiotId(
@@ -233,11 +234,15 @@ export async function getRecentMatches(
   });
 }
 
-export async function getPlayerStats(gameName: string, tagLine: string) {
+export async function getPlayerStats(
+  gameName: string,
+  tagLine: string,
+  region: ValorantRegion = "kr"
+) {
   const profile = await getPlayerByRiotId(gameName, tagLine);
   const [rank, recentMatches] = await Promise.all([
-    getRankByPuuid(profile.puuid),
-    getRecentMatches(profile.puuid, 5),
+    getRankByPuuid(profile.puuid, region),
+    getRecentMatches(profile.puuid, 5, region),
   ]);
 
   return { profile, rank, recentMatches };

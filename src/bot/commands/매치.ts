@@ -3,21 +3,42 @@ import {
   EmbedBuilder,
   SlashCommandBuilder,
 } from "discord.js";
-import { getPlayerByRiotId, getRecentMatches, parseRiotId } from "../../lib/valorant";
+import { getPlayerByRiotId, getRecentMatches } from "../../lib/valorant";
+import { resolveRiotTarget } from "../utils/linkedRiotAccount";
+
+function regionLabel(region: "KR" | "AP") {
+  return region === "AP" ? "아섭(AP)" : "한섭(KR)";
+}
+
+function resultEmoji(result: string) {
+  if (result === "승리") return "✅";
+  if (result === "패배") return "❌";
+  return "➖";
+}
 
 export const data = new SlashCommandBuilder()
   .setName("매치")
-  .setDescription("최근 매치 기록을 조회해.")
+  .setDescription("최근 매치 기록을 조회합니다.")
   .addStringOption((option) =>
     option
       .setName("라이엇아이디")
       .setDescription("예: Player#KR1")
-      .setRequired(true)
+      .setRequired(false)
+  )
+  .addStringOption((option) =>
+    option
+      .setName("지역")
+      .setDescription("연결된 KR/AP 계정 중 어느 쪽을 조회할지 선택합니다.")
+      .addChoices(
+        { name: "한섭(KR)", value: "KR" },
+        { name: "아섭(AP)", value: "AP" }
+      )
+      .setRequired(false)
   )
   .addIntegerOption((option) =>
     option
       .setName("개수")
-      .setDescription("조회할 경기 수. 기본 5, 최대 10")
+      .setDescription("조회할 경기 수입니다. 기본 5, 최대 10")
       .setMinValue(1)
       .setMaxValue(10)
   );
@@ -25,20 +46,25 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
 
-  const input = interaction.options.getString("라이엇아이디", true);
   const count = interaction.options.getInteger("개수") ?? 5;
-  const riotId = parseRiotId(input);
-
-  if (!riotId) {
-    return interaction.editReply("라이엇 ID 형식이 잘못됐어. `플레이어#KR1` 형식으로 입력해줘.");
+  const resolved = await resolveRiotTarget(interaction);
+  if (!resolved.ok) {
+    return interaction.editReply(resolved.message);
   }
 
   try {
-    const profile = await getPlayerByRiotId(riotId.gameName, riotId.tagLine);
-    const matches = await getRecentMatches(profile.puuid, count);
+    const profile = await getPlayerByRiotId(
+      resolved.target.gameName,
+      resolved.target.tagLine
+    );
+    const matches = await getRecentMatches(
+      profile.puuid,
+      count,
+      resolved.target.region === "AP" ? "ap" : "kr"
+    );
 
     if (!matches.length) {
-      return interaction.editReply("최근 매치 기록이 아직 없어.");
+      return interaction.editReply("최근 매치 기록이 아직 없습니다.");
     }
 
     const wins = matches.filter((match) => match.result === "승리").length;
@@ -55,6 +81,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const embed = new EmbedBuilder()
       .setColor(0xff4655)
       .setTitle(`${profile.gameName}#${profile.tagLine} 최근 ${matches.length}경기`)
+      .setDescription(`${regionLabel(resolved.target.region)} 계정 기준 매치 기록`)
       .addFields(
         {
           name: "전적",
@@ -76,10 +103,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         name: "매치 목록",
         value: matches
           .map((match, index) => {
-            const result =
-              match.result === "승리" ? "승" : match.result === "패배" ? "패" : "무";
             const date = match.playedAt.toLocaleDateString("ko-KR");
-            return `${index + 1}. ${result} · **${match.agent}** · ${match.map} · ${match.kills}/${match.deaths}/${match.assists} · ${date}`;
+            return `${index + 1}. ${resultEmoji(match.result)} **${match.agent}** · ${match.map} · ${match.kills}/${match.deaths}/${match.assists} · ${date}`;
           })
           .join("\n"),
       })
@@ -89,11 +114,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ embeds: [embed] });
   } catch (error: any) {
     if (error?.response?.status === 404) {
-      await interaction.editReply("해당 플레이어를 찾지 못했어.");
+      await interaction.editReply("해당 플레이어를 찾지 못했습니다.");
       return;
     }
 
-    console.error(error);
-    await interaction.editReply("최근 매치를 불러오는 중 오류가 발생했어.");
+    console.error(`매치 명령 오류 [${interaction.user.id}]:`, error);
+    await interaction.editReply("최근 매치를 불러오는 중 오류가 발생했습니다.");
   }
 }

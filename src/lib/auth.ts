@@ -45,7 +45,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
           });
         } catch (e) {
-          console.error("유저 저장 오류:", e);
+          console.error(`유저 저장 오류 [discord:${profile.id}]:`, e);
+          return false;
         }
       }
       return true;

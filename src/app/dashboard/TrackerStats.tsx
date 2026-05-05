@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+type RiotRegion = "KR" | "AP";
+
 interface CareerStats {
   matchesPlayed: number;
   winRate: number;
@@ -40,6 +42,7 @@ interface RateLimit {
 interface CareerData {
   gameName: string;
   tagLine: string;
+  region: RiotRegion;
   stats: CareerStats;
   agents: AgentStat[];
   seasons: SeasonStat[];
@@ -52,6 +55,7 @@ interface CareerData {
 interface Props {
   gameName: string;
   tagLine: string;
+  region?: RiotRegion;
 }
 
 const SESSION_CACHE_TTL_MS = 1000 * 60 * 10;
@@ -70,23 +74,30 @@ function tierColor(tier: number) {
 
 function formatResetTime(secs: number) {
   if (!secs || secs <= 0) return null;
-  if (secs < 60) return `${secs}초 후 초기화`;
-  return `${Math.ceil(secs / 60)}분 후 초기화`;
+  if (secs < 60) return `${secs}초 뒤 초기화`;
+  return `${Math.ceil(secs / 60)}분 뒤 초기화`;
 }
 
-function buildSessionCacheKey(gameName: string, tagLine: string) {
-  return `tracker-stats:${gameName.trim().toLowerCase()}#${tagLine.trim().toLowerCase()}`;
+function buildSessionCacheKey(gameName: string, tagLine: string, region: RiotRegion) {
+  return `tracker-stats:${gameName.trim().toLowerCase()}#${tagLine.trim().toLowerCase()}@${region}`;
 }
 
-export default function TrackerStats({ gameName, tagLine }: Props) {
+export default function TrackerStats({ gameName, tagLine, region = "KR" }: Props) {
   const [data, setData] = useState<CareerData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  const sessionCacheKey = useMemo(() => buildSessionCacheKey(gameName, tagLine), [gameName, tagLine]);
+  const sessionCacheKey = useMemo(
+    () => buildSessionCacheKey(gameName, tagLine, region),
+    [gameName, tagLine, region]
+  );
 
   useEffect(() => {
+    setData(null);
+    setError(null);
+    setLoaded(false);
+
     try {
       const raw = sessionStorage.getItem(sessionCacheKey);
       if (!raw) return;
@@ -116,7 +127,7 @@ export default function TrackerStats({ gameName, tagLine }: Props) {
 
     try {
       const response = await fetch(
-        `/api/tracker?gameName=${encodeURIComponent(gameName)}&tagLine=${encodeURIComponent(tagLine)}`
+        `/api/tracker?gameName=${encodeURIComponent(gameName)}&tagLine=${encodeURIComponent(tagLine)}&region=${region}`
       );
       const payload = await response.json();
 
@@ -145,8 +156,10 @@ export default function TrackerStats({ gameName, tagLine }: Props) {
     return (
       <div className="val-card p-4 flex items-center justify-between">
         <div className="flex flex-col gap-1">
-          <span className="text-[#7b8a96] text-sm">최근 20경기 기준 전적 통계</span>
-          <span className="text-[#4a5a68] text-[11px]">Henrik API 호출량을 줄이기 위해 필요할 때만 불러옵니다.</span>
+          <span className="text-[#7b8a96] text-sm">최근 20경기 통계</span>
+          <span className="text-[#4a5a68] text-[11px]">
+            동일한 요청은 잠시 캐시해서 외부 API 호출을 줄입니다.
+          </span>
         </div>
         <button
           onClick={load}
@@ -162,7 +175,7 @@ export default function TrackerStats({ gameName, tagLine }: Props) {
     return (
       <div className="val-card p-5 flex items-center gap-3">
         <div className="w-3 h-3 border-2 border-[#ff4655] border-t-transparent rounded-full animate-spin" />
-        <span className="text-[#7b8a96] text-sm">전적 데이터를 불러오는 중...</span>
+        <span className="text-[#7b8a96] text-sm">전적 통계를 불러오는 중입니다.</span>
       </div>
     );
   }
@@ -218,7 +231,7 @@ export default function TrackerStats({ gameName, tagLine }: Props) {
           <div className="flex items-center gap-2 text-[#7b8a96] text-xs tracking-widest uppercase">
             <span>최근 20경기 통계</span>
             <span className="text-[#4a5a68] normal-case tracking-normal">
-              {data.cached ? `캐시 사용 (${data.cacheAgeSec ?? 0}초 전)` : "실시간 조회"}
+              {data.cached ? `캐시 사용 (${data.cacheAgeSec ?? 0}초 전)` : "새로 조회"}
             </span>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -235,7 +248,7 @@ export default function TrackerStats({ gameName, tagLine }: Props) {
                 >
                   {rateLimit.remaining}/{rateLimit.limit}
                 </span>
-                <span className="text-[#4a5a68]">잔여 요청</span>
+                <span className="text-[#4a5a68]">남은 요청</span>
                 {formatResetTime(rateLimit.resetInSecs) && (
                   <span className="text-[#4a5a68]">· {formatResetTime(rateLimit.resetInSecs)}</span>
                 )}
@@ -341,9 +354,7 @@ export default function TrackerStats({ gameName, tagLine }: Props) {
                 </div>
                 <div className="text-[#7b8a96] text-xs flex-1">{season.label}</div>
                 <div className="flex items-center gap-4 flex-shrink-0">
-                  <div className="text-[#7b8a96] text-xs hidden sm:block">
-                    {season.matchesPlayed}경기
-                  </div>
+                  <div className="text-[#7b8a96] text-xs hidden sm:block">{season.matchesPlayed}경기</div>
                   <div className="text-right w-12">
                     <div
                       className={`text-sm font-bold ${

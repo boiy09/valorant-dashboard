@@ -67,10 +67,14 @@ function toAccountResponse(account: {
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user?.id) return Response.json({ linked: false, accounts: [] });
+  if (!session?.user?.id) {
+    return Response.json({ linked: false, accounts: [] });
+  }
 
   const user = await findUser(session.user.id, session.user.email);
-  if (!user) return Response.json({ linked: false, accounts: [] });
+  if (!user) {
+    return Response.json({ linked: false, accounts: [] });
+  }
 
   const accounts = await prisma.riotAccount.findMany({
     where: { userId: user.id },
@@ -99,7 +103,7 @@ export async function POST(req: NextRequest) {
 
   if (!riotId || typeof riotId !== "string" || !riotId.includes("#")) {
     return Response.json(
-      { error: "올바른 형식으로 입력해주세요. (예: 플레이어#KR1)" },
+      { error: "올바른 형식으로 입력해 주세요. 예: Player#KR1" },
       { status: 400 }
     );
   }
@@ -110,7 +114,7 @@ export async function POST(req: NextRequest) {
 
   if (!gameName || !tagLine) {
     return Response.json(
-      { error: "올바른 형식으로 입력해주세요. (예: 플레이어#KR1)" },
+      { error: "올바른 형식으로 입력해 주세요. 예: Player#KR1" },
       { status: 400 }
     );
   }
@@ -127,7 +131,7 @@ export async function POST(req: NextRequest) {
 
   if (existingAccounts.length >= ALLOWED_REGIONS.length) {
     return Response.json(
-      { error: "한 디스코드 계정에는 한섭(KR)과 아섭(AP)만 연결할 수 있습니다." },
+      { error: "디스코드 계정당 한섭(KR)과 아섭(AP) 계정만 연결할 수 있습니다." },
       { status: 400 }
     );
   }
@@ -135,7 +139,7 @@ export async function POST(req: NextRequest) {
   const existingInRegion = existingAccounts.find((account) => account.region === selectedRegion);
   if (existingInRegion) {
     return Response.json(
-      { error: `${selectedRegion} 계정은 이미 연결되어 있습니다. 먼저 삭제 후 다시 연결해주세요.` },
+      { error: `${selectedRegion} 지역 계정은 이미 연결되어 있습니다. 먼저 해제한 뒤 다시 연결해 주세요.` },
       { status: 400 }
     );
   }
@@ -174,28 +178,32 @@ export async function POST(req: NextRequest) {
     const status = error?.response?.status;
     const message =
       error?.response?.data?.errors?.[0]?.message ?? error?.message ?? "알 수 없는 오류";
-    console.error(`Riot 연동 오류 [${status ?? "?"}]:`, message);
+
+    console.error(`Riot account link error [${status ?? "?"}]:`, message);
 
     if (status === 404) {
       return Response.json(
-        { error: "플레이어를 찾을 수 없습니다. 게임명과 태그를 다시 확인해주세요." },
+        { error: "플레이어를 찾을 수 없습니다. 게임명과 태그를 다시 확인해 주세요." },
         { status: 404 }
       );
     }
     if (status === 429) {
       return Response.json(
-        { error: "API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요." },
+        { error: "API 요청 한도를 초과했습니다. 잠시 뒤 다시 시도해 주세요." },
         { status: 429 }
       );
     }
     if (status === 401 || status === 403) {
       return Response.json(
-        { error: "Riot API 인증에 문제가 있습니다. 관리자에게 문의해주세요." },
+        { error: "Riot API 인증에 문제가 있습니다. 관리자에게 문의해 주세요." },
         { status: 503 }
       );
     }
 
-    return Response.json({ error: `계정 연동 중 오류가 발생했습니다. (${message})` }, { status: 500 });
+    return Response.json(
+      { error: `계정 연결 중 오류가 발생했습니다. (${message})` },
+      { status: 500 }
+    );
   }
 }
 
@@ -208,7 +216,7 @@ export async function DELETE(req: NextRequest) {
   const { id } = await req.json();
   const user = await findUser(session.user.id, session.user.email);
   if (!user) {
-    return Response.json({ error: "사용자를 찾을 수 없습니다." }, { status: 404 });
+    return Response.json({ error: "사용자 정보를 찾을 수 없습니다." }, { status: 404 });
   }
 
   const account = await prisma.riotAccount.findFirst({

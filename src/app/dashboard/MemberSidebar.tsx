@@ -18,23 +18,6 @@ type SectionKey = "관리자" | "어시스트" | "온라인" | "오프라인";
 const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
 const ASSIST_ROLE_KEYWORDS = ["어시스트", "assistant", "assist", "staff", "스태프", "매니저"];
 
-function normalizeRoleName(role: string) {
-  return role.trim().toLowerCase();
-}
-
-function hasMatchingRole(roles: string[], keywords: string[]) {
-  const normalizedRoles = roles.map(normalizeRoleName);
-  return normalizedRoles.some((role) =>
-    keywords.some((keyword) => role.includes(keyword.toLowerCase()))
-  );
-}
-
-function getRoleGroup(roles: string[]): RoleGroup {
-  if (hasMatchingRole(roles, ADMIN_ROLE_KEYWORDS)) return "관리자";
-  if (hasMatchingRole(roles, ASSIST_ROLE_KEYWORDS)) return "어시스트";
-  return "일반";
-}
-
 const SECTION_STYLES: Record<
   SectionKey,
   { label: string; emoji: string; dot: string; text: string; ring: string }
@@ -68,6 +51,23 @@ const SECTION_STYLES: Record<
     ring: "",
   },
 };
+
+function normalizeRoleName(role: string) {
+  return role.trim().toLowerCase();
+}
+
+function hasMatchingRole(roles: string[], keywords: string[]) {
+  const normalizedRoles = roles.map(normalizeRoleName);
+  return normalizedRoles.some((role) =>
+    keywords.some((keyword) => role.includes(keyword.toLowerCase()))
+  );
+}
+
+function getRoleGroup(roles: string[]): RoleGroup {
+  if (hasMatchingRole(roles, ADMIN_ROLE_KEYWORDS)) return "관리자";
+  if (hasMatchingRole(roles, ASSIST_ROLE_KEYWORDS)) return "어시스트";
+  return "일반";
+}
 
 export default function MemberSidebar() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -114,27 +114,20 @@ export default function MemberSidebar() {
         </div>
 
         <div
-          className="overflow-y-auto max-h-[calc(100vh-10rem)]"
+          className="member-scroll overflow-y-auto max-h-[calc(100vh-10rem)]"
           style={{
             scrollbarWidth: "thin",
-            scrollbarColor: "rgba(255,70,85,0.3) transparent",
+            scrollbarColor: "rgba(255,70,85,0.45) transparent",
           }}
         >
-          <style>{`
-            .member-scroll::-webkit-scrollbar { width: 3px; }
-            .member-scroll::-webkit-scrollbar-track { background: transparent; }
-            .member-scroll::-webkit-scrollbar-thumb { background: rgba(255,70,85,0.3); border-radius: 2px; }
-            .member-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,70,85,0.6); }
-          `}</style>
-
           {loading ? (
             <div className="p-4 flex items-center justify-center">
               <div className="w-2.5 h-2.5 border-2 border-[#ff4655] border-t-transparent rounded-full animate-spin" />
             </div>
           ) : members.length === 0 ? (
-            <div className="p-4 text-center text-[#7b8a96] text-xs">멤버 없음</div>
+            <div className="p-4 text-center text-[#7b8a96] text-xs">멤버가 없습니다.</div>
           ) : (
-            <div className="member-scroll overflow-y-auto max-h-[calc(100vh-10rem)]">
+            <div>
               {sections.map(({ key, members: sectionMembers }) => {
                 const style = SECTION_STYLES[key];
 
@@ -163,7 +156,7 @@ export default function MemberSidebar() {
 }
 
 function MemberRow({ member, sectionKey }: { member: Member; sectionKey: SectionKey }) {
-  const displayName = member.name || "?";
+  const displayName = member.name || "알 수 없음";
   const initial = displayName.charAt(0).toUpperCase();
   const style = SECTION_STYLES[sectionKey];
   const isOffline = sectionKey === "오프라인";

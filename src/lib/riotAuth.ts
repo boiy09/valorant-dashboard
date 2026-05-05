@@ -179,12 +179,47 @@ function mergeCookies(base: string, incoming: string): string {
 }
 
 export async function initRiotAuth(username: string, password: string): Promise<AuthResult> {
+  const proxyUrl = process.env.RIOT_AUTH_PROXY_URL;
+  const proxySecret = process.env.RIOT_AUTH_PROXY_SECRET;
+
+  if (proxyUrl && proxySecret) {
+    const res = await fetch(`${proxyUrl}/auth`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-proxy-secret": proxySecret,
+      },
+      body: JSON.stringify({ username, password }),
+      cache: "no-store",
+    });
+    const data = await res.json() as AuthResult;
+    return data;
+  }
+
+  // 프록시 없으면 직접 호출 (기존 로직)
   const init = await step1Init();
   if ("error" in init) return { status: "error", message: init.error };
   return step2Auth(init.cookies, username, password);
 }
 
 export async function submitMfa(cookies: string, code: string): Promise<AuthResult> {
+  const proxyUrl = process.env.RIOT_AUTH_PROXY_URL;
+  const proxySecret = process.env.RIOT_AUTH_PROXY_SECRET;
+
+  if (proxyUrl && proxySecret) {
+    const res = await fetch(`${proxyUrl}/auth/mfa`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-proxy-secret": proxySecret,
+      },
+      body: JSON.stringify({ code, pendingCookies: cookies }),
+      cache: "no-store",
+    });
+    const data = await res.json() as AuthResult;
+    return data;
+  }
+
   try {
     const response = await fetch(AUTH_URL, {
       method: "PUT",

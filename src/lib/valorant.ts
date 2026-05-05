@@ -1,4 +1,5 @@
 import axios from "axios";
+import { apiCache, TTL } from "@/lib/apiCache";
 
 const henrikClient = axios.create({
   baseURL: "https://api.henrikdev.xyz/valorant",
@@ -159,10 +160,13 @@ export async function getPlayerByRiotId(
   gameName: string,
   tagLine: string
 ): Promise<PlayerProfile> {
-  const response = await henrikClient.get(
-    `/v1/account/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
-  );
-  const data = response.data?.data;
+  const key = `account:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
+  const { data } = await apiCache.getOrFetch(key, TTL.MEDIUM, async () => {
+    const response = await henrikClient.get(
+      `/v1/account/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
+    );
+    return response.data?.data;
+  });
 
   return {
     puuid: toString(data?.puuid, ""),
@@ -253,8 +257,12 @@ export async function getMmrHistoryByPuuid(
   count = 5,
   region: ValorantRegion = "kr"
 ): Promise<MmrHistoryEntry[]> {
-  const response = await henrikClient.get(`/v1/by-puuid/mmr-history/${region}/${puuid}`);
-  const history = asArray<any>(response.data?.data).slice(0, count);
+  const key = `mmr-history:${region}:${puuid}`;
+  const { data: raw } = await apiCache.getOrFetch(key, TTL.MEDIUM, async () => {
+    const response = await henrikClient.get(`/v1/by-puuid/mmr-history/${region}/${puuid}`);
+    return response.data?.data;
+  });
+  const history = asArray<any>(raw).slice(0, count);
 
   return history.map((entry) => ({
     matchId: toString(entry?.match_id, ""),
@@ -285,8 +293,12 @@ export async function getLeaderboard(
   platform: ValorantPlatform = "pc",
   size = 10
 ): Promise<LeaderboardEntry[]> {
-  const response = await henrikClient.get(`/v3/leaderboard/${region}/${platform}?size=${size}`);
-  const players = asArray<any>(response.data?.data?.players);
+  const key = `leaderboard:${region}:${platform}:${size}`;
+  const { data: raw } = await apiCache.getOrFetch(key, TTL.MEDIUM, async () => {
+    const response = await henrikClient.get(`/v3/leaderboard/${region}/${platform}?size=${size}`);
+    return response.data?.data?.players;
+  });
+  const players = asArray<any>(raw);
 
   return players.map((player) => ({
     rank: toNumber(player?.leaderboard_rank),
@@ -300,8 +312,11 @@ export async function getLeaderboard(
 }
 
 export async function getValorantContent(locale = "ko-KR"): Promise<ValorantContentBundle> {
-  const response = await henrikClient.get(`/v1/content?locale=${encodeURIComponent(locale)}`);
-  const data = response.data?.data ?? {};
+  const key = `content:${locale}`;
+  const { data } = await apiCache.getOrFetch(key, TTL.VERY_LONG, async () => {
+    const response = await henrikClient.get(`/v1/content?locale=${encodeURIComponent(locale)}`);
+    return response.data?.data ?? {};
+  });
 
   return {
     version: toString(data?.version, "버전 정보 없음"),
@@ -350,8 +365,11 @@ export async function findMapByName(name: string, locale = "ko-KR") {
 export async function getValorantStatus(
   region: ValorantRegion = "kr"
 ): Promise<ValorantStatusSummary> {
-  const response = await henrikClient.get(`/v1/status/${region}`);
-  const data = response.data?.data ?? {};
+  const key = `status:${region}`;
+  const { data } = await apiCache.getOrFetch(key, TTL.SHORT, async () => {
+    const response = await henrikClient.get(`/v1/status/${region}`);
+    return response.data?.data ?? {};
+  });
 
   const parseItems = (items: unknown) =>
     asArray<any>(items).map((item) => ({
@@ -397,10 +415,14 @@ export async function getVctSchedule(
   league = "vct_pacific",
   limit = 5
 ): Promise<EsportsMatchSummary[]> {
-  const response = await henrikClient.get(
-    `/v1/esports/schedule?league=${encodeURIComponent(league)}`
-  );
-  const matches = asArray<any>(response.data?.data);
+  const key = `vct:${league}`;
+  const { data: raw } = await apiCache.getOrFetch(key, TTL.LONG, async () => {
+    const response = await henrikClient.get(
+      `/v1/esports/schedule?league=${encodeURIComponent(league)}`
+    );
+    return response.data?.data;
+  });
+  const matches = asArray<any>(raw);
 
   return matches.slice(0, limit).map((item) => {
     const teams = asArray<any>(item?.match?.teams);

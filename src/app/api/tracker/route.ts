@@ -1,13 +1,17 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import axios from "axios";
+import { getTrackerProfile, getTrackerAgents } from "@/lib/trackergg";
+import { apiCache, TTL } from "@/lib/apiCache";
 
+// ──────────────────────────────────────────────
+// Henrik 클라이언트 (폴백용)
+// ──────────────────────────────────────────────
 const henrikClient = axios.create({
   baseURL: "https://api.henrikdev.xyz/valorant",
   headers: { Authorization: process.env.HENRIK_API_KEY },
+  timeout: 15000,
 });
-
-const CACHE_TTL_MS = 1000 * 60 * 10;
 
 type SupportedRegion = "KR" | "AP";
 
@@ -41,233 +45,206 @@ interface TrackerSummaryResponse {
     wins: number;
     winRate: number;
   }>;
-  rateLimit?: {
-    limit: number;
-    remaining: number;
-    resetInSecs: number;
-  };
-  source: "henrik";
+  rateLimit?: { limit: number; remaining: number; resetInSecs: number };
+  source: "trackergg" | "henrik";
   cached?: boolean;
   cacheAgeSec?: number;
 }
-
-const responseCache = new Map<string, { data: TrackerSummaryResponse; cachedAt: number }>();
-const inflightRequests = new Map<string, Promise<TrackerSummaryResponse>>();
 
 function normalizeRegion(region: string | null): SupportedRegion {
   return region?.toUpperCase() === "AP" ? "AP" : "KR";
 }
 
 function buildCacheKey(gameName: string, tagLine: string, region: SupportedRegion) {
-  return `${gameName.trim().toLowerCase()}#${tagLine.trim().toLowerCase()}@${region}`;
+  return `tracker:${gameName.trim().toLowerCase()}#${tagLine.trim().toLowerCase()}@${region}`;
 }
 
-function getCachedResponse(cacheKey: string) {
-  const cached = responseCache.get(cacheKey);
-  if (!cached) return null;
-
-  const ageMs = Date.now() - cached.cachedAt;
-  if (ageMs > CACHE_TTL_MS) {
-    responseCache.delete(cacheKey);
-    return null;
-  }
-
-  return {
-    data: {
-      ...cached.data,
-      cached: true,
-      cacheAgeSec: Math.floor(ageMs / 1000),
-    },
-    ageMs,
-  };
-}
-
-function resolveRegions(preferredRegion: SupportedRegion) {
-  const first = preferredRegion.toLowerCase() as Lowercase<SupportedRegion>;
-  const second = first === "kr" ? "ap" : "kr";
-  return [first, second] as const;
-}
-
-async function fetchTrackerSummary(
+// ──────────────────────────────────────────────
+// tracker.gg 기반 데이터 조회
+// ──────────────────────────────────────────────
+async function fetchFromTrackerGg(
   gameName: string,
   tagLine: string,
   preferredRegion: SupportedRegion
 ): Promise<TrackerSummaryResponse> {
-  const profileResponse = await henrikClient.get(
+  const [profile, agents] = await Promise.all([
+    getTrackerProfile(gameName, tagLine),
+    getTrackerAgents(gameName, tagLine),
+  ]);
+
+  return {
+    gameName,
+    tagLine,
+    region: preferredRegion,
+    stats: {
+      matchesPlayed: profile.overview.matchesPlayed,
+      winRate: profile.overview.winRate,
+      kd: profile.overview.kd,
+      headshotPct: profile.overview.headshotPct,
+      killsPerRound: profile.overview.killsPerRound,
+      scorePerRound: profile.overview.scorePerRound,
+      damagePerRound: profile.overview.damagePerRound,
+    },
+    agents: agents.length > 0 ? agents : profile.agents,
+    seasons: profile.seasons,
+    source: "trackergg",
+  };
+}
+
+// ──────────────────────────────────────────────
+// Henrik 기반 데이터 조회 (폴백)
+// ──────────────────────────────────────────────
+function resolveRegions(preferred: SupportedRegion) {
+  const first = preferred.toLowerCase() as Lowercase<SupportedRegion>;
+  const second = first === "kr" ? "ap" : "kr";
+  return [first, second] as const;
+}
+
+async function fetchFromHenrik(
+  gameName: string,
+  tagLine: string,
+  preferredRegion: SupportedRegion
+): Promise<TrackerSummaryResponse> {
+  const profileRes = await henrikClient.get(
     `/v1/account/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
   );
-  const puuid = profileResponse.data.data.puuid;
+  const puuid = profileRes.data.data.puuid as string;
 
-  let matchesResponse: any = null;
+  let matchesRes: any = null;
   let matchedRegion: Lowercase<SupportedRegion> = "kr";
 
   for (const region of resolveRegions(preferredRegion)) {
-    const response = await henrikClient
+    const res = await henrikClient
       .get(`/v4/by-puuid/matches/${region}/pc/${puuid}?size=20`)
       .catch(() => null);
-
-    if (response?.data?.data?.length) {
-      matchesResponse = response;
+    if (res?.data?.data?.length) {
+      matchesRes = res;
       matchedRegion = region;
       break;
     }
-
-    if (!matchesResponse && response) {
-      matchesResponse = response;
-      matchedRegion = region;
-    }
+    if (!matchesRes && res) { matchesRes = res; matchedRegion = region; }
   }
 
-  if (!matchesResponse) {
-    throw new Error("최근 경기 데이터를 불러오지 못했습니다.");
-  }
+  if (!matchesRes) throw new Error("최근 경기 데이터를 불러오지 못했습니다.");
 
-  const mmrResponse = await henrikClient
+  const mmrRes = await henrikClient
     .get(`/v2/by-puuid/mmr/${matchedRegion}/${puuid}`)
     .catch(() => null);
-  const matches: any[] = matchesResponse.data.data ?? [];
 
-  let totalKills = 0;
-  let totalDeaths = 0;
-  let totalHeadshots = 0;
-  let totalBodyshots = 0;
-  let totalLegshots = 0;
-  let totalScore = 0;
-  let totalDamage = 0;
-  let totalRounds = 0;
-  let wins = 0;
-
-  const agentMap: Record<
-    string,
-    {
-      name: string;
-      imageUrl: string;
-      kills: number;
-      deaths: number;
-      damage: number;
-      rounds: number;
-      wins: number;
-      matches: number;
-    }
-  > = {};
+  const matches: any[] = matchesRes.data.data ?? [];
+  let kills = 0, deaths = 0, hs = 0, bs = 0, ls = 0, score = 0, damage = 0, rounds = 0, wins = 0;
+  const agentMap: Record<string, any> = {};
 
   for (const match of matches) {
-    const player = match.players?.all_players?.find((candidate: any) => candidate.puuid === puuid);
+    const player = match.players?.all_players?.find((p: any) => p.puuid === puuid);
     if (!player) continue;
-
     const teamKey = player.team?.toLowerCase();
-    const teamData = match.teams?.[teamKey];
-    const rounds = (teamData?.rounds_won ?? 0) + (teamData?.rounds_lost ?? 0);
-    const won = teamData?.has_won ?? false;
-
-    totalKills += player.stats?.kills ?? 0;
-    totalDeaths += player.stats?.deaths ?? 0;
-    totalHeadshots += player.stats?.headshots ?? 0;
-    totalBodyshots += player.stats?.bodyshots ?? 0;
-    totalLegshots += player.stats?.legshots ?? 0;
-    totalScore += player.stats?.score ?? 0;
-    totalDamage += player.damage_made ?? 0;
-    totalRounds += rounds;
+    const team = match.teams?.[teamKey];
+    const r = (team?.rounds_won ?? 0) + (team?.rounds_lost ?? 0);
+    const won = team?.has_won ?? false;
+    kills += player.stats?.kills ?? 0;
+    deaths += player.stats?.deaths ?? 0;
+    hs += player.stats?.headshots ?? 0;
+    bs += player.stats?.bodyshots ?? 0;
+    ls += player.stats?.legshots ?? 0;
+    score += player.stats?.score ?? 0;
+    damage += player.damage_made ?? 0;
+    rounds += r;
     if (won) wins++;
 
-    const agentName = player.character ?? "Unknown";
-    if (!agentMap[agentName]) {
-      agentMap[agentName] = {
-        name: agentName,
-        imageUrl: player.assets?.agent?.small ?? "",
-        kills: 0,
-        deaths: 0,
-        damage: 0,
-        rounds: 0,
-        wins: 0,
-        matches: 0,
-      };
-    }
-
-    const agent = agentMap[agentName];
-    agent.kills += player.stats?.kills ?? 0;
-    agent.deaths += player.stats?.deaths ?? 0;
-    agent.damage += player.damage_made ?? 0;
-    agent.rounds += rounds;
-    agent.matches++;
-    if (won) agent.wins++;
+    const name = player.character ?? "Unknown";
+    if (!agentMap[name]) agentMap[name] = { name, imageUrl: player.assets?.agent?.small ?? "", kills: 0, deaths: 0, damage: 0, rounds: 0, wins: 0, matches: 0 };
+    const ag = agentMap[name];
+    ag.kills += player.stats?.kills ?? 0;
+    ag.deaths += player.stats?.deaths ?? 0;
+    ag.damage += player.damage_made ?? 0;
+    ag.rounds += r;
+    ag.matches++;
+    if (won) ag.wins++;
   }
 
-  const matchCount = matches.length;
-  const totalShots = totalHeadshots + totalBodyshots + totalLegshots;
-
-  const stats = {
-    matchesPlayed: matchCount,
-    winRate: matchCount > 0 ? Math.round((wins / matchCount) * 100) : 0,
-    kd: totalDeaths > 0 ? Math.round((totalKills / totalDeaths) * 100) / 100 : totalKills,
-    headshotPct: totalShots > 0 ? Math.round((totalHeadshots / totalShots) * 100) : 0,
-    killsPerRound: totalRounds > 0 ? Math.round((totalKills / totalRounds) * 100) / 100 : 0,
-    scorePerRound: totalRounds > 0 ? Math.round(totalScore / totalRounds) : 0,
-    damagePerRound: totalRounds > 0 ? Math.round(totalDamage / totalRounds) : 0,
-  };
-
-  const agents = Object.values(agentMap)
-    .sort((left, right) => right.matches - left.matches)
-    .map((agent) => ({
-      name: agent.name,
-      imageUrl: agent.imageUrl,
-      matchesPlayed: agent.matches,
-      winRate: Math.round((agent.wins / agent.matches) * 100),
-      kd: agent.deaths > 0 ? Math.round((agent.kills / agent.deaths) * 100) / 100 : agent.kills,
-      damagePerRound: agent.rounds > 0 ? Math.round(agent.damage / agent.rounds) : 0,
-    }));
+  const mc = matches.length;
+  const totalShots = hs + bs + ls;
 
   const seasons: TrackerSummaryResponse["seasons"] = [];
-  const bySeason = mmrResponse?.data?.data?.by_season;
+  const bySeason = mmrRes?.data?.data?.by_season;
   if (bySeason) {
-    for (const [seasonKey, value] of Object.entries(bySeason) as [string, any][]) {
-      if (!value || (value.number_of_games ?? 0) === 0) continue;
-      const match = seasonKey.match(/e(\d+)a(\d+)/);
+    for (const [key, val] of Object.entries(bySeason) as [string, any][]) {
+      if (!val || (val.number_of_games ?? 0) === 0) continue;
+      const m = key.match(/e(\d+)a(\d+)/);
       seasons.push({
-        season: seasonKey,
-        label: match ? `에피소드 ${match[1]} 액트 ${match[2]}` : seasonKey,
-        rankName: value.final_rank_patched ?? null,
-        tier: value.final_rank ?? 0,
-        matchesPlayed: value.number_of_games ?? 0,
-        wins: value.wins ?? 0,
-        winRate:
-          value.number_of_games > 0
-            ? Math.round(((value.wins ?? 0) / value.number_of_games) * 100)
-            : 0,
+        season: key,
+        label: m ? `에피소드 ${m[1]} 액트 ${m[2]}` : key,
+        rankName: val.final_rank_patched ?? null,
+        tier: val.final_rank ?? 0,
+        matchesPlayed: val.number_of_games ?? 0,
+        wins: val.wins ?? 0,
+        winRate: val.number_of_games > 0 ? Math.round(((val.wins ?? 0) / val.number_of_games) * 100) : 0,
       });
     }
-    seasons.sort((left, right) => right.season.localeCompare(left.season));
+    seasons.sort((a, b) => b.season.localeCompare(a.season));
   }
 
-  const rateLimitHeaders = matchesResponse.headers;
-  const rawReset = Number(
-    rateLimitHeaders["x-ratelimit-reset"] ?? rateLimitHeaders["ratelimit-reset"] ?? 0
-  );
-  const resetInSecs =
-    rawReset > 1_000_000_000
-      ? Math.max(0, Math.ceil((rawReset * 1000 - Date.now()) / 1000))
-      : rawReset;
+  const headers = matchesRes.headers;
+  const rawReset = Number(headers["x-ratelimit-reset"] ?? headers["ratelimit-reset"] ?? 0);
 
   return {
     gameName,
     tagLine,
     region: matchedRegion.toUpperCase() as SupportedRegion,
-    stats,
-    agents,
+    stats: {
+      matchesPlayed: mc,
+      winRate: mc > 0 ? Math.round((wins / mc) * 100) : 0,
+      kd: deaths > 0 ? Math.round((kills / deaths) * 100) / 100 : kills,
+      headshotPct: totalShots > 0 ? Math.round((hs / totalShots) * 100) : 0,
+      killsPerRound: rounds > 0 ? Math.round((kills / rounds) * 100) / 100 : 0,
+      scorePerRound: rounds > 0 ? Math.round(score / rounds) : 0,
+      damagePerRound: rounds > 0 ? Math.round(damage / rounds) : 0,
+    },
+    agents: Object.values(agentMap)
+      .sort((a, b) => b.matches - a.matches)
+      .map((ag) => ({
+        name: ag.name, imageUrl: ag.imageUrl,
+        matchesPlayed: ag.matches,
+        winRate: Math.round((ag.wins / ag.matches) * 100),
+        kd: ag.deaths > 0 ? Math.round((ag.kills / ag.deaths) * 100) / 100 : ag.kills,
+        damagePerRound: ag.rounds > 0 ? Math.round(ag.damage / ag.rounds) : 0,
+      })),
     seasons,
     rateLimit: {
-      limit: Number(
-        rateLimitHeaders["x-ratelimit-limit"] ?? rateLimitHeaders["ratelimit-limit"] ?? 0
-      ),
-      remaining: Number(
-        rateLimitHeaders["x-ratelimit-remaining"] ??
-          rateLimitHeaders["ratelimit-remaining"] ??
-          0
-      ),
-      resetInSecs,
+      limit: Number(headers["x-ratelimit-limit"] ?? headers["ratelimit-limit"] ?? 0),
+      remaining: Number(headers["x-ratelimit-remaining"] ?? headers["ratelimit-remaining"] ?? 0),
+      resetInSecs: rawReset > 1_000_000_000
+        ? Math.max(0, Math.ceil((rawReset * 1000 - Date.now()) / 1000))
+        : rawReset,
     },
     source: "henrik",
   };
+}
+
+// ──────────────────────────────────────────────
+// 통합 조회 (tracker.gg 우선 → Henrik 폴백)
+// ──────────────────────────────────────────────
+async function fetchTrackerSummary(
+  gameName: string,
+  tagLine: string,
+  preferredRegion: SupportedRegion
+): Promise<TrackerSummaryResponse> {
+  if (process.env.TRACKER_GG_API_KEY) {
+    try {
+      return await fetchFromTrackerGg(gameName, tagLine, preferredRegion);
+    } catch (err: any) {
+      // 404는 폴백 불필요
+      if (err?.status === 404) throw err;
+      console.warn("[tracker] tracker.gg 실패, Henrik으로 폴백:", err?.message);
+    }
+  }
+
+  if (!process.env.HENRIK_API_KEY) {
+    throw new Error("API 키가 설정되지 않았습니다.");
+  }
+
+  return fetchFromHenrik(gameName, tagLine, preferredRegion);
 }
 
 function jsonResponse(body: TrackerSummaryResponse | { error: string }, init?: ResponseInit) {
@@ -280,6 +257,9 @@ function jsonResponse(body: TrackerSummaryResponse | { error: string }, init?: R
   });
 }
 
+// ──────────────────────────────────────────────
+// GET /api/tracker
+// ──────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -294,74 +274,35 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "gameName과 tagLine이 필요합니다." }, { status: 400 });
   }
 
-  if (!process.env.HENRIK_API_KEY) {
-    return Response.json({ error: "Henrik API 키가 설정되지 않았습니다." }, { status: 503 });
+  if (!process.env.TRACKER_GG_API_KEY && !process.env.HENRIK_API_KEY) {
+    return Response.json({ error: "API 키가 설정되지 않았습니다." }, { status: 503 });
   }
 
   const cacheKey = buildCacheKey(gameName, tagLine, region);
-  const cached = getCachedResponse(cacheKey);
-  if (cached) {
-    return jsonResponse(cached.data, {
-      headers: {
-        "X-Tracker-Cache": "HIT",
-        "X-Tracker-Cache-Age": String(Math.floor(cached.ageMs / 1000)),
-      },
-    });
-  }
-
-  const existingRequest = inflightRequests.get(cacheKey);
-  if (existingRequest) {
-    try {
-      const sharedData = await existingRequest;
-      return jsonResponse(
-        { ...sharedData, cached: true },
-        { headers: { "X-Tracker-Cache": "SHARED" } }
-      );
-    } catch (error: any) {
-      const status = error?.response?.status;
-      if (status === 404) {
-        return Response.json({ error: "플레이어를 찾을 수 없습니다." }, { status: 404 });
-      }
-      if (status === 429) {
-        return Response.json(
-          { error: "요청 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요." },
-          { status: 429 }
-        );
-      }
-      if (status === 401 || status === 403) {
-        return Response.json(
-          { error: "Henrik API 권한이 유효하지 않습니다." },
-          { status: 503 }
-        );
-      }
-      return Response.json({ error: "통계 정보를 불러오지 못했습니다." }, { status: 500 });
-    }
-  }
-
-  const requestPromise = fetchTrackerSummary(gameName, tagLine, region);
-  inflightRequests.set(cacheKey, requestPromise);
 
   try {
-    const data = await requestPromise;
-    responseCache.set(cacheKey, { data, cachedAt: Date.now() });
-    return jsonResponse(data, { headers: { "X-Tracker-Cache": "MISS" } });
+    const { data, cached, ageMs } = await apiCache.getOrFetch(
+      cacheKey,
+      TTL.MEDIUM,
+      () => fetchTrackerSummary(gameName, tagLine, region)
+    );
+
+    return jsonResponse(
+      cached ? { ...data, cached: true, cacheAgeSec: Math.floor(ageMs / 1000) } : data,
+      {
+        headers: {
+          "X-Tracker-Cache": cached ? "HIT" : "MISS",
+          "X-Tracker-Source": data.source,
+          ...(cached ? { "X-Tracker-Cache-Age": String(Math.floor(ageMs / 1000)) } : {}),
+        },
+      }
+    );
   } catch (error: any) {
-    const status = error?.response?.status;
-    console.error("Tracker summary error:", error?.message);
-    if (status === 404) {
-      return Response.json({ error: "플레이어를 찾을 수 없습니다." }, { status: 404 });
-    }
-    if (status === 429) {
-      return Response.json(
-        { error: "요청 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요." },
-        { status: 429 }
-      );
-    }
-    if (status === 401 || status === 403) {
-      return Response.json({ error: "Henrik API 권한이 유효하지 않습니다." }, { status: 503 });
-    }
+    const status = error?.status ?? error?.response?.status;
+    console.error("[tracker] 오류:", error?.message);
+    if (status === 404) return Response.json({ error: "플레이어를 찾을 수 없습니다." }, { status: 404 });
+    if (status === 429) return Response.json({ error: "요청 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요." }, { status: 429 });
+    if (status === 401 || status === 403) return Response.json({ error: "API 권한이 유효하지 않습니다." }, { status: 503 });
     return Response.json({ error: "통계 정보를 불러오지 못했습니다." }, { status: 500 });
-  } finally {
-    inflightRequests.delete(cacheKey);
   }
 }

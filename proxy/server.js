@@ -45,9 +45,9 @@ const BASE_HEADERS = {
 };
 
 const AUTH_CLIENT_PAYLOAD = {
-  client_id: 'play-valorant-web-prod',
+  client_id: 'riot-client',
   nonce: '1',
-  redirect_uri: 'https://playvalorant.com/opt_in',
+  redirect_uri: 'http://localhost/redirect',
   response_type: 'token id_token',
   scope: 'account openid',
 };

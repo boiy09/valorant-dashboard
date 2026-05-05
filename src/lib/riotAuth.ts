@@ -183,7 +183,8 @@ export async function initRiotAuth(username: string, password: string): Promise<
   const proxySecret = process.env.RIOT_AUTH_PROXY_SECRET;
 
   if (proxyUrl && proxySecret) {
-    const res = await fetch(`${proxyUrl}/auth`, {
+    // 브라우저 기반 로그인 (Playwright) - 봇 탐지 우회
+    const res = await fetch(`${proxyUrl}/auth/browser`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -192,7 +193,11 @@ export async function initRiotAuth(username: string, password: string): Promise<
       body: JSON.stringify({ username, password }),
       cache: "no-store",
     });
-    const data = await res.json() as AuthResult;
+    const data = await res.json() as AuthResult & { sessionId?: string };
+    // MFA의 경우 sessionId를 pendingCookies 필드에 담아 전달
+    if (data.status === "mfa" && "sessionId" in data) {
+      return { status: "mfa", cookies: (data as any).sessionId };
+    }
     return data;
   }
 
@@ -207,13 +212,14 @@ export async function submitMfa(cookies: string, code: string): Promise<AuthResu
   const proxySecret = process.env.RIOT_AUTH_PROXY_SECRET;
 
   if (proxyUrl && proxySecret) {
-    const res = await fetch(`${proxyUrl}/auth/mfa`, {
+    // cookies 필드에 sessionId가 담겨 있음 (브라우저 방식)
+    const res = await fetch(`${proxyUrl}/auth/browser/mfa`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-proxy-secret": proxySecret,
       },
-      body: JSON.stringify({ code, pendingCookies: cookies }),
+      body: JSON.stringify({ sessionId: cookies, code }),
       cache: "no-store",
     });
     const data = await res.json() as AuthResult;

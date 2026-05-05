@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type RiotRegion = "KR" | "AP";
-type FormState = "idle" | "loading" | "mfa" | "success";
+type FormState = "idle" | "qr_loading" | "qr_show" | "qr_polling" | "success" | "error";
 
 interface RiotAccountItem {
   id: string;
@@ -13,26 +13,41 @@ interface RiotAccountItem {
 }
 
 const REGIONS: RiotRegion[] = ["KR", "AP"];
+const POLL_INTERVAL_MS = 3000;
+const QR_EXPIRE_MS = 5 * 60 * 1000; // 5분
 
 function regionLabel(region: RiotRegion) {
   return region === "KR" ? "한섭" : "아섭";
 }
 
+/** QR 코드 이미지 URL (외부 API 사용, 패키지 불필요) */
+function qrImageUrl(content: string) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(content)}`;
+}
+
+/** Riot Mobile 앱이 스캔할 딥링크 */
+function buildQrContent(loginToken: string) {
+  return `riotgames://riot/login?login_token=${loginToken}`;
+}
+
 export default function HeaderRiotLink() {
   const [accounts, setAccounts] = useState<RiotAccountItem[]>([]);
   const [open, setOpen] = useState(false);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [mfaCode, setMfaCode] = useState("");
-  const [pendingCookies, setPendingCookies] = useState("");
   const [formState, setFormState] = useState<FormState>("idle");
   const [error, setError] = useState("");
+  const [loginToken, setLoginToken] = useState("");
+  const [deviceId, setDeviceId] = useState("");
+  const [qrExpireAt, setQrExpireAt] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState(0);
   const [initialized, setInitialized] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ──────── 계정 목록 로드 ────────
   useEffect(() => {
     fetch("/api/user/riot")
-      .then((response) => (response.ok ? response.json() : { linked: false, accounts: [] }))
+      .then((r) => (r.ok ? r.json() : { linked: false, accounts: [] }))
       .then((data: { accounts?: RiotAccountItem[] }) => {
         setAccounts(data.accounts ?? []);
         setInitialized(true);
@@ -40,22 +55,62 @@ export default function HeaderRiotLink() {
       .catch(() => setInitialized(true));
   }, []);
 
+  // ──────── 외부 클릭 닫기 ────────
   useEffect(() => {
-    function handleMouseDown(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
+    function onMouseDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
       }
     }
-
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
+
+  // ──────── 패널 닫힐 때 폴링 정리 ────────
+  useEffect(() => {
+    if (!open) {
+      stopPolling();
+      if (formState === "qr_show" || formState === "qr_polling") {
+        setFormState("idle");
+        setLoginToken("");
+        setDeviceId("");
+        setQrExpireAt(null);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function stopPolling() {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+  }
+
+  // ──────── QR 만료 카운트다운 ────────
+  useEffect(() => {
+    if (!qrExpireAt) return;
+    countdownRef.current = setInterval(() => {
+      const left = Math.max(0, Math.round((qrExpireAt - Date.now()) / 1000));
+      setTimeLeft(left);
+      if (left === 0) {
+        stopPolling();
+        setFormState("error");
+        setError("QR 코드가 만료되었습니다. 다시 시도해 주세요.");
+      }
+    }, 1000);
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [qrExpireAt]);
 
   const accountByRegion = useMemo(() => {
     const map = new Map<RiotRegion, RiotAccountItem>();
-    for (const account of accounts) {
-      map.set(account.region, account);
-    }
+    for (const a of accounts) map.set(a.region, a);
     return map;
   }, [accounts]);
 
@@ -63,117 +118,132 @@ export default function HeaderRiotLink() {
   const summaryLabel =
     connectedCount === 0
       ? "라이엇 연동"
-      : REGIONS.map((key) => {
-          const account = accountByRegion.get(key);
-          return `${key}:${account ? (account.isVerified ? "인증됨" : "비인증") : "없음"}`;
+      : REGIONS.map((k) => {
+          const a = accountByRegion.get(k);
+          return `${k}:${a ? (a.isVerified ? "인증됨" : "비인증") : "없음"}`;
         }).join(" · ");
 
-  async function safeJson(response: Response) {
-    try {
-      return await response.json();
-    } catch {
-      return {};
-    }
-  }
+  // ──────── 폴링 로직 ────────
+  const poll = useCallback(
+    async (token: string, dId: string) => {
+      try {
+        const res = await fetch(
+          `/api/user/riot/qr?token=${encodeURIComponent(token)}&deviceId=${encodeURIComponent(dId)}`,
+          { cache: "no-store" }
+        );
+        const data = await res.json() as {
+          status?: string;
+          account?: RiotAccountItem;
+          error?: string;
+          debug?: unknown;
+        };
 
-  function resetForm() {
-    setUsername("");
-    setPassword("");
-    setMfaCode("");
-    setPendingCookies("");
-    setFormState("idle");
-    setError("");
-  }
+        if (data.status === "success" && data.account) {
+          stopPolling();
+          setAccounts((prev) => [
+            ...prev.filter((a) => a.region !== data.account!.region),
+            data.account!,
+          ]);
+          setFormState("success");
+          setLoginToken("");
+          setDeviceId("");
+          setQrExpireAt(null);
+          setTimeout(() => setFormState("idle"), 3000);
+          return;
+        }
 
-  async function handleAdd(event: React.FormEvent) {
-    event.preventDefault();
-    setFormState("loading");
-    setError("");
+        if (data.status === "expired") {
+          stopPolling();
+          setFormState("error");
+          setError("QR 코드가 만료되었습니다. 다시 시도해 주세요.");
+          return;
+        }
 
-    try {
-      const response = await fetch("/api/user/riot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await safeJson(response);
+        if (data.status === "error") {
+          stopPolling();
+          setFormState("error");
+          setError(data.error ?? "인증 중 오류가 발생했습니다.");
+          console.error("[QR] 폴링 오류:", data.debug ?? data);
+          return;
+        }
 
-      if (!response.ok) {
-        setError(data.error ?? "라이엇 계정 연결 중 오류가 발생했습니다.");
-        setFormState("idle");
-      } else if (data.mfa) {
-        setPendingCookies(data.pendingCookies ?? "");
-        setFormState("mfa");
-      } else {
-        setAccounts((prev) => [
-          ...prev.filter((a) => a.region !== data.account.region),
-          data.account,
-        ]);
-        resetForm();
-        setFormState("success");
-        setTimeout(() => setFormState("idle"), 2000);
+        // pending - 계속 폴링
+        pollTimerRef.current = setTimeout(() => poll(token, dId), POLL_INTERVAL_MS);
+      } catch {
+        // 네트워크 오류는 재시도
+        pollTimerRef.current = setTimeout(() => poll(token, dId), POLL_INTERVAL_MS);
       }
-    } catch {
-      setError("네트워크 오류가 발생했습니다.");
-      setFormState("idle");
-    }
-  }
+    },
+    []
+  );
 
-  async function handleMfa(event: React.FormEvent) {
-    event.preventDefault();
-    setFormState("loading");
+  // ──────── QR 시작 ────────
+  async function handleStartQr() {
+    setFormState("qr_loading");
     setError("");
+    stopPolling();
 
     try {
-      const response = await fetch("/api/riot/auth/mfa", {
+      const res = await fetch("/api/user/riot/qr", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: mfaCode, pendingCookies }),
+        cache: "no-store",
       });
-      const data = await safeJson(response);
+      const data = await res.json() as { loginToken?: string; deviceId?: string; error?: string; debug?: unknown };
 
-      if (!response.ok) {
-        setError(data.error ?? "인증 코드 확인 중 오류가 발생했습니다.");
-        setFormState("mfa");
-      } else {
-        setAccounts((prev) => [
-          ...prev.filter((a) => a.region !== data.account.region),
-          data.account,
-        ]);
-        resetForm();
-        setFormState("success");
-        setTimeout(() => setFormState("idle"), 2000);
+      if (!res.ok || !data.loginToken) {
+        setFormState("error");
+        setError(data.error ?? "QR 코드를 생성할 수 없습니다.");
+        console.error("[QR] init 실패:", data.debug ?? data);
+        return;
       }
+
+      setLoginToken(data.loginToken);
+      setDeviceId(data.deviceId ?? "");
+      setQrExpireAt(Date.now() + QR_EXPIRE_MS);
+      setTimeLeft(Math.round(QR_EXPIRE_MS / 1000));
+      setFormState("qr_show");
+
+      // 폴링 시작
+      pollTimerRef.current = setTimeout(() => poll(data.loginToken!, data.deviceId ?? ""), POLL_INTERVAL_MS);
     } catch {
+      setFormState("error");
       setError("네트워크 오류가 발생했습니다.");
-      setFormState("mfa");
     }
   }
 
+  // ──────── 계정 해제 ────────
   async function handleRemove(id: string) {
     setError("");
-
     try {
-      const response = await fetch("/api/user/riot", {
+      const res = await fetch("/api/user/riot", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const data = await safeJson(response);
-
-      if (!response.ok) {
-        setError(data.error ?? "계정 해제 중 오류가 발생했습니다.");
-      } else {
+      if (res.ok) {
         setAccounts((prev) => prev.filter((a) => a.id !== id));
+      } else {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        setError(d.error ?? "계정 해제 중 오류가 발생했습니다.");
       }
     } catch {
       setError("네트워크 오류가 발생했습니다.");
     }
   }
 
+  function handleReset() {
+    stopPolling();
+    setFormState("idle");
+    setError("");
+    setLoginToken("");
+    setDeviceId("");
+    setQrExpireAt(null);
+  }
+
   if (!initialized) return null;
 
-  const isLoading = formState === "loading";
+  const qrContent = loginToken ? buildQrContent(loginToken) : "";
+  const isShowingQr = formState === "qr_show" || formState === "qr_polling";
 
   return (
     <div className="relative" ref={ref}>
@@ -237,8 +307,7 @@ export default function HeaderRiotLink() {
                     {account && (
                       <button
                         onClick={() => handleRemove(account.id)}
-                        disabled={isLoading}
-                        className="text-[11px] text-[#7b8a96] hover:text-[#ff4655] transition-colors disabled:opacity-40"
+                        className="text-[11px] text-[#7b8a96] hover:text-[#ff4655] transition-colors"
                       >
                         해제
                       </button>
@@ -249,80 +318,77 @@ export default function HeaderRiotLink() {
             })}
           </div>
 
-          {/* 계정 추가 폼 */}
+          {/* 하단 액션 */}
           <div className="p-3">
             {formState === "success" ? (
-              <div className="text-green-400 text-xs text-center py-2">계정이 연결되었습니다!</div>
-            ) : formState === "mfa" || (isLoading && pendingCookies) ? (
-              <>
-                <div className="text-[#7b8a96] text-[10px] mb-2">2단계 인증 코드 입력</div>
-                <form onSubmit={handleMfa} className="flex flex-col gap-2">
-                  <input
-                    type="text"
-                    value={mfaCode}
-                    onChange={(e) => setMfaCode(e.target.value)}
-                    placeholder="6자리 인증 코드"
-                    maxLength={6}
-                    className="px-3 py-2 text-xs text-white bg-[#0f1923] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655] w-full tracking-widest text-center"
-                    required
-                    autoFocus
-                    inputMode="numeric"
+              <div className="text-green-400 text-xs text-center py-3">
+                ✓ 계정이 성공적으로 연결되었습니다!
+              </div>
+            ) : isShowingQr ? (
+              /* QR 코드 표시 */
+              <div className="flex flex-col items-center gap-2">
+                <div className="text-[#7b8a96] text-[11px] text-center">
+                  Riot Mobile 앱으로 QR 코드를 스캔하세요
+                </div>
+                <div className="relative bg-white rounded p-1">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={qrImageUrl(qrContent)}
+                    alt="Riot Mobile QR 코드"
+                    width={180}
+                    height={180}
+                    className="block"
                   />
-                  {error && <div className="text-[#ff4655] text-[10px]">{error}</div>}
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={resetForm}
-                      disabled={isLoading}
-                      className="flex-1 text-[#7b8a96] text-xs py-1.5 rounded border border-[#2a3540] disabled:opacity-50"
-                    >
-                      취소
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isLoading || mfaCode.length !== 6}
-                      className="flex-1 bg-[#ff4655] text-white text-xs font-bold py-1.5 rounded disabled:opacity-50"
-                    >
-                      {isLoading ? "확인 중..." : "확인"}
-                    </button>
+                  {/* 스캔 대기 오버레이 */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-black/0 rounded" />
                   </div>
-                </form>
-              </>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-[#7b8a96]">
+                  <span className="inline-block w-2 h-2 rounded-full bg-[#ff4655] animate-pulse" />
+                  스캔 대기 중... ({timeLeft}초)
+                </div>
+                <div className="text-[10px] text-[#7b8a96] text-center px-2">
+                  Riot Mobile 앱 → 우측 상단 QR 아이콘 → 스캔
+                </div>
+                <button
+                  onClick={handleReset}
+                  className="text-[11px] text-[#7b8a96] hover:text-white transition-colors"
+                >
+                  취소
+                </button>
+              </div>
+            ) : formState === "qr_loading" ? (
+              <div className="text-[#7b8a96] text-xs text-center py-3 animate-pulse">
+                QR 코드 생성 중...
+              </div>
+            ) : formState === "error" ? (
+              <div className="flex flex-col gap-2">
+                <div className="text-[#ff4655] text-[11px] text-center">{error}</div>
+                <button
+                  onClick={handleReset}
+                  className="w-full bg-[#ff4655] text-white text-xs font-bold py-1.5 rounded"
+                >
+                  다시 시도
+                </button>
+              </div>
             ) : (
-              <>
-                <div className="text-[#7b8a96] text-[10px] mb-2">계정 추가</div>
-                <form onSubmit={handleAdd} className="flex flex-col gap-2">
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="라이엇 아이디"
-                    className="px-3 py-2 text-xs text-white bg-[#0f1923] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655] w-full"
-                    required
-                    autoComplete="username"
-                  />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="비밀번호"
-                    className="px-3 py-2 text-xs text-white bg-[#0f1923] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655] w-full"
-                    required
-                    autoComplete="current-password"
-                  />
-                  <div className="text-[#7b8a96] text-[10px]">
-                    비밀번호는 저장되지 않으며 인증에만 사용됩니다.
-                  </div>
-                  {error && <div className="text-[#ff4655] text-[10px]">{error}</div>}
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="bg-[#ff4655] text-white text-xs font-bold py-1.5 rounded disabled:opacity-50"
-                  >
-                    {isLoading ? "로그인 중..." : "연동하기"}
-                  </button>
-                </form>
-              </>
+              /* 기본 - QR 시작 버튼 */
+              <div className="flex flex-col gap-2">
+                <div className="text-[#7b8a96] text-[11px] text-center">
+                  Riot Mobile 앱으로 안전하게 인증합니다
+                </div>
+                <button
+                  onClick={handleStartQr}
+                  className="w-full bg-[#ff4655] hover:bg-[#e03040] transition-colors text-white text-xs font-bold py-2 rounded flex items-center justify-center gap-2"
+                >
+                  <span>📱</span>
+                  <span>Riot Mobile로 로그인</span>
+                </button>
+                <div className="text-[10px] text-[#7b8a96] text-center">
+                  비밀번호 입력 없이 QR 코드로 연동합니다
+                </div>
+              </div>
             )}
           </div>
         </div>

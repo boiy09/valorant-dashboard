@@ -2,14 +2,15 @@
 
 const express = require('express');
 const fetch = require('node-fetch');
+const crypto = require('crypto');
 
 const app = express();
 app.use(express.json());
 
-// CORS - Vercel에서 호출하므로 모든 오리진 허용
+// CORS
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-proxy-secret');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
@@ -32,12 +33,15 @@ function checkSecret(req, res) {
 }
 
 const AUTH_URL = 'https://auth.riotgames.com/api/v1/authorization';
+const QR_AUTH_URL = 'https://authenticate.riotgames.com/api/v1/login';
 
 const BASE_HEADERS = {
   'User-Agent': 'RiotClient/86.0.2.1441.2510 %s (Windows;10;;Professional, x64)',
   'Accept': 'application/json, text/plain, */*',
-  'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+  'Accept-Language': 'en-US,en;q=0.9',
   'Accept-Encoding': 'gzip, deflate, br',
+  'Cache-Control': 'no-cache',
+  'Pragma': 'no-cache',
 };
 
 const AUTH_CLIENT_PAYLOAD = {
@@ -99,7 +103,6 @@ async function step1Init() {
   }
 
   const cookies = parseCookies(response);
-  console.log(`[proxy] step1 쿠키 수: ${cookies.split(';').length}`);
   return cookies;
 }
 
@@ -117,7 +120,7 @@ async function step2Auth(cookies, username, password) {
       username,
       password,
       remember: true,
-      language: 'ko_KR',
+      language: 'en_US',
     }),
   });
 
@@ -145,12 +148,11 @@ async function step2Auth(cookies, username, password) {
     return { status: 'mfa', cookies: mergedCookies };
   }
 
-  // type === 'auth' = 인증 실패
-  console.error(`[proxy] 인증 실패:`, data.error, data);
+  console.error(`[proxy] 인증 실패 전체 응답:`, JSON.stringify(data));
   return { status: 'error', message: '아이디 또는 비밀번호가 올바르지 않습니다.' };
 }
 
-// POST /auth - Riot 로그인
+// POST /auth - Riot 로그인 (아이디/비밀번호)
 app.post('/auth', async (req, res) => {
   if (!checkSecret(req, res)) return;
 
@@ -213,6 +215,138 @@ app.post('/auth/mfa', async (req, res) => {
   } catch (err) {
     console.error('[proxy] /auth/mfa 오류:', err);
     return res.status(500).json({ status: 'error', message: err.message || '서버 내부 오류' });
+  }
+});
+
+// ──────────────────────────────────────────────
+// QR 로그인 (Riot Mobile)
+// ──────────────────────────────────────────────
+
+// POST /qr/init - QR 로그인 세션 시작
+app.post('/qr/init', async (req, res) => {
+  if (!checkSecret(req, res)) return;
+
+  try {
+    const deviceId = crypto.randomUUID();
+    console.log('[proxy] QR init, deviceId:', deviceId);
+
+    const response = await fetch(QR_AUTH_URL, {
+      method: 'POST',
+      headers: {
+        ...BASE_HEADERS,
+        'Content-Type': 'application/json',
+        'X-Riot-Device-Id': deviceId,
+      },
+      body: JSON.stringify({}),
+    });
+
+    const text = await response.text();
+    console.log('[proxy] QR init 응답 status:', response.status);
+    console.log('[proxy] QR init 응답 body:', text.substring(0, 500));
+
+    if (!response.ok) {
+      return res.status(500).json({ status: 'error', message: `QR 세션 생성 실패: ${response.status}`, raw: text });
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return res.status(500).json({ status: 'error', message: 'QR 응답 파싱 실패', raw: text });
+    }
+
+    // loginToken 필드 추출 (응답 구조에 따라 다를 수 있음)
+    const loginToken = data.loginToken || data.login_token || data.token;
+    if (!loginToken) {
+      return res.status(500).json({ status: 'error', message: 'loginToken을 찾을 수 없습니다.', raw: data });
+    }
+
+    console.log('[proxy] QR loginToken:', loginToken.substring(0, 20) + '...');
+    return res.json({ status: 'ok', loginToken, deviceId, raw: data });
+  } catch (err) {
+    console.error('[proxy] /qr/init 오류:', err);
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// GET /qr/poll?token=xxx&deviceId=yyy - 폴링: 사용자가 QR 스캔했는지 확인
+app.get('/qr/poll', async (req, res) => {
+  if (!checkSecret(req, res)) return;
+
+  const { token, deviceId } = req.query;
+  if (!token) {
+    return res.status(400).json({ status: 'error', message: 'token이 필요합니다.' });
+  }
+
+  try {
+    const pollUrl = `${QR_AUTH_URL}/${encodeURIComponent(token)}`;
+    console.log('[proxy] QR poll URL:', pollUrl);
+
+    const response = await fetch(pollUrl, {
+      method: 'GET',
+      headers: {
+        ...BASE_HEADERS,
+        ...(deviceId ? { 'X-Riot-Device-Id': deviceId } : {}),
+      },
+    });
+
+    const text = await response.text();
+    console.log('[proxy] QR poll 응답 status:', response.status);
+    console.log('[proxy] QR poll 응답 body:', text.substring(0, 500));
+
+    if (response.status === 404) {
+      return res.json({ status: 'expired' });
+    }
+
+    if (!response.ok) {
+      return res.status(500).json({ status: 'error', message: `폴링 실패: ${response.status}`, raw: text });
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return res.status(500).json({ status: 'error', message: '폴링 응답 파싱 실패', raw: text });
+    }
+
+    // type: 'pending' | 'authenticated' | 'expired'
+    console.log('[proxy] QR poll type:', data.type || data.status);
+
+    if (data.type === 'authenticated' || data.status === 'authenticated') {
+      // 인증됨 - 토큰 교환
+      // 응답에 redirect_uri나 access_token이 있을 수 있음
+      const uri = data?.response?.parameters?.uri
+        || data?.redirect_uri
+        || data?.uri;
+
+      if (uri) {
+        const tokens = parseTokensFromUri(uri);
+        if (tokens) {
+          const cookies = parseCookies(response);
+          return res.json({ status: 'success', ...tokens, cookies });
+        }
+      }
+
+      // access_token이 직접 포함된 경우
+      const accessToken = data?.access_token || data?.accessToken;
+      const idToken = data?.id_token || data?.idToken;
+      if (accessToken) {
+        return res.json({ status: 'success', accessToken, idToken: idToken || '', cookies: '' });
+      }
+
+      // 토큰이 없으면 raw 반환하여 디버깅
+      return res.json({ status: 'authenticated_raw', raw: data });
+    }
+
+    if (data.type === 'expired' || data.status === 'expired') {
+      return res.json({ status: 'expired' });
+    }
+
+    // pending
+    return res.json({ status: 'pending' });
+  } catch (err) {
+    console.error('[proxy] /qr/poll 오류:', err);
+    return res.status(500).json({ status: 'error', message: err.message });
   }
 });
 

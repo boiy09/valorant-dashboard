@@ -10,6 +10,7 @@ import MemberSidebar from "./MemberSidebar";
 const BASE_TABS = [
   { href: "/dashboard", label: "대시보드", emoji: "🏠" },
   { href: "/dashboard/valorant", label: "전적", emoji: "🎯" },
+  { href: "/dashboard/store", label: "상점", emoji: "🛍️" },
   { href: "/dashboard/stats", label: "통계 분석", emoji: "📊" },
   { href: "/dashboard/scrim", label: "내전", emoji: "⚔️" },
   { href: "/dashboard/schedule", label: "일정", emoji: "📅" },

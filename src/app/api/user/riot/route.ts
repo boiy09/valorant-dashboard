@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getPlayerByRiotId } from "@/lib/valorant";
+import { initRiotAuth, getAuthTokens } from "@/lib/riotAuth";
 
 const ALLOWED_REGIONS = ["KR", "AP"] as const;
 type RiotRegion = (typeof ALLOWED_REGIONS)[number];
@@ -15,14 +15,6 @@ async function findUser(discordId: string, email?: string | null) {
     }
   }
   return user;
-}
-
-function normalizeRegion(region: unknown): RiotRegion | null {
-  if (typeof region !== "string") return null;
-  const normalized = region.trim().toUpperCase();
-  return ALLOWED_REGIONS.includes(normalized as RiotRegion)
-    ? (normalized as RiotRegion)
-    : null;
 }
 
 async function syncLegacyRiotFields(userId: string) {
@@ -52,16 +44,26 @@ async function syncLegacyRiotFields(userId: string) {
   });
 }
 
+function normalizeRegion(raw: string): RiotRegion {
+  const lower = raw.toLowerCase();
+  if (lower === "kr") return "KR";
+  if (lower === "ap") return "AP";
+  const upper = raw.toUpperCase() as RiotRegion;
+  return upper;
+}
+
 function toAccountResponse(account: {
   id: string;
   gameName: string;
   tagLine: string;
   region: string;
+  isVerified: boolean;
 }) {
   return {
     id: account.id,
     region: account.region,
     riotId: `${account.gameName}#${account.tagLine}`,
+    isVerified: account.isVerified,
   };
 }
 
@@ -94,29 +96,14 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
-  const { riotId, region } = await req.json();
-  const selectedRegion = normalizeRegion(region);
+  const body = await req.json() as { username?: string; password?: string };
+  const { username, password } = body;
 
-  if (!selectedRegion) {
-    return Response.json({ error: "지역은 KR 또는 AP만 선택할 수 있습니다." }, { status: 400 });
+  if (!username || typeof username !== "string" || !username.trim()) {
+    return Response.json({ error: "라이엇 아이디를 입력해 주세요." }, { status: 400 });
   }
-
-  if (!riotId || typeof riotId !== "string" || !riotId.includes("#")) {
-    return Response.json(
-      { error: "올바른 형식으로 입력해 주세요. 예: Player#KR1" },
-      { status: 400 }
-    );
-  }
-
-  const [rawGameName, rawTagLine] = riotId.split("#");
-  const gameName = rawGameName?.trim();
-  const tagLine = rawTagLine?.trim();
-
-  if (!gameName || !tagLine) {
-    return Response.json(
-      { error: "올바른 형식으로 입력해 주세요. 예: Player#KR1" },
-      { status: 400 }
-    );
+  if (!password || typeof password !== "string" || !password.trim()) {
+    return Response.json({ error: "비밀번호를 입력해 주세요." }, { status: 400 });
   }
 
   const user = await findUser(session.user.id, session.user.email);
@@ -124,49 +111,78 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "사용자 정보를 찾을 수 없습니다." }, { status: 404 });
   }
 
-  const existingAccounts = await prisma.riotAccount.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "asc" },
-  });
-
-  if (existingAccounts.length >= ALLOWED_REGIONS.length) {
-    return Response.json(
-      { error: "디스코드 계정당 한섭(KR)과 아섭(AP) 계정만 연결할 수 있습니다." },
-      { status: 400 }
-    );
-  }
-
-  const existingInRegion = existingAccounts.find((account) => account.region === selectedRegion);
-  if (existingInRegion) {
-    return Response.json(
-      { error: `${selectedRegion} 지역 계정은 이미 연결되어 있습니다. 먼저 해제한 뒤 다시 연결해 주세요.` },
-      { status: 400 }
-    );
-  }
-
   try {
-    const profile = await getPlayerByRiotId(gameName, tagLine);
-    const finalGameName = profile.gameName || gameName;
-    const finalTagLine = profile.tagLine || tagLine;
+    const authResult = await initRiotAuth(username.trim(), password);
 
-    const alreadyLinked = await prisma.riotAccount.findUnique({
-      where: { puuid: profile.puuid },
-    });
-
-    if (alreadyLinked) {
-      return Response.json({ error: "이미 연결된 라이엇 계정입니다." }, { status: 400 });
+    if (authResult.status === "error") {
+      return Response.json({ error: authResult.message }, { status: 401 });
     }
 
-    const account = await prisma.riotAccount.create({
-      data: {
-        userId: user.id,
-        puuid: profile.puuid,
-        gameName: finalGameName,
-        tagLine: finalTagLine,
-        region: selectedRegion,
-        isPrimary: false,
-      },
+    if (authResult.status === "mfa") {
+      // 쿠키를 base64로 인코딩해서 반환 (비밀번호는 이미 사용됨, 저장 안 함)
+      const pendingCookies = Buffer.from(authResult.cookies).toString("base64");
+      return Response.json({ mfa: true, pendingCookies });
+    }
+
+    // status === "success"
+    const tokens = await getAuthTokens(
+      authResult.accessToken,
+      authResult.idToken,
+      authResult.cookies
+    );
+
+    const region = normalizeRegion(tokens.region);
+
+    // 계정 수 초과 검사 (KR/AP 각 1개씩)
+    const existingAccounts = await prisma.riotAccount.findMany({
+      where: { userId: user.id },
     });
+
+    const sameRegion = existingAccounts.find((a) => a.region === region);
+    const otherPuuid = await prisma.riotAccount.findUnique({ where: { puuid: tokens.puuid } });
+
+    if (otherPuuid && otherPuuid.userId !== user.id) {
+      return Response.json(
+        { error: "이미 다른 계정에 연결된 라이엇 계정입니다." },
+        { status: 400 }
+      );
+    }
+
+    const tokenExpiresAt = new Date(Date.now() + 55 * 60 * 1000); // ~55분 후
+
+    let account;
+    if (sameRegion) {
+      // 같은 region이 있으면 upsert
+      account = await prisma.riotAccount.update({
+        where: { id: sameRegion.id },
+        data: {
+          puuid: tokens.puuid,
+          gameName: tokens.gameName,
+          tagLine: tokens.tagLine,
+          ssid: tokens.ssid,
+          accessToken: tokens.accessToken,
+          entitlementsToken: tokens.entitlementsToken,
+          tokenExpiresAt,
+          isVerified: true,
+        },
+      });
+    } else {
+      account = await prisma.riotAccount.create({
+        data: {
+          userId: user.id,
+          puuid: tokens.puuid,
+          gameName: tokens.gameName,
+          tagLine: tokens.tagLine,
+          region,
+          isPrimary: false,
+          ssid: tokens.ssid,
+          accessToken: tokens.accessToken,
+          entitlementsToken: tokens.entitlementsToken,
+          tokenExpiresAt,
+          isVerified: true,
+        },
+      });
+    }
 
     await syncLegacyRiotFields(user.id);
 
@@ -174,32 +190,9 @@ export async function POST(req: NextRequest) {
       success: true,
       account: toAccountResponse(account),
     });
-  } catch (error: any) {
-    const status = error?.response?.status;
-    const message =
-      error?.response?.data?.errors?.[0]?.message ?? error?.message ?? "알 수 없는 오류";
-
-    console.error(`Riot account link error [${status ?? "?"}]:`, message);
-
-    if (status === 404) {
-      return Response.json(
-        { error: "플레이어를 찾을 수 없습니다. 게임명과 태그를 다시 확인해 주세요." },
-        { status: 404 }
-      );
-    }
-    if (status === 429) {
-      return Response.json(
-        { error: "API 요청 한도를 초과했습니다. 잠시 뒤 다시 시도해 주세요." },
-        { status: 429 }
-      );
-    }
-    if (status === 401 || status === 403) {
-      return Response.json(
-        { error: "Riot API 인증에 문제가 있습니다. 관리자에게 문의해 주세요." },
-        { status: 503 }
-      );
-    }
-
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "알 수 없는 오류";
+    console.error("Riot auth error:", message);
     return Response.json(
       { error: `계정 연결 중 오류가 발생했습니다. (${message})` },
       { status: 500 }
@@ -213,7 +206,7 @@ export async function DELETE(req: NextRequest) {
     return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
-  const { id } = await req.json();
+  const { id } = await req.json() as { id: string };
   const user = await findUser(session.user.id, session.user.email);
   if (!user) {
     return Response.json({ error: "사용자 정보를 찾을 수 없습니다." }, { status: 404 });

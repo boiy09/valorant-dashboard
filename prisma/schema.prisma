@@ -39,15 +39,20 @@ model User {
 }
 
 model RiotAccount {
-  id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-  puuid     String   @unique
-  gameName  String
-  tagLine   String
-  region    String   @default("KR")
-  isPrimary Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id                String    @id @default(cuid())
+  user              User      @relation(fields: [userId], references: [id])
+  userId            String
+  puuid             String    @unique
+  gameName          String
+  tagLine           String
+  region            String    @default("KR")
+  isPrimary         Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  ssid              String?
+  accessToken       String?
+  entitlementsToken String?
+  tokenExpiresAt    DateTime?
+  isVerified        Boolean   @default(false)
   @@index([userId])
   @@unique([userId, region])
 }

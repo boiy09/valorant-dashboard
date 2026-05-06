@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { StoreData, WalletData } from "@/lib/riotPrivateApi";
 
 interface RiotAccountItem {
@@ -96,6 +95,84 @@ function BundleCard({ bundle }: { bundle: NonNullable<StoreData["bundle"]> }) {
   );
 }
 
+interface QuickRefreshProps {
+  accountId: string;
+  onSuccess: () => void;
+}
+
+function QuickRefresh({ accountId, onSuccess }: QuickRefreshProps) {
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  async function handleRefresh() {
+    const val = url.trim();
+    if (!val) return;
+    setLoading(true);
+    setErr("");
+
+    // ssid 방식 (쿠키 문자열) 또는 URL 방식 자동 감지
+    const isCookie = val.includes("ssid=") || val.includes("sub=");
+    const endpoint = isCookie ? "/api/riot/auth/ssid" : "/api/riot/auth/token";
+    const body = isCookie ? { ssid: val } : { url: val };
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) {
+        setErr(data.error ?? "갱신 실패");
+        return;
+      }
+      onSuccess();
+    } catch {
+      setErr("네트워크 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="bg-[#0d1821] border border-[#ff4655]/20 rounded-lg p-4 flex flex-col gap-3">
+      <div className="text-white text-xs font-bold tracking-widest uppercase">토큰 빠른 갱신</div>
+      <ol className="text-[#7b8a96] text-xs space-y-1 list-decimal list-inside">
+        <li>
+          <a
+            href="https://playvalorant.com/opt_in"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#0ac8b9] underline"
+          >
+            여기를 클릭
+          </a>
+          {" "}→ Riot 페이지가 열리면 주소창 URL 전체 복사
+        </li>
+        <li>아래에 붙여넣기 후 갱신</li>
+      </ol>
+      <textarea
+        ref={inputRef}
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        placeholder="https://playvalorant.com/ko-kr/opt_in/#access_token=eyJ..."
+        rows={2}
+        className="bg-[#111c24] border border-[#2a3540] rounded text-[#cdd6f4] text-xs p-2 resize-none focus:outline-none focus:border-[#0ac8b9] font-mono"
+      />
+      {err && <div className="text-[#ff4655] text-xs">{err}</div>}
+      <button
+        onClick={handleRefresh}
+        disabled={loading || !url.trim()}
+        className="self-start bg-[#0ac8b9] text-[#0f1923] text-xs font-bold px-5 py-2 rounded disabled:opacity-50 hover:bg-[#0ac8b9]/80 transition-colors"
+      >
+        {loading ? "갱신 중..." : "토큰 갱신 후 상점 열기"}
+      </button>
+    </div>
+  );
+}
+
 export default function StorePage() {
   const [accounts, setAccounts] = useState<RiotAccountItem[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -103,6 +180,7 @@ export default function StorePage() {
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [storeLoading, setStoreLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showRefresh, setShowRefresh] = useState(false);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
 
   useEffect(() => {
@@ -111,7 +189,6 @@ export default function StorePage() {
       .then((data: { accounts?: RiotAccountItem[] }) => {
         const accs = data.accounts ?? [];
         setAccounts(accs);
-        // 인증된 계정 자동 선택
         const verified = accs.find((a) => a.isVerified);
         if (verified) setSelectedAccountId(verified.id);
         setAccountsLoaded(true);
@@ -123,6 +200,7 @@ export default function StorePage() {
     if (!selectedAccountId) return;
     setStoreLoading(true);
     setError("");
+    setShowRefresh(false);
     setStore(null);
     setWallet(null);
 
@@ -134,7 +212,9 @@ export default function StorePage() {
 
       if (!storeRes.ok) {
         const data = await storeRes.json() as { error?: string };
-        throw new Error(data.error ?? "상점 조회 실패");
+        const msg = data.error ?? "상점 조회 실패";
+        if (storeRes.status === 403) setShowRefresh(true);
+        throw new Error(msg);
       }
       if (!walletRes.ok) {
         const data = await walletRes.json() as { error?: string };
@@ -192,6 +272,7 @@ export default function StorePage() {
                     setStore(null);
                     setWallet(null);
                     setError("");
+                    setShowRefresh(false);
                   }}
                   className={`flex items-center gap-2 px-4 py-2 rounded border text-sm transition-colors ${
                     selectedAccountId === account.id
@@ -229,17 +310,21 @@ export default function StorePage() {
 
       {/* 오류 */}
       {error && (
-        <div className="bg-[#ff4655]/10 border border-[#ff4655]/30 rounded-lg p-4 text-[#ff4655] text-sm flex flex-col gap-2">
-          <div>{error}</div>
-          {(error.includes("인증") || error.includes("만료") || error.includes("연동")) && (
-            <Link
-              href="/dashboard/riot-connect"
-              className="self-start bg-[#ff4655] text-white text-xs font-bold px-4 py-1.5 rounded hover:bg-[#cc3644] transition-colors"
-            >
-              다시 연동하기 →
-            </Link>
-          )}
+        <div className="bg-[#ff4655]/10 border border-[#ff4655]/30 rounded-lg p-4 text-[#ff4655] text-sm">
+          {error}
         </div>
+      )}
+
+      {/* 인라인 토큰 갱신 */}
+      {showRefresh && selectedAccountId && (
+        <QuickRefresh
+          accountId={selectedAccountId}
+          onSuccess={() => {
+            setShowRefresh(false);
+            setError("");
+            loadStore();
+          }}
+        />
       )}
 
       {/* 지갑 */}

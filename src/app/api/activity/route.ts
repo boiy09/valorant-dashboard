@@ -18,10 +18,6 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "사용자를 찾을 수 없습니다." }, { status: 404 });
   }
 
-  const since = new Date();
-  since.setDate(since.getDate() - 29);
-  since.setHours(0, 0, 0, 0);
-
   const guildFilter = guildDiscordId ? { guild: { discordId: guildDiscordId } } : {};
 
   const weekAgo = new Date();
@@ -55,13 +51,12 @@ export async function GET(req: NextRequest) {
     hours: Math.round((seconds / 3600) * 10) / 10,
   }));
 
-  const sinceDate = since.toISOString().slice(0, 10);
   const attendances = await prisma.dailyAttendance.findMany({
     where: {
       userId: user.id,
-      date: { gte: sinceDate },
       ...guildFilter,
     },
+    orderBy: { date: "asc" },
     select: { date: true },
   });
   const attendanceDates = attendances.map((attendance) => attendance.date);

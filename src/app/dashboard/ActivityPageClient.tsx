@@ -73,7 +73,7 @@ export default function ActivityPageClient() {
   const summaryCards = [
     { label: "This Month", value: activity ? fmtTime(activity.monthSeconds) : "--" },
     { label: "Total Time", value: activity ? fmtTime(activity.totalSeconds) : "--" },
-    { label: "Attendance (30d)", value: activity ? `${activity.attendanceCount}d` : "--" },
+    { label: "Attendance", value: activity ? `${activity.attendanceCount}d` : "--" },
   ];
 
   const activityEmptyText = activityReady ? "No activity data yet." : "Loading...";
@@ -106,7 +106,7 @@ export default function ActivityPageClient() {
           </div>
 
           <div className="val-card p-5">
-            <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">Attendance (4 weeks)</div>
+            <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">Attendance Calendar</div>
             {activity ? (
               <AttendanceCalendar attendanceDates={activity.attendanceDates} />
             ) : (

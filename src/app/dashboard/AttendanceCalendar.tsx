@@ -1,55 +1,152 @@
 "use client";
 
-export default function AttendanceCalendar({ attendanceDates }: { attendanceDates: string[] }) {
-  const dateSet = new Set(attendanceDates);
-  const days: Array<{ date: string; attended: boolean; isToday: boolean }> = [];
-  const today = new Date().toISOString().slice(0, 10);
+import { useMemo, useState } from "react";
 
-  for (let i = 27; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    const dateString = date.toISOString().slice(0, 10);
-    days.push({
-      date: dateString,
-      attended: dateSet.has(dateString),
-      isToday: dateString === today,
-    });
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function toDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function monthLabel(date: Date) {
+  return date.toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
+}
+
+function buildCalendarDays(monthDate: Date) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const start = new Date(year, month, 1 - firstDay.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return {
+      date,
+      key: toDateKey(date),
+      day: date.getDate(),
+      inMonth: date.getMonth() === month,
+    };
+  });
+}
+
+export default function AttendanceCalendar({ attendanceDates }: { attendanceDates: string[] }) {
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+
+  const todayKey = toDateKey(new Date());
+  const dateSet = useMemo(() => new Set(attendanceDates), [attendanceDates]);
+  const days = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
+  const monthAttendanceCount = days.filter((day) => day.inMonth && dateSet.has(day.key)).length;
+
+  function moveMonth(delta: number) {
+    setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
   }
 
-  const weeks: typeof days[] = [];
-  for (let i = 0; i < days.length; i += 7) {
-    weeks.push(days.slice(i, i + 7));
+  function goToday() {
+    const today = new Date();
+    setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1));
   }
 
   return (
-    <div>
-      <div className="flex gap-1 mb-1">
-        {["일", "월", "화", "수", "목", "금", "토"].map((day) => (
-          <div key={day} className="w-6 text-center text-[#7b8a96] text-[10px]">
+    <div className="w-full">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-lg font-black text-white">{monthLabel(visibleMonth)}</div>
+          <div className="text-xs text-[#7b8a96]">이번 달 출석 {monthAttendanceCount}일</div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => moveMonth(-1)}
+            className="h-8 w-8 rounded border border-[#2a3540] text-[#7b8a96] transition-colors hover:border-[#ff4655] hover:text-white"
+            aria-label="이전 달"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            onClick={goToday}
+            className="h-8 rounded border border-[#2a3540] px-3 text-xs font-bold text-[#7b8a96] transition-colors hover:border-[#ff4655] hover:text-white"
+          >
+            오늘
+          </button>
+          <button
+            type="button"
+            onClick={() => moveMonth(1)}
+            className="h-8 w-8 rounded border border-[#2a3540] text-[#7b8a96] transition-colors hover:border-[#ff4655] hover:text-white"
+            aria-label="다음 달"
+          >
+            ›
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 overflow-hidden rounded border border-[#2a3540] bg-[#0f1923]">
+        {WEEKDAYS.map((day) => (
+          <div
+            key={day}
+            className="border-b border-[#2a3540] bg-[#111c24] py-2 text-center text-[11px] font-bold text-[#7b8a96]"
+          >
             {day}
           </div>
         ))}
+
+        {days.map((day) => {
+          const attended = dateSet.has(day.key);
+          const isToday = day.key === todayKey;
+
+          return (
+            <div
+              key={day.key}
+              title={`${day.key}${attended ? " 출석" : " 미출석"}`}
+              className={`relative min-h-20 border-b border-r border-[#1f2a33] p-2 transition-colors ${
+                day.inMonth ? "bg-[#0f1923]" : "bg-[#0b141c] text-[#3a4a56]"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span
+                  className={`flex h-6 w-6 items-center justify-center rounded text-xs font-bold ${
+                    isToday
+                      ? "bg-[#ff4655] text-white"
+                      : day.inMonth
+                        ? "text-[#ece8e1]"
+                        : "text-[#3a4a56]"
+                  }`}
+                >
+                  {day.day}
+                </span>
+                {attended && (
+                  <span className="rounded bg-green-400/10 px-1.5 py-0.5 text-[10px] font-bold text-green-400">
+                    출석
+                  </span>
+                )}
+              </div>
+
+              {attended ? (
+                <div className="absolute inset-x-2 bottom-2 h-1 rounded-full bg-[#ff4655]" />
+              ) : (
+                day.inMonth && <div className="absolute inset-x-2 bottom-2 h-1 rounded-full bg-[#1a242d]" />
+              )}
+            </div>
+          );
+        })}
       </div>
-      <div className="flex flex-col gap-1">
-        {weeks.map((week, weekIndex) => (
-          <div key={weekIndex} className="flex gap-1">
-            {week.map((day) => (
-              <div
-                key={day.date}
-                title={day.date}
-                className={`w-6 h-6 rounded-sm transition-colors ${
-                  day.isToday ? "ring-1 ring-[#ff4655]" : ""
-                } ${day.attended ? "bg-[#ff4655]" : "bg-[#111c24] border border-[#2a3540]"}`}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className="flex items-center gap-2 mt-2">
-        <div className="w-3 h-3 rounded-sm bg-[#111c24] border border-[#2a3540]" />
-        <span className="text-[#7b8a96] text-[10px]">미출석</span>
-        <div className="w-3 h-3 rounded-sm bg-[#ff4655] ml-2" />
-        <span className="text-[#7b8a96] text-[10px]">출석</span>
+
+      <div className="mt-3 flex items-center gap-4 text-[11px] text-[#7b8a96]">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-[#ff4655]" />
+          출석
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-[#1a242d]" />
+          미출석
+        </span>
       </div>
     </div>
   );

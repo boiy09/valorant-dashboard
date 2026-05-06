@@ -8,6 +8,7 @@ import BotStatus from "./BotStatus";
 interface ActivityData {
   weeklyData: { date: string; hours: number }[];
   attendanceDates: string[];
+  activitySecondsByDate: Record<string, number>;
   totalSeconds: number;
   monthSeconds: number;
   attendanceCount: number;
@@ -41,6 +42,8 @@ function isActivityData(value: unknown): value is ActivityData {
   return (
     Array.isArray(data.weeklyData) &&
     Array.isArray(data.attendanceDates) &&
+    typeof data.activitySecondsByDate === "object" &&
+    data.activitySecondsByDate !== null &&
     typeof data.totalSeconds === "number" &&
     typeof data.monthSeconds === "number" &&
     typeof data.attendanceCount === "number"
@@ -108,7 +111,10 @@ export default function ActivityPageClient() {
           <div className="val-card p-5">
             <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">Attendance Calendar</div>
             {activity ? (
-              <AttendanceCalendar attendanceDates={activity.attendanceDates} />
+              <AttendanceCalendar
+                attendanceDates={activity.attendanceDates}
+                activitySecondsByDate={activity.activitySecondsByDate}
+              />
             ) : (
               <div className="text-sm text-[#7b8a96]">{attendanceEmptyText}</div>
             )}

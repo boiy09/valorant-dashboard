@@ -15,6 +15,15 @@ function monthLabel(date: Date) {
   return date.toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
 }
 
+function formatDuration(seconds: number) {
+  if (seconds <= 0) return "";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
+}
+
 function buildCalendarDays(monthDate: Date) {
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
@@ -33,7 +42,13 @@ function buildCalendarDays(monthDate: Date) {
   });
 }
 
-export default function AttendanceCalendar({ attendanceDates }: { attendanceDates: string[] }) {
+export default function AttendanceCalendar({
+  attendanceDates,
+  activitySecondsByDate,
+}: {
+  attendanceDates: string[];
+  activitySecondsByDate: Record<string, number>;
+}) {
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -100,11 +115,12 @@ export default function AttendanceCalendar({ attendanceDates }: { attendanceDate
         {days.map((day) => {
           const attended = dateSet.has(day.key);
           const isToday = day.key === todayKey;
+          const duration = formatDuration(activitySecondsByDate[day.key] ?? 0);
 
           return (
             <div
               key={day.key}
-              title={`${day.key}${attended ? " 출석" : " 미출석"}`}
+              title={`${day.key}${attended ? " 출석" : " 미출석"}${duration ? ` · ${duration}` : ""}`}
               className={`relative min-h-20 border-b border-r border-[#1f2a33] p-2 transition-colors ${
                 day.inMonth ? "bg-[#0f1923]" : "bg-[#0b141c] text-[#3a4a56]"
               }`}
@@ -128,6 +144,12 @@ export default function AttendanceCalendar({ attendanceDates }: { attendanceDate
                 )}
               </div>
 
+              {duration && day.inMonth && (
+                <div className="mt-3 rounded border border-[#2a3540] bg-[#111c24] px-2 py-1 text-center text-[11px] font-bold text-[#ece8e1]">
+                  {duration}
+                </div>
+              )}
+
               {attended ? (
                 <div className="absolute inset-x-2 bottom-2 h-1 rounded-full bg-[#ff4655]" />
               ) : (
@@ -147,6 +169,7 @@ export default function AttendanceCalendar({ attendanceDates }: { attendanceDate
           <span className="h-2.5 w-2.5 rounded-sm bg-[#1a242d]" />
           미출석
         </span>
+        <span className="text-[#4a5a68]">날짜 칸의 시간은 해당일 음성 채널 접속 시간입니다.</span>
       </div>
     </div>
   );

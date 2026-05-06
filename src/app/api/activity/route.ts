@@ -51,6 +51,22 @@ export async function GET(req: NextRequest) {
     hours: Math.round((seconds / 3600) * 10) / 10,
   }));
 
+  const allActivities = await prisma.voiceActivity.findMany({
+    where: {
+      userId: user.id,
+      duration: { not: null },
+      ...guildFilter,
+    },
+    select: { joinedAt: true, duration: true },
+    orderBy: { joinedAt: "asc" },
+  });
+
+  const activitySecondsByDate = allActivities.reduce<Record<string, number>>((acc, activity) => {
+    const key = activity.joinedAt.toISOString().slice(0, 10);
+    acc[key] = (acc[key] ?? 0) + (activity.duration ?? 0);
+    return acc;
+  }, {});
+
   const attendances = await prisma.dailyAttendance.findMany({
     where: {
       userId: user.id,
@@ -86,6 +102,7 @@ export async function GET(req: NextRequest) {
   return Response.json({
     weeklyData,
     attendanceDates,
+    activitySecondsByDate,
     totalSeconds: totalActivity._sum.duration ?? 0,
     monthSeconds: monthActivity._sum.duration ?? 0,
     attendanceCount: attendanceDates.length,

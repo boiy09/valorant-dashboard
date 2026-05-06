@@ -3,6 +3,12 @@ import type { BotClient } from "../index";
 import { prisma } from "../../lib/prisma";
 
 const activeSessions = new Map<string, string>();
+const EXCLUDED_CHANNEL_KEYWORDS = ["잠수", "afk"];
+
+function isExcludedVoiceChannel(channelName: string) {
+  const normalized = channelName.toLowerCase().replace(/\s/g, "");
+  return EXCLUDED_CHANNEL_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
 
 async function getOrCreateUser(discordId: string, name: string) {
   const email = `${discordId}@discord`;
@@ -36,6 +42,7 @@ async function ensureDailyAttendance(userId: string, guildId: string) {
 
 async function openSessionForMember(member: GuildMember, channel: VoiceBasedChannel) {
   if (member.user.bot) return;
+  if (isExcludedVoiceChannel(channel.name)) return;
 
   const [user, guild] = await Promise.all([
     getOrCreateUser(member.id, member.displayName),
@@ -114,6 +121,7 @@ async function hydrateVoiceSessions(client: BotClient) {
     for (const [, member] of guild.members.cache) {
       const channel = member.voice.channel;
       if (!channel || member.user.bot) continue;
+      if (isExcludedVoiceChannel(channel.name)) continue;
       await openSessionForMember(member, channel);
     }
   }
@@ -143,15 +151,20 @@ export function registerVoiceEvents(client: BotClient) {
     const sessionKey = getSessionKey(discordUserId, guildDiscordId);
 
     try {
-      if (!oldState.channelId && newState.channelId) {
+      const oldChannel = oldState.channel;
+      const newChannel = newState.channel;
+      const oldIncluded = Boolean(oldChannel && !isExcludedVoiceChannel(oldChannel.name));
+      const newIncluded = Boolean(newChannel && !isExcludedVoiceChannel(newChannel.name));
+
+      if (!oldIncluded && newIncluded) {
         await openSessionForMember(newState.member!, newState.channel!);
-      } else if (oldState.channelId && !newState.channelId) {
+      } else if (oldIncluded && !newIncluded) {
         const activityId = activeSessions.get(sessionKey);
         if (activityId) {
           await closeSession(activityId);
           activeSessions.delete(sessionKey);
         }
-      } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+      } else if (oldIncluded && newIncluded && oldState.channelId !== newState.channelId) {
         const activityId = activeSessions.get(sessionKey);
         if (activityId) {
           await closeSession(activityId);

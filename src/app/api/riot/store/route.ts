@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
     console.error("Store fetch error:", message);
 
-    if (message.includes("403") || message.includes("401")) {
+    if (message.includes("403") || message.includes("401") || message.includes("405")) {
       return Response.json(
         { error: "인증이 만료되었습니다. 라이엇 계정을 다시 연동해 주세요." },
         { status: 403 }

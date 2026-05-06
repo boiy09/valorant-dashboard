@@ -39,11 +39,14 @@ async function pvpHeaders(
   accessToken: string,
   entitlementsToken: string
 ): Promise<Record<string, string>> {
+  const version = await getClientVersion();
   return {
     Authorization: `Bearer ${accessToken}`,
     "X-Riot-Entitlements-JWT": entitlementsToken,
     "X-Riot-ClientPlatform": CLIENT_PLATFORM,
-    "X-Riot-ClientVersion": await getClientVersion(),
+    "X-Riot-ClientVersion": version,
+    "User-Agent": `RiotClient/${version} rso-auth (Windows;10;;Professional, x64)`,
+    "Accept": "application/json",
   };
 }
 

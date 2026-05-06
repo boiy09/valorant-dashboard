@@ -37,6 +37,7 @@ export interface ScoreboardPlayer {
   puuid: string;
   name: string;
   tag: string;
+  isPrivate: boolean;
   teamId: string;
   level: number | null;
   cardIcon: string;
@@ -334,6 +335,26 @@ async function getRankIconByTier(tierId: number) {
   return null;
 }
 
+async function getScoreboardRankByPuuid(puuid: string, region: ValorantRegion) {
+  if (!puuid) return null;
+  const key = `scoreboard-rank:${region}:${puuid}`;
+  const { data } = await apiCache.getOrFetch(key, TTL.MEDIUM, async () => {
+    const response = await henrikClient.get(`/v3/by-puuid/mmr/${region}/pc/${puuid}`).catch(() =>
+      henrikClient.get(`/v2/by-puuid/mmr/${region}/${puuid}`).catch(() => null)
+    );
+    return response?.data?.data ?? null;
+  });
+  const current = asRecord(data?.current ?? data?.current_data);
+  const tier = asRecord(current.tier);
+  const tierId = toNumber(tier.id ?? current.currenttier ?? data?.currenttier);
+  if (tierId <= 0) return null;
+  return {
+    tierId,
+    tierName: toString(tier.name ?? current.currenttierpatched ?? data?.currenttierpatched, "Unranked"),
+    tierIcon: await getRankIconByTier(tierId),
+  };
+}
+
 async function getAgentIconByName(agentName: string) {
   if (!agentName.trim()) return "";
 
@@ -535,6 +556,7 @@ export async function getRecentMatches(
       const pls = toNumber(ps.legshots);
       const pScore = toNumber(ps.score);
       const totalShots = phs + pbs + pls;
+      const pPuuid = toString(p.puuid, "");
       const pAssets = asRecord(asRecord(p.assets ?? {}).agent ?? {});
       const pAgent = asRecord(p.agent ?? {});
       const pAgentNested = asRecord(pAgent.assets ?? {});
@@ -567,7 +589,6 @@ export async function getRecentMatches(
           pAccount.displayName
         )
       );
-      const pPuuid = toString(p.puuid, "");
       const localName = firstString(p.name, p.game_name, p.gameName, pAccount.name, pAccount.game_name, riotId.name);
       const localTag = firstString(p.tag, p.game_tag, p.tagLine, p.tag_line, pAccount.tag, pAccount.tagLine, riotId.tag);
       const localCardIcon = getPlayerCardIcon(p);
@@ -576,21 +597,26 @@ export async function getRecentMatches(
       const fallbackCard = asRecord(accountFallback?.card);
       const pName = localName || firstString(accountFallback?.name, accountFallback?.game_name);
       const pTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
+      const isPrivate = !pName;
       const pCardIcon = localCardIcon || firstString(fallbackCard.small, fallbackCard.wide, fallbackCard.large);
       const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
+      const fallbackRank = pTierId > 0 ? null : await getScoreboardRankByPuuid(pPuuid, region).catch(() => null);
+      const finalTierId = pTierId || fallbackRank?.tierId || 0;
+      const finalTierName = pTierId > 0 ? toString(pTier.name, "Unranked") : fallbackRank?.tierName ?? "Unranked";
       return {
         puuid: pPuuid,
-        name: pName,
-        tag: pTag,
+        name: isPrivate ? "비공개" : pName,
+        tag: isPrivate ? "" : pTag,
+        isPrivate,
         teamId: pTeamId,
         level: toNumber(p.level ?? p.account_level, -1) >= 0 ? toNumber(p.level ?? p.account_level) : null,
-        cardIcon: pCardIcon,
-        agent: pAgentName,
-        agentIcon: pIcon,
-        tierName: toString(pTier.name, "Unranked"),
-        tierId: pTierId,
-        tierIcon: await getRankIconByTier(pTierId),
+        cardIcon: isPrivate ? "" : pCardIcon,
+        agent: isPrivate ? "" : pAgentName,
+        agentIcon: isPrivate ? "" : pIcon,
+        tierName: finalTierName,
+        tierId: finalTierId,
+        tierIcon: fallbackRank?.tierIcon ?? (await getRankIconByTier(finalTierId)),
         acs: totalRounds > 0 ? Math.round(pScore / totalRounds) : 0,
         kills: pk,
         deaths: pd,

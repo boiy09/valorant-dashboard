@@ -165,6 +165,17 @@ function RoundResultIcon({ type }: { type: ReturnType<typeof roundWinType> }) {
   );
 }
 
+function UserPlaceholderIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6 text-[#7b8a96]" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 12.4a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2.1c-4.2 0-7.5 2.1-7.5 4.6V21h15v-1.9c0-2.5-3.3-4.6-7.5-4.6Z"
+      />
+    </svg>
+  );
+}
+
 function ScoreboardTable({ players, myPuuid, label, accent }: {
   players: ScoreboardPlayer[];
   myPuuid: string;
@@ -215,7 +226,11 @@ function ScoreboardTable({ players, myPuuid, label, accent }: {
                 <td className="py-2 pl-3">
                   <div className="flex items-center gap-2">
                     <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-[#2a3540]">
-                      {p.cardIcon ? (
+                      {p.isPrivate ? (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <UserPlaceholderIcon />
+                        </div>
+                      ) : p.cardIcon ? (
                         <img src={p.cardIcon} alt={p.name || p.agent} className="h-full w-full object-cover" />
                       ) : p.agentIcon ? (
                         <img src={p.agentIcon} alt={p.agent} className="h-full w-full object-cover" />
@@ -234,8 +249,8 @@ function ScoreboardTable({ players, myPuuid, label, accent }: {
                         {p.tag && <span className="rounded bg-[#263544] px-1 text-[10px] text-[#b8c6d1]">#{p.tag}</span>}
                       </div>
                       <div className="flex items-center gap-1 text-[10px]">
-                        {p.agentIcon && <img src={p.agentIcon} alt={p.agent} className="h-3 w-3 rounded object-cover" />}
-                        <span className="truncate text-[#8da0ad]">{p.agent}</span>
+                        {!p.isPrivate && p.agentIcon && <img src={p.agentIcon} alt={p.agent} className="h-3 w-3 rounded object-cover" />}
+                        {!p.isPrivate && <span className="truncate text-[#8da0ad]">{p.agent}</span>}
                       </div>
                     </div>
                   </div>

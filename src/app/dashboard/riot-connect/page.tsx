@@ -3,6 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+const RIOT_LOGIN_URL =
+  "https://auth.riotgames.com/authorize" +
+  "?client_id=play-valorant-web-prod" +
+  "&redirect_uri=https://playvalorant.com/opt_in" +
+  "&response_type=token+id_token" +
+  "&scope=account+openid" +
+  "&nonce=1" +
+  "&prompt=login";
+
 export default function RiotConnectPage() {
   const router = useRouter();
   const [url, setUrl] = useState("");
@@ -103,13 +112,13 @@ export default function RiotConnectPage() {
             <div className="pb-6 flex-1">
               <div className="text-white font-semibold text-sm mb-1">아래 버튼을 클릭해 로그인</div>
               <div className="text-[#7b8a96] text-sm leading-relaxed">
-                버튼을 클릭하면 Riot 로그인 페이지가 열립니다. 아이디와 비밀번호를 입력해 로그인하세요.
+                버튼을 클릭하면 Riot 로그인 페이지가 열립니다. 연동할 서버의 Riot 계정으로 로그인하세요.
               </div>
               <div className="mt-1.5 text-xs text-[#ff4655]/70 bg-[#ff4655]/5 border border-[#ff4655]/20 rounded px-2.5 py-1.5">
-                💡 이미 로그인된 경우 자동으로 다음 페이지로 이동됩니다.
+                💡 이미 다른 Riot 계정으로 로그인되어 있으면 바로 404 페이지로 이동될 수 있습니다. 그 경우 Riot에서 로그아웃하거나 시크릿 창에서 다시 진행하세요.
               </div>
               <a
-                href="https://auth.riotgames.com/authorize?client_id=play-valorant-web-prod&redirect_uri=https://playvalorant.com/opt_in&response_type=token+id_token&scope=account+openid&nonce=1"
+                href={RIOT_LOGIN_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-[#ff4655] hover:bg-[#cc3644] text-white text-xs font-bold rounded transition-colors"
@@ -240,6 +249,10 @@ export default function RiotConnectPage() {
         <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">자주 묻는 질문</div>
         <div className="space-y-3">
           {[
+            {
+              q: "한섭 연동 후 아섭을 연동하려는데 바로 404 페이지가 떠요.",
+              a: "브라우저에 한섭 Riot 로그인 세션이 남아 있어서 그렇습니다. Riot 계정에서 로그아웃한 뒤 다시 열거나, 시크릿 창에서 이 페이지를 열고 AP · 아시아 서버를 선택해 진행하세요.",
+            },
             {
               q: "404 오류 페이지가 뜨는데 맞나요?",
               a: "네, 정상입니다! playvalorant.com/opt_in 페이지는 원래 없는 페이지입니다. 중요한 건 주소창에 있는 URL입니다.",

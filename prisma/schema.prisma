@@ -54,6 +54,7 @@ model RiotAccount {
   tokenExpiresAt    DateTime?
   isVerified        Boolean   @default(false)
   @@index([userId])
+  @@index([region])
   @@unique([userId, region])
 }
 

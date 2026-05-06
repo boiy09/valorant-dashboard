@@ -9,6 +9,13 @@ export default function RiotConnectPage() {
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [riotId, setRiotId] = useState("");
+  const [region, setRegion] = useState<"KR" | "AP" | "">("");
+
+  function regionLabel(value: "KR" | "AP" | "") {
+    if (value === "KR") return "한국 서버";
+    if (value === "AP") return "아시아 서버";
+    return "";
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,13 +28,15 @@ export default function RiotConnectPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
       });
-      const data = await res.json() as { error?: string; account?: { riotId: string } };
+      const data = await res.json() as { error?: string; account?: { riotId: string; region: "KR" | "AP" } };
 
       if (!res.ok) {
         setErrorMsg(data.error ?? "연동에 실패했습니다.");
         setState("error");
       } else {
         setRiotId(data.account?.riotId ?? "");
+        setRegion(data.account?.region ?? "");
+        window.dispatchEvent(new Event("riot-accounts-updated"));
         setState("success");
       }
     } catch {
@@ -44,6 +53,11 @@ export default function RiotConnectPage() {
           <div className="text-white text-xl font-bold mb-2">연동 완료!</div>
           <div className="text-[#7b8a96] text-sm mb-1">성공적으로 연결된 계정:</div>
           <div className="text-[#ff4655] font-bold text-lg mb-6">{riotId}</div>
+          {region && (
+            <div className="text-green-400 text-xs font-bold mb-6">
+              {region} · {regionLabel(region)}
+            </div>
+          )}
           <button
             onClick={() => router.push("/dashboard")}
             className="val-btn bg-[#ff4655] text-white font-bold px-8 py-2.5 text-sm"
@@ -135,7 +149,7 @@ export default function RiotConnectPage() {
             <div className="pb-0 flex-1">
               <div className="text-white font-semibold text-sm mb-1">아래 입력창에 붙여넣기</div>
               <div className="text-[#7b8a96] text-sm leading-relaxed">
-                복사한 URL을 아래 입력창에 붙여넣고 <span className="text-white font-medium">'연동하기'</span> 버튼을 클릭하세요.
+                복사한 URL을 아래 입력창에 붙여넣고 <span className="text-white font-medium">연동하기</span> 버튼을 클릭하세요.
               </div>
             </div>
           </div>

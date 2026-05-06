@@ -35,6 +35,10 @@ function normalizeRegion(raw: string): "KR" | "AP" {
   return raw.toLowerCase() === "ap" ? "AP" : "KR";
 }
 
+function regionLabel(region: "KR" | "AP") {
+  return region === "KR" ? "한국 서버" : "아시아 서버";
+}
+
 // URL 해시에서 access_token, id_token 추출
 function parseTokensFromUrl(input: string): { accessToken: string; idToken: string } | null {
   try {
@@ -121,6 +125,15 @@ export async function POST(req: NextRequest) {
     const existing = await prisma.riotAccount.findFirst({ where: { userId: user.id, region } });
 
     let account;
+    if (existing && existing.puuid !== tokens.puuid) {
+      return Response.json(
+        {
+          error: `${regionLabel(region)} 계정은 이미 연결되어 있습니다. 다른 계정으로 바꾸려면 먼저 기존 계정을 해제해 주세요.`,
+        },
+        { status: 400 }
+      );
+    }
+
     if (existing) {
       account = await prisma.riotAccount.update({
         where: { id: existing.id },

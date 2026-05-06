@@ -43,7 +43,6 @@ export interface ScoreboardPlayer {
   cardIcon: string;
   agent: string;
   agentIcon: string;
-  cardIcon: string;
   tierName: string;
   tierId: number;
   tierIcon: string | null;

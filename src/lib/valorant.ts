@@ -550,7 +550,7 @@ export async function getRecentMatches(
             startedAt: m.startedAt,
             gameLengthMs: m.gameLengthMs,
             totalRounds: (m.teamScore ?? 0) + (m.enemyScore ?? 0),
-            players: m.players,
+            players: m.players as ScoreboardPlayer[],
             teams: (() => {
               const myTeamId = m.players.find(p => p.name === gameName && p.tag === tagLine)?.teamId ?? "";
               const teamIds = [...new Set(m.players.map(p => p.teamId))];

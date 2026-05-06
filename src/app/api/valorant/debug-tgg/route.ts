@@ -23,7 +23,9 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    const res = await fetch(url, { headers, cache: "no-store", signal: AbortSignal.timeout(10000) });
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 10000);
+    const res = await fetch(url, { headers, cache: "no-store", signal: ac.signal });
     const status = res.status;
     const text = await res.text();
 

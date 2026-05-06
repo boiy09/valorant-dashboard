@@ -275,7 +275,7 @@ export async function getTrackerMatchHistory(
     const res = await fetch(url, {
       headers: getBrowserHeaders(),
       cache: "no-store",
-      signal: AbortSignal.timeout(10000),
+      signal: (() => { const c = new AbortController(); setTimeout(() => c.abort(), 10000); return c.signal; })(),
     });
 
     if (!res.ok) return null;

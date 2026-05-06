@@ -323,8 +323,10 @@ async function getAccountByPuuid(puuid: string) {
   if (!puuid) return null;
   const key = `account:puuid:${puuid}`;
   const { data } = await apiCache.getOrFetch(key, TTL.MEDIUM, async () => {
-    const response = await henrikClient.get(`/v1/by-puuid/account/${puuid}`);
-    return response.data?.data ?? null;
+    const response = await henrikClient.get(`/v2/by-puuid/account/${puuid}`).catch(() =>
+      henrikClient.get(`/v1/by-puuid/account/${puuid}`).catch(() => null)
+    );
+    return response?.data?.data ?? null;
   });
   return asRecord(data);
 }
@@ -665,7 +667,10 @@ export async function getRecentMatches(
       const fallbackCard = asRecord(accountFallback?.card);
       const pName = localName || firstPlayerName(pAgentName, accountFallback?.game_name, accountFallback?.gameName, accountFallback?.name);
       const pTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
-      const isPrivate = !pName;
+      const agentLikeRawName = isAgentName(firstString(p.name, p.game_name, p.gameName), pAgentName);
+      const rawName = firstString(p.game_name, p.gameName, p.name, p.player_name, p.playerName);
+      const isPrivate = !pName && !rawName;
+      const displayName = pName || (agentLikeRawName ? pAgentName : rawName);
       const pCardIcon = localCardIcon || firstString(fallbackCard.small, fallbackCard.wide, fallbackCard.large);
       const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
@@ -674,14 +679,14 @@ export async function getRecentMatches(
       const finalTierName = pTierId > 0 ? toString(pTier.name, "Unranked") : fallbackRank?.tierName ?? "Unranked";
       return {
         puuid: pPuuid,
-        name: isPrivate ? "비공개" : pName,
+        name: isPrivate ? "비공개" : displayName,
         tag: isPrivate ? "" : pTag,
         isPrivate,
         teamId: pTeamId,
         level: toNumber(p.level ?? p.account_level, -1) >= 0 ? toNumber(p.level ?? p.account_level) : null,
         cardIcon: isPrivate ? "" : pCardIcon,
-        agent: isPrivate ? "" : pAgentName,
-        agentIcon: isPrivate ? "" : pIcon,
+        agent: pAgentName,
+        agentIcon: pIcon,
         tierName: finalTierName,
         tierId: finalTierId,
         tierIcon: fallbackRank?.tierIcon ?? (await getRankIconByTier(finalTierId)),

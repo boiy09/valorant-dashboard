@@ -288,11 +288,13 @@ function getPlayerCardIcon(player: Record<string, unknown>) {
   const card = asRecord(player.card ?? player.player_card ?? assets.card);
   const account = asRecord(player.account);
   const accountCard = asRecord(account.card);
+  const customization = asRecord(player.customization);
   const cardId = firstString(
     player.player_card,
     player.playerCard,
     player.player_card_id,
     player.playerCardId,
+    customization.card,
     card.id,
     card.uuid,
     account.card

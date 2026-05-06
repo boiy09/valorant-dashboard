@@ -209,25 +209,7 @@ export async function getTrackerAgents(
 // 내부 API — 매치 히스토리 (비공식)
 // ─────────────────────────────────────────
 
-export interface TggMatchPlayer {
-  puuid: string;
-  name: string;
-  tag: string;
-  teamId: string;
-  agent: string;
-  agentIcon: string;
-  cardIcon: string;
-  tierName: string;
-  tierId: number;
-  acs: number;
-  kills: number;
-  deaths: number;
-  assists: number;
-  plusMinus: number;
-  kd: number;
-  hsPercent: number;
-  adr: number | null;
-}
+import type { ScoreboardPlayer } from "@/lib/valorant";
 
 export interface TggMatch {
   matchId: string;
@@ -243,7 +225,7 @@ export interface TggMatch {
   agentIcon: string;
   teamScore: number | null;
   enemyScore: number | null;
-  players: TggMatchPlayer[];
+  players: ScoreboardPlayer[];
 }
 
 function tggStatVal(stat: unknown): number {
@@ -307,7 +289,7 @@ export async function getTrackerMatchHistory(
 
       // 전체 플레이어 세그먼트
       const playerSegs = segments.filter((s: unknown) => (s as Record<string, unknown>).type === "player");
-      const players: TggMatchPlayer[] = playerSegs.map((s: unknown) => {
+      const players: ScoreboardPlayer[] = playerSegs.map((s: unknown) => {
         const seg = s as Record<string, unknown>;
         const st = seg.stats as Record<string, unknown> | undefined;
         const mt = seg.metadata as Record<string, unknown> | undefined;
@@ -322,12 +304,15 @@ export async function getTrackerMatchHistory(
           puuid: String(at?.puuid ?? playerId),
           name: pName,
           tag: pTag,
+          isPrivate: !pName,
+          level: null,
           teamId: String(mt?.teamId ?? at?.teamId ?? ""),
           agent: tggStr(st?.characterName ?? mt?.characterName) || String(mt?.agentName ?? ""),
           agentIcon: String(mt?.agentImageUrl ?? mt?.characterImageUrl ?? ""),
           cardIcon: String(mt?.cardImageUrl ?? mt?.avatarUrl ?? ""),
           tierName: tggStr(st?.rank) || String(mt?.rankName ?? "Unranked"),
           tierId: Math.round(tggStatVal(st?.rank)),
+          tierIcon: null,
           acs: Math.round(tggStatVal(st?.score) / Math.max(1, Math.round(tggStatVal(st?.roundsPlayed)))),
           kills: k,
           deaths: d,

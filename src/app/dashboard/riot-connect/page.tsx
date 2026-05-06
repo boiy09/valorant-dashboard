@@ -10,9 +10,9 @@ const BROWSER_STEPS: Record<Browser, { label: string; steps: { title: string; de
     label: "Chrome",
     steps: [
       {
-        title: "auth.riotgames.com 에서 로그인",
-        desc: "아래 버튼을 클릭해 Riot 로그인 페이지로 이동한 뒤 아이디와 비밀번호를 입력하세요.",
-        hint: "이미 로그인되어 있다면 다음 단계로 넘어가세요.",
+        title: "auth.riotgames.com 방문 (필수!)",
+        desc: "아래 버튼을 클릭해 auth.riotgames.com으로 이동하세요. 로그인이 안 된 경우 로그인하고, 이미 된 경우엔 자동으로 다른 페이지로 이동합니다. ssid 쿠키는 반드시 이 주소를 통해야 생성됩니다.",
+        hint: "account.riotgames.com이 아닌 auth.riotgames.com이어야 합니다.",
       },
       {
         title: "개발자 도구 열기",
@@ -40,9 +40,9 @@ const BROWSER_STEPS: Record<Browser, { label: string; steps: { title: string; de
     label: "Edge",
     steps: [
       {
-        title: "auth.riotgames.com 에서 로그인",
-        desc: "아래 버튼을 클릭해 Riot 로그인 페이지로 이동한 뒤 아이디와 비밀번호를 입력하세요.",
-        hint: "이미 로그인되어 있다면 다음 단계로 넘어가세요.",
+        title: "auth.riotgames.com 방문 (필수!)",
+        desc: "아래 버튼을 클릭해 auth.riotgames.com으로 이동하세요. 로그인이 안 된 경우 로그인하고, 이미 된 경우엔 자동으로 다른 페이지로 이동합니다. ssid 쿠키는 반드시 이 주소를 통해야 생성됩니다.",
+        hint: "account.riotgames.com이 아닌 auth.riotgames.com이어야 합니다.",
       },
       {
         title: "개발자 도구 열기",
@@ -69,9 +69,9 @@ const BROWSER_STEPS: Record<Browser, { label: string; steps: { title: string; de
     label: "Firefox",
     steps: [
       {
-        title: "auth.riotgames.com 에서 로그인",
-        desc: "아래 버튼을 클릭해 Riot 로그인 페이지로 이동한 뒤 아이디와 비밀번호를 입력하세요.",
-        hint: "이미 로그인되어 있다면 다음 단계로 넘어가세요.",
+        title: "auth.riotgames.com 방문 (필수!)",
+        desc: "아래 버튼을 클릭해 auth.riotgames.com으로 이동하세요. 로그인이 안 된 경우 로그인하고, 이미 된 경우엔 자동으로 다른 페이지로 이동합니다. ssid 쿠키는 반드시 이 주소를 통해야 생성됩니다.",
+        hint: "account.riotgames.com이 아닌 auth.riotgames.com이어야 합니다.",
       },
       {
         title: "개발자 도구 열기",
@@ -223,7 +223,7 @@ export default function RiotConnectPage() {
                 {/* Step 1 전용: Riot 로그인 버튼 */}
                 {i === 0 && (
                   <a
-                    href="https://account.riotgames.com"
+                    href="https://auth.riotgames.com"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-[#ff4655] hover:bg-[#cc3644] text-white text-xs font-bold rounded transition-colors"

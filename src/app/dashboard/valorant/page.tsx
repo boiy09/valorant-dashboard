@@ -441,8 +441,8 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                     </div>
                     {sb.rounds.length > 0 && (
                       <div className="bg-[#07131e] px-3 py-4">
-                        <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-1">
-                          <div className="text-right text-sm font-bold text-[#58ffd8]">Team A</div>
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
+                          <div className="whitespace-nowrap text-right text-sm font-bold text-[#58ffd8]">Team A</div>
                           <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
                             {sb.rounds.map((round) => {
                               const isMyRound = round.winningTeamId === myTeamId;
@@ -460,7 +460,7 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                               );
                             })}
                           </div>
-                          <div className="text-right text-sm font-bold text-[#ff5f75]">Team B</div>
+                          <div className="whitespace-nowrap text-right text-sm font-bold text-[#ff5f75]">Team B</div>
                           <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
                             {sb.rounds.map((round) => {
                               const isEnemyRound = round.winningTeamId && round.winningTeamId !== myTeamId;
@@ -478,7 +478,7 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                               );
                             })}
                           </div>
-                          <div />
+                          <div className="whitespace-nowrap" />
                           <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
                             {sb.rounds.map((round) => (
                               <div key={`${match.matchId}-num-${round.round}`} className="flex h-4 min-w-0 items-center justify-center text-[9px] text-[#8da0ad]">

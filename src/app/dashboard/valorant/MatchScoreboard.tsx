@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface PlayerRow {
   puuid: string;
@@ -221,18 +222,6 @@ export default function MatchScoreboard({
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (!open) {
-    return (
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-        className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-[#7b8a96] hover:text-white border border-[#2a3540] hover:border-[#ff4655] px-3 py-1.5 rounded transition-colors"
-      >
-        <span>📊</span>
-        <span>전체 스코어보드</span>
-      </button>
-    );
-  }
-
   const myTeamId = data?.players.find((p) => p.puuid === myPuuid)?.teamId;
   const teamA = data?.teams.find((t) => t.teamId === myTeamId);
   const teamB = data?.teams.find((t) => t.teamId !== myTeamId);
@@ -249,90 +238,92 @@ export default function MatchScoreboard({
         <span>전체 스코어보드</span>
       </button>
 
-      {/* Overlay */}
-      <div
-        ref={overlayRef}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-        onClick={(e) => { if (e.target === overlayRef.current) setOpen(false); }}
-      >
-        <div className="bg-[#111c24] border border-[#2a3540] rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-          {/* 헤더 */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#2a3540] flex-shrink-0">
-            <div className="flex items-center gap-4">
-              <div>
-                <div className="text-[#ff4655] text-[10px] tracking-widest uppercase">
-                  {data?.mode ?? "매치"}
+      {open && createPortal(
+        <div
+          ref={overlayRef}
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === overlayRef.current) setOpen(false); }}
+        >
+          <div className="bg-[#111c24] border border-[#2a3540] rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#2a3540] flex-shrink-0">
+              <div className="flex items-center gap-4">
+                <div>
+                  <div className="text-[#ff4655] text-[10px] tracking-widest uppercase">
+                    {data?.mode ?? "매치"}
+                  </div>
+                  <div className="text-white font-black text-lg">{data?.map ?? "..."}</div>
                 </div>
-                <div className="text-white font-black text-lg">{data?.map ?? "..."}</div>
+                {data && (
+                  <>
+                    <div className="flex items-center gap-2 text-2xl font-black">
+                      <span className={teamA?.won ? "text-green-400" : "text-[#ff4655]"}>
+                        {teamA?.roundsWon ?? 0}
+                      </span>
+                      <span className="text-[#2a3540]">:</span>
+                      <span className={teamB?.won ? "text-green-400" : "text-[#ff4655]"}>
+                        {teamB?.roundsWon ?? 0}
+                      </span>
+                    </div>
+                    <div className="text-[#7b8a96] text-xs space-y-0.5">
+                      <div>{fmtDate(data.startedAt)}</div>
+                      <div>{fmtDuration(data.gameLengthMs)}</div>
+                    </div>
+                  </>
+                )}
               </div>
-              {data && (
-                <>
-                  <div className="flex items-center gap-2 text-2xl font-black">
-                    <span className={teamA?.won ? "text-green-400" : "text-[#ff4655]"}>
-                      {teamA?.roundsWon ?? 0}
-                    </span>
-                    <span className="text-[#2a3540]">:</span>
-                    <span className={teamB?.won ? "text-green-400" : "text-[#ff4655]"}>
-                      {teamB?.roundsWon ?? 0}
-                    </span>
+              <button
+                onClick={() => setOpen(false)}
+                className="text-[#7b8a96] hover:text-white text-xl w-8 h-8 flex items-center justify-center rounded transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 본문 */}
+            <div className="overflow-y-auto flex-1">
+              {loading && (
+                <div className="flex items-center justify-center gap-3 py-16 text-[#7b8a96]">
+                  <div className="w-4 h-4 border-2 border-[#ff4655] border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">스코어보드 불러오는 중...</span>
+                </div>
+              )}
+
+              {error && (
+                <div className="px-5 py-8 text-center text-[#ff4655] text-sm">{error}</div>
+              )}
+
+              {data && !loading && (
+                <div>
+                  {/* 내 팀 */}
+                  <div className="px-5 pt-4 pb-1">
+                    <div className={`text-xs font-bold tracking-widest uppercase mb-2 ${
+                      result === "승리" ? "text-green-400" : result === "패배" ? "text-[#ff4655]" : "text-[#7b8a96]"
+                    }`}>
+                      {result === "승리" ? "승리 팀 (내 팀)" : result === "패배" ? "패배 팀 (내 팀)" : "내 팀"} · {teamA?.roundsWon}라운드
+                    </div>
                   </div>
-                  <div className="text-[#7b8a96] text-xs space-y-0.5">
-                    <div>{fmtDate(data.startedAt)}</div>
-                    <div>{fmtDuration(data.gameLengthMs)}</div>
+                  <PlayerTable players={myTeamPlayers} myPuuid={myPuuid} teamColor={result === "승리" ? "green" : "red"} />
+
+                  {/* 구분선 */}
+                  <div className="mx-5 my-2 border-t-2 border-[#2a3540]" />
+
+                  {/* 상대 팀 */}
+                  <div className="px-5 pt-1 pb-1">
+                    <div className={`text-xs font-bold tracking-widest uppercase mb-2 ${
+                      result === "패배" ? "text-green-400" : result === "승리" ? "text-[#ff4655]" : "text-[#7b8a96]"
+                    }`}>
+                      {result === "패배" ? "승리 팀 (상대)" : result === "승리" ? "패배 팀 (상대)" : "상대 팀"} · {teamB?.roundsWon}라운드
+                    </div>
                   </div>
-                </>
+                  <PlayerTable players={enemyTeamPlayers} myPuuid={myPuuid} teamColor={result === "패배" ? "green" : "red"} />
+                </div>
               )}
             </div>
-            <button
-              onClick={() => setOpen(false)}
-              className="text-[#7b8a96] hover:text-white text-xl w-8 h-8 flex items-center justify-center rounded transition-colors"
-            >
-              ✕
-            </button>
           </div>
-
-          {/* 본문 */}
-          <div className="overflow-y-auto flex-1">
-            {loading && (
-              <div className="flex items-center justify-center gap-3 py-16 text-[#7b8a96]">
-                <div className="w-4 h-4 border-2 border-[#ff4655] border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">스코어보드 불러오는 중...</span>
-              </div>
-            )}
-
-            {error && (
-              <div className="px-5 py-8 text-center text-[#ff4655] text-sm">{error}</div>
-            )}
-
-            {data && !loading && (
-              <div>
-                {/* 내 팀 */}
-                <div className="px-5 pt-4 pb-1">
-                  <div className={`text-xs font-bold tracking-widest uppercase mb-2 ${
-                    result === "승리" ? "text-green-400" : result === "패배" ? "text-[#ff4655]" : "text-[#7b8a96]"
-                  }`}>
-                    {result === "승리" ? "승리 팀 (내 팀)" : result === "패배" ? "패배 팀 (내 팀)" : "내 팀"} · {teamA?.roundsWon}라운드
-                  </div>
-                </div>
-                <PlayerTable players={myTeamPlayers} myPuuid={myPuuid} teamColor={result === "승리" ? "green" : "red"} />
-
-                {/* 구분선 */}
-                <div className="mx-5 my-2 border-t-2 border-[#2a3540]" />
-
-                {/* 상대 팀 */}
-                <div className="px-5 pt-1 pb-1">
-                  <div className={`text-xs font-bold tracking-widest uppercase mb-2 ${
-                    result === "패배" ? "text-green-400" : result === "승리" ? "text-[#ff4655]" : "text-[#7b8a96]"
-                  }`}>
-                    {result === "패배" ? "승리 팀 (상대)" : result === "승리" ? "패배 팀 (상대)" : "상대 팀"} · {teamB?.roundsWon}라운드
-                  </div>
-                </div>
-                <PlayerTable players={enemyTeamPlayers} myPuuid={myPuuid} teamColor={result === "패배" ? "green" : "red"} />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+        </div>,
+        document.body
+      )}
     </>
   );
 }

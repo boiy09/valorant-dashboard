@@ -216,25 +216,28 @@ function RegionSection({ data }: { data: RegionStats }) {
   const trackerUrl = buildTrackerUrl(data.riotId);
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <div className="text-[#ff4655] text-[10px] tracking-[0.2em] uppercase mb-0.5">
-            {data.region} · {REGION_LABELS[data.region]}
+    <section className="bg-[#0a1520] border border-[#2a3540] rounded-xl p-5 min-w-0">
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#2a3540]">
+        <div className="flex items-center gap-3">
+          <div className="w-1 h-8 rounded-full bg-[#ff4655] flex-shrink-0" />
+          <div>
+            <div className="text-[#ff4655] text-[10px] tracking-[0.2em] uppercase mb-0.5">
+              {data.region} · {REGION_LABELS[data.region]}
+            </div>
+            <h2 className="text-lg font-black text-white">{data.riotId}</h2>
           </div>
-          <h2 className="text-xl font-black text-white">{data.riotId}</h2>
         </div>
         <a
           href={trackerUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[#7b8a96] text-xs hover:text-[#ff4655] transition-colors"
+          className="text-[#7b8a96] text-xs hover:text-[#ff4655] transition-colors flex-shrink-0"
         >
-          tracker.gg 경쟁전 보기
+          tracker.gg
         </a>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="val-card p-5 col-span-2">
           <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">현재 랭크</div>
           {data.rank ? (

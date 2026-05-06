@@ -121,6 +121,7 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                   : match.result === "패배"
                     ? "#ff4655"
                     : "#52525b",
+              overflow: "visible",
             }}
           >
             <summary className="flex cursor-pointer list-none items-center gap-4 px-5 py-3">

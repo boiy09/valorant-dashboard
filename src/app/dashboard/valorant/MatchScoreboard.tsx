@@ -195,10 +195,13 @@ export default function MatchScoreboard({
   result: "승리" | "패배" | "무효";
 }) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<MatchDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!open || data || loading) return;
@@ -238,7 +241,7 @@ export default function MatchScoreboard({
         <span>전체 스코어보드</span>
       </button>
 
-      {open && createPortal(
+      {open && mounted && createPortal(
         <div
           ref={overlayRef}
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"

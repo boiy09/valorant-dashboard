@@ -209,7 +209,28 @@ export async function getTrackerAgents(
 // 내부 API — 매치 히스토리 (비공식)
 // ─────────────────────────────────────────
 
-import type { ScoreboardPlayer } from "@/lib/valorant";
+interface ScoreboardPlayer {
+  puuid: string;
+  name: string;
+  tag: string;
+  isPrivate: boolean;
+  teamId: string;
+  level: number | null;
+  cardIcon: string;
+  agent: string;
+  agentIcon: string;
+  tierName: string;
+  tierId: number;
+  tierIcon: string | null;
+  acs: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  plusMinus: number;
+  kd: number;
+  hsPercent: number;
+  adr: number | null;
+}
 
 export interface TggMatch {
   matchId: string;

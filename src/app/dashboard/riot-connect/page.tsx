@@ -3,108 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Browser = "chrome" | "firefox" | "edge";
-
-const BROWSER_STEPS: Record<Browser, { label: string; steps: { title: string; desc: string; hint?: string }[] }> = {
-  chrome: {
-    label: "Chrome",
-    steps: [
-      {
-        title: "Riot 로그인 플로우 실행 (필수!)",
-        desc: "아래 버튼을 클릭하세요. 로그인 페이지가 나오면 아이디/비밀번호를 입력하고, 이미 로그인된 경우 playvalorant.com으로 자동 이동합니다. 이 과정에서 ssid 쿠키가 생성됩니다.",
-        hint: "playvalorant.com으로 이동해도 정상입니다. 그 후 개발자 도구에서 ssid를 찾으세요.",
-      },
-      {
-        title: "개발자 도구 열기",
-        desc: "키보드에서 F12 를 누르거나, 페이지 빈 곳에서 마우스 오른쪽 클릭 → '검사' 를 선택하세요.",
-        hint: "화면 오른쪽 또는 하단에 개발자 도구 창이 열립니다.",
-      },
-      {
-        title: "Application 탭 클릭",
-        desc: "개발자 도구 상단 탭 메뉴에서 'Application' 탭을 클릭하세요.",
-        hint: "탭이 보이지 않으면 탭 오른쪽 끝의 '>>' 버튼을 눌러 더 보기에서 찾으세요.",
-      },
-      {
-        title: "Cookies 펼치기 → auth.riotgames.com 클릭",
-        desc: "왼쪽 사이드바 'Storage' 섹션에서 'Cookies' 왼쪽의 ▶ 화살표를 클릭해 펼치면 'https://auth.riotgames.com' 이 나타납니다. 그것을 클릭하세요.",
-        hint: "Cookies를 클릭하면 아무것도 안 나와요. 반드시 왼쪽 ▶ 화살표를 눌러야 합니다.",
-      },
-      {
-        title: "ssid 쿠키 값 복사",
-        desc: "쿠키 목록에서 'ssid' 항목을 찾아 'Value' 열의 값을 더블클릭해 전체 선택 후 Ctrl+C 로 복사하세요.",
-        hint: "값이 매우 길어도 전체 복사해야 합니다.",
-      },
-    ],
-  },
-  edge: {
-    label: "Edge",
-    steps: [
-      {
-        title: "Riot 로그인 플로우 실행 (필수!)",
-        desc: "아래 버튼을 클릭하세요. 로그인 페이지가 나오면 아이디/비밀번호를 입력하고, 이미 로그인된 경우 playvalorant.com으로 자동 이동합니다. 이 과정에서 ssid 쿠키가 생성됩니다.",
-        hint: "playvalorant.com으로 이동해도 정상입니다. 그 후 개발자 도구에서 ssid를 찾으세요.",
-      },
-      {
-        title: "개발자 도구 열기",
-        desc: "키보드에서 F12 를 누르세요. Edge는 Chrome과 동일한 개발자 도구를 사용합니다.",
-      },
-      {
-        title: "Application 탭 클릭",
-        desc: "상단 탭에서 'Application' 탭을 클릭하세요.",
-        hint: "탭이 보이지 않으면 '>>' 버튼을 눌러 더 보기에서 찾으세요.",
-      },
-      {
-        title: "Cookies 펼치기 → auth.riotgames.com 클릭",
-        desc: "왼쪽 사이드바 'Cookies' 왼쪽의 ▶ 화살표를 클릭해 펼치면 'https://auth.riotgames.com' 이 나타납니다. 그것을 클릭하세요.",
-        hint: "Cookies를 클릭하면 아무것도 안 나와요. 반드시 왼쪽 ▶ 화살표를 눌러야 합니다.",
-      },
-      {
-        title: "ssid 쿠키 값 복사",
-        desc: "목록에서 'ssid' 항목의 'Value' 값을 더블클릭 → 전체 선택 → Ctrl+C 로 복사하세요.",
-        hint: "값이 매우 길어도 전체 복사해야 합니다.",
-      },
-    ],
-  },
-  firefox: {
-    label: "Firefox",
-    steps: [
-      {
-        title: "Riot 로그인 플로우 실행 (필수!)",
-        desc: "아래 버튼을 클릭하세요. 로그인 페이지가 나오면 아이디/비밀번호를 입력하고, 이미 로그인된 경우 playvalorant.com으로 자동 이동합니다. 이 과정에서 ssid 쿠키가 생성됩니다.",
-        hint: "playvalorant.com으로 이동해도 정상입니다. 그 후 개발자 도구에서 ssid를 찾으세요.",
-      },
-      {
-        title: "개발자 도구 열기",
-        desc: "키보드에서 F12 를 누르세요.",
-      },
-      {
-        title: "저장소 탭 클릭",
-        desc: "개발자 도구 상단에서 '저장소 (Storage)' 탭을 클릭하세요.",
-        hint: "영문 Firefox는 'Storage' 탭입니다.",
-      },
-      {
-        title: "쿠키 펼치기 → https://auth.riotgames.com 클릭",
-        desc: "왼쪽 사이드바에서 '쿠키 (Cookies)' 왼쪽의 ▶ 화살표를 클릭해 펼치면 'https://auth.riotgames.com' 이 나타납니다. 그것을 클릭하세요.",
-        hint: "쿠키를 클릭하면 아무것도 안 나와요. 반드시 왼쪽 ▶ 화살표를 눌러야 합니다.",
-      },
-      {
-        title: "ssid 쿠키 값 복사",
-        desc: "목록에서 'ssid' 항목을 클릭하면 아래에 값이 표시됩니다. 값 전체를 드래그 → Ctrl+C 로 복사하세요.",
-        hint: "값이 매우 길어도 전체 복사해야 합니다.",
-      },
-    ],
-  },
-};
-
 export default function RiotConnectPage() {
   const router = useRouter();
-  const [browser, setBrowser] = useState<Browser>("chrome");
-  const [ssid, setSsid] = useState("");
+  const [url, setUrl] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [riotId, setRiotId] = useState("");
-
-  const selected = BROWSER_STEPS[browser];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -112,10 +16,10 @@ export default function RiotConnectPage() {
     setErrorMsg("");
 
     try {
-      const res = await fetch("/api/riot/auth/ssid", {
+      const res = await fetch("/api/riot/auth/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ssid: ssid.trim() }),
+        body: JSON.stringify({ url: url.trim() }),
       });
       const data = await res.json() as { error?: string; account?: { riotId: string } };
 
@@ -159,179 +63,105 @@ export default function RiotConnectPage() {
           <div className="text-[#ff4655] text-xs tracking-widest uppercase">라이엇 계정 연동</div>
           <div className="flex-1 h-px bg-[#2a3540]" />
         </div>
-        <h1 className="text-white text-xl font-bold">쿠키 방식으로 연동하기</h1>
+        <h1 className="text-white text-xl font-bold">비밀번호 없이 연동하기</h1>
         <p className="text-[#7b8a96] text-sm mt-1">
-          비밀번호 없이 안전하게 연동할 수 있습니다. 아래 안내를 따라 ssid 쿠키를 복사해 붙여넣으세요.
+          아래 버튼을 클릭해 로그인한 뒤, 이동된 페이지 주소(URL)를 복사해서 붙여넣으면 끝입니다.
         </p>
         <div className="mt-3 flex gap-4 text-xs text-[#7b8a96]">
           <span className="flex items-center gap-1.5"><span className="text-green-400">✓</span> 비밀번호 전송 없음</span>
-          <span className="flex items-center gap-1.5"><span className="text-green-400">✓</span> 수개월간 유효</span>
-          <span className="flex items-center gap-1.5"><span className="text-green-400">✓</span> Riot 공식 세션 토큰</span>
-        </div>
-      </div>
-
-      {/* 브라우저 선택 */}
-      <div className="val-card p-5">
-        <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">사용 중인 브라우저 선택</div>
-        <div className="flex gap-2">
-          {(["chrome", "edge", "firefox"] as Browser[]).map((b) => (
-            <button
-              key={b}
-              onClick={() => setBrowser(b)}
-              className={`px-4 py-2 text-sm rounded border transition-colors ${
-                browser === b
-                  ? "border-[#ff4655] bg-[#ff4655]/10 text-white font-bold"
-                  : "border-[#2a3540] text-[#7b8a96] hover:border-[#7b8a96]"
-              }`}
-            >
-              {BROWSER_STEPS[b].label}
-            </button>
-          ))}
+          <span className="flex items-center gap-1.5"><span className="text-green-400">✓</span> 개발자 도구 불필요</span>
+          <span className="flex items-center gap-1.5"><span className="text-green-400">✓</span> 3단계로 완료</span>
         </div>
       </div>
 
       {/* 단계별 가이드 */}
       <div className="val-card p-5">
-        <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-4">단계별 안내 ({selected.label})</div>
+        <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-4">단계별 안내</div>
 
         <div className="space-y-0">
-          {selected.steps.map((step, i) => (
-            <div key={i} className="flex gap-4">
-              {/* 스텝 번호 + 연결선 */}
-              <div className="flex flex-col items-center flex-shrink-0">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 ${
-                  i === 0 ? "border-[#ff4655] bg-[#ff4655]/10 text-[#ff4655]"
-                  : "border-[#2a3540] bg-[#0f1923] text-[#7b8a96]"
-                }`}>
-                  {i + 1}
-                </div>
-                {i < selected.steps.length - 1 && (
-                  <div className="w-px flex-1 bg-[#2a3540] my-1" style={{ minHeight: "24px" }} />
-                )}
+          {/* Step 1 */}
+          <div className="flex gap-4">
+            <div className="flex flex-col items-center flex-shrink-0">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 border-[#ff4655] bg-[#ff4655]/10 text-[#ff4655]">1</div>
+              <div className="w-px flex-1 bg-[#2a3540] my-1" style={{ minHeight: "24px" }} />
+            </div>
+            <div className="pb-6 flex-1">
+              <div className="text-white font-semibold text-sm mb-1">아래 버튼을 클릭해 로그인</div>
+              <div className="text-[#7b8a96] text-sm leading-relaxed">
+                버튼을 클릭하면 Riot 로그인 페이지가 열립니다. 아이디와 비밀번호를 입력해 로그인하세요.
               </div>
+              <div className="mt-1.5 text-xs text-[#ff4655]/70 bg-[#ff4655]/5 border border-[#ff4655]/20 rounded px-2.5 py-1.5">
+                💡 이미 로그인된 경우 자동으로 다음 페이지로 이동됩니다.
+              </div>
+              <a
+                href="https://auth.riotgames.com/authorize?client_id=play-valorant-web-prod&redirect_uri=https://playvalorant.com/opt_in&response_type=token+id_token&scope=account+openid&nonce=1"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-[#ff4655] hover:bg-[#cc3644] text-white text-xs font-bold rounded transition-colors"
+              >
+                🔗 Riot 로그인 페이지 열기
+              </a>
+            </div>
+          </div>
 
-              {/* 내용 */}
-              <div className={`pb-6 flex-1 ${i === selected.steps.length - 1 ? "pb-0" : ""}`}>
-                <div className="text-white font-semibold text-sm mb-1">{step.title}</div>
-                <div className="text-[#7b8a96] text-sm leading-relaxed">{step.desc}</div>
-                {step.hint && (
-                  <div className="mt-1.5 text-xs text-[#ff4655]/70 bg-[#ff4655]/5 border border-[#ff4655]/20 rounded px-2.5 py-1.5">
-                    💡 {step.hint}
-                  </div>
-                )}
-
-                {/* Step 1 전용: Riot 로그인 버튼 */}
-                {i === 0 && (
-                  <a
-                    href="https://auth.riotgames.com/authorize?client_id=play-valorant-web-prod&redirect_uri=https://playvalorant.com/opt_in&response_type=token+id_token&scope=account+openid&nonce=1"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-[#ff4655] hover:bg-[#cc3644] text-white text-xs font-bold rounded transition-colors"
-                  >
-                    🔗 Riot 로그인 페이지 열기
-                  </a>
-                )}
-
-                {/* Step 2 전용: 단축키 표시 */}
-                {i === 1 && (
-                  <div className="mt-2 flex gap-2 flex-wrap">
-                    <span className="px-3 py-1 bg-[#0f1923] border border-[#2a3540] rounded text-white text-xs font-mono">F12</span>
-                    <span className="text-[#7b8a96] text-xs self-center">또는</span>
-                    <span className="px-3 py-1 bg-[#0f1923] border border-[#2a3540] rounded text-white text-xs font-mono">Ctrl + Shift + I</span>
-                    {browser === "firefox" && (
-                      <>
-                        <span className="text-[#7b8a96] text-xs self-center">또는</span>
-                        <span className="px-3 py-1 bg-[#0f1923] border border-[#2a3540] rounded text-white text-xs font-mono">Ctrl + Shift + E</span>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Step 3 전용: 탭 시각화 */}
-                {i === 2 && (
-                  <div className="mt-2 flex gap-1 overflow-x-auto">
-                    {(browser === "firefox"
-                      ? ["검사기", "콘솔", "디버거", "네트워크", "저장소 ◀", "접근성", "성능"]
-                      : ["Elements", "Console", "Sources", "Network", browser === "chrome" || browser === "edge" ? "Application ◀" : "Application ◀", "Performance"]
-                    ).map((tab) => (
-                      <span
-                        key={tab}
-                        className={`px-2.5 py-1 text-xs rounded-t border whitespace-nowrap ${
-                          tab.includes("◀")
-                            ? "border-[#ff4655] bg-[#ff4655]/10 text-[#ff4655] font-bold"
-                            : "border-[#2a3540] text-[#7b8a96]"
-                        }`}
-                      >
-                        {tab.replace(" ◀", "")}
-                        {tab.includes("◀") && <span className="ml-1 text-[#ff4655]">◀</span>}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Step 4 전용: 사이드바 시각화 (실제 Chrome DevTools 구조) */}
-                {i === 3 && (
-                  <div className="mt-2 bg-[#242424] border border-[#3a3a3a] rounded p-3 text-xs font-mono w-72 text-[#d4d4d4]">
-                    <div className="text-[#9cdcfe] mb-1">Storage</div>
-                    <div className="ml-2 text-[#9cdcfe]">▸ Local storage</div>
-                    <div className="ml-2 text-[#9cdcfe]">▸ Session storage</div>
-                    <div className="ml-2 text-[#9cdcfe]">▸ IndexedDB</div>
-                    <div className="ml-2 flex items-center gap-1 text-[#9cdcfe] font-bold">
-                      <span>▾ Cookies</span>
-                      <span className="text-[#ff4655] text-[10px] ml-1">← 화살표 클릭</span>
-                    </div>
-                    <div className="ml-5 bg-[#ff4655]/20 border border-[#ff4655]/50 rounded px-2 py-0.5 text-[#ff4655] font-bold">
-                      https://auth.riotgames.com ◀ 클릭!
-                    </div>
-                    <div className="ml-2 text-[#9cdcfe] mt-1">▸ Private state tokens</div>
-                  </div>
-                )}
-
-                {/* Step 5 전용: 쿠키 테이블 시각화 */}
-                {i === 4 && (
-                  <div className="mt-2 bg-[#0f1923] border border-[#2a3540] rounded overflow-hidden text-xs font-mono">
-                    <div className="grid grid-cols-3 bg-[#1a242d] text-[#7b8a96] px-3 py-1.5 border-b border-[#2a3540]">
-                      <span>Name</span><span>Value</span><span>Domain</span>
-                    </div>
-                    <div className="grid grid-cols-3 px-3 py-1.5 text-[#7b8a96] border-b border-[#2a3540]">
-                      <span>asid</span><span className="truncate">eyJ...</span><span>.riotgames.com</span>
-                    </div>
-                    <div className="grid grid-cols-3 px-3 py-1.5 bg-[#ff4655]/10 border border-[#ff4655]/30 text-white">
-                      <span className="font-bold text-[#ff4655]">ssid</span>
-                      <span className="truncate text-[#ff4655]">eyJh... ◀ 복사!</span>
-                      <span>.riotgames.com</span>
-                    </div>
-                    <div className="grid grid-cols-3 px-3 py-1.5 text-[#7b8a96]">
-                      <span>clid</span><span className="truncate">riot...</span><span>.riotgames.com</span>
-                    </div>
-                  </div>
-                )}
+          {/* Step 2 */}
+          <div className="flex gap-4">
+            <div className="flex flex-col items-center flex-shrink-0">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 border-[#2a3540] bg-[#0f1923] text-[#7b8a96]">2</div>
+              <div className="w-px flex-1 bg-[#2a3540] my-1" style={{ minHeight: "24px" }} />
+            </div>
+            <div className="pb-6 flex-1">
+              <div className="text-white font-semibold text-sm mb-1">이동된 페이지 주소 전체 복사</div>
+              <div className="text-[#7b8a96] text-sm leading-relaxed">
+                로그인 후 <span className="text-white font-medium">playvalorant.com</span> 페이지로 이동됩니다 (404 오류 화면이 뜨는 게 정상입니다). 브라우저 주소창의 URL 전체를 클릭 후 <span className="text-white font-medium">Ctrl+A → Ctrl+C</span> 로 복사하세요.
+              </div>
+              <div className="mt-1.5 text-xs text-[#ff4655]/70 bg-[#ff4655]/5 border border-[#ff4655]/20 rounded px-2.5 py-1.5">
+                💡 404 오류가 뜨는 게 정상입니다! URL이 매우 길어도 전체 복사해야 합니다.
+              </div>
+              {/* URL 시각화 */}
+              <div className="mt-3 bg-[#0f1923] border border-[#2a3540] rounded px-3 py-2 text-[11px] font-mono text-[#7b8a96] overflow-hidden">
+                <span className="text-[#7b8a96]">https://playvalorant.com/ko-kr/opt_in/</span>
+                <span className="text-[#ff4655] font-bold">#access_token=eyJ...</span>
+                <span className="text-[#7b8a96]">&id_token=eyJ...</span>
               </div>
             </div>
-          ))}
+          </div>
+
+          {/* Step 3 */}
+          <div className="flex gap-4">
+            <div className="flex flex-col items-center flex-shrink-0">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 border-[#2a3540] bg-[#0f1923] text-[#7b8a96]">3</div>
+            </div>
+            <div className="pb-0 flex-1">
+              <div className="text-white font-semibold text-sm mb-1">아래 입력창에 붙여넣기</div>
+              <div className="text-[#7b8a96] text-sm leading-relaxed">
+                복사한 URL을 아래 입력창에 붙여넣고 <span className="text-white font-medium">'연동하기'</span> 버튼을 클릭하세요.
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ssid 입력 폼 */}
+      {/* URL 입력 폼 */}
       <div className="val-card p-5">
-        <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">복사한 ssid 붙여넣기</div>
+        <div className="text-[#7b8a96] text-xs tracking-widests uppercase mb-3">복사한 URL 붙여넣기</div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="text-white text-sm font-medium block mb-1.5">
-              ssid 쿠키 값
+              playvalorant.com URL
             </label>
             <textarea
-              value={ssid}
-              onChange={(e) => { setSsid(e.target.value); setState("idle"); }}
-              placeholder="복사한 ssid 값을 여기에 붙여넣으세요 (Ctrl+V)"
-              rows={3}
+              value={url}
+              onChange={(e) => { setUrl(e.target.value); setState("idle"); }}
+              placeholder="https://playvalorant.com/ko-kr/opt_in/#access_token=eyJ... 를 여기에 붙여넣으세요"
+              rows={4}
               className="w-full px-3 py-2.5 text-xs text-white bg-[#0f1923] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655] resize-none font-mono placeholder:text-[#3a4a55]"
               required
               disabled={state === "loading"}
             />
             <div className="mt-1 text-[#7b8a96] text-[11px]">
-              값이 길어도 괜찮아요. eyJh... 로 시작하는 긴 문자열입니다.
+              URL이 매우 길어도 괜찮습니다. 주소창의 내용 전체를 복사해 주세요.
             </div>
           </div>
 
@@ -341,7 +171,7 @@ export default function RiotConnectPage() {
               <div>
                 <div className="text-[#ff4655] text-sm font-medium">{errorMsg}</div>
                 <div className="text-[#ff4655]/70 text-xs mt-0.5">
-                  ssid 값이 만료됐을 수 있어요. Riot에 다시 로그인 후 새 ssid를 복사해 주세요.
+                  주소창의 URL 전체를 복사했는지 확인해 주세요. <strong>https://playvalorant.com</strong>으로 시작해야 합니다.
                 </div>
               </div>
             </div>
@@ -349,7 +179,7 @@ export default function RiotConnectPage() {
 
           <button
             type="submit"
-            disabled={state === "loading" || !ssid.trim()}
+            disabled={state === "loading" || !url.trim()}
             className="w-full val-btn bg-[#ff4655] hover:bg-[#cc3644] text-white font-bold py-2.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {state === "loading" ? (
@@ -370,20 +200,20 @@ export default function RiotConnectPage() {
         <div className="space-y-3">
           {[
             {
+              q: "404 오류 페이지가 뜨는데 맞나요?",
+              a: "네, 정상입니다! playvalorant.com/opt_in 페이지는 원래 없는 페이지입니다. 중요한 건 주소창에 있는 URL입니다.",
+            },
+            {
               q: "비밀번호는 안전한가요?",
-              a: "이 방식은 비밀번호를 전혀 사용하지 않습니다. ssid는 Riot이 발급한 세션 토큰으로, 비밀번호와는 다릅니다.",
+              a: "이 방식은 비밀번호를 저장하거나 전송하지 않습니다. URL에 포함된 임시 인증 토큰만 사용합니다.",
             },
             {
-              q: "Application 탭이 보이지 않아요.",
-              a: "개발자 도구 상단 탭 오른쪽의 '>>' 버튼을 클릭하면 숨겨진 탭들이 나타납니다.",
-            },
-            {
-              q: "ssid가 목록에 없어요.",
-              a: "auth.riotgames.com 에서 로그인 후 1~2초 기다린 뒤 다시 확인해 보세요. 페이지를 새로고침하지 마세요.",
+              q: "URL 전체를 복사하는 방법은?",
+              a: "주소창을 클릭해 전체 선택(Ctrl+A)한 뒤 복사(Ctrl+C)하세요. URL이 매우 길어도 전체 복사해야 합니다.",
             },
             {
               q: "얼마나 자주 다시 연동해야 하나요?",
-              a: "ssid는 수개월간 유효합니다. 만료되면 '인증 필요' 상태로 표시되며, 그때 다시 연동하면 됩니다.",
+              a: "토큰이 만료되면 '인증 필요' 상태로 표시됩니다. 그때 다시 연동 과정을 반복하면 됩니다.",
             },
           ].map(({ q, a }) => (
             <div key={q} className="border-b border-[#2a3540] pb-3 last:border-0 last:pb-0">

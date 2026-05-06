@@ -296,7 +296,7 @@ export default function HeaderRiotLink() {
                     onClick={() => setOpen(false)}
                   >
                     <span>🔑</span>
-                    <span>비밀번호 없이 쿠키로 연동하기</span>
+                    <span>비밀번호 없이 URL로 연동하기</span>
                     <span>→</span>
                   </Link>
                 </div>

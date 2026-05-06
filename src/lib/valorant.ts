@@ -1,5 +1,6 @@
 import axios from "axios";
 import { apiCache, TTL } from "@/lib/apiCache";
+import { getOpGgRankFallback } from "@/lib/opgg";
 
 const henrikClient = axios.create({
   baseURL: "https://api.henrikdev.xyz/valorant",
@@ -238,14 +239,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
-function decodeHtml(value: string) {
-  return value
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#x27;", "'")
-    .replaceAll("&amp;", "&")
-    .replaceAll("\\u0026", "&");
-}
-
 export function parseRiotId(input: string) {
   const [gameName, tagLine] = input.split("#");
   if (!gameName || !tagLine) return null;
@@ -401,42 +394,6 @@ async function getAgentIconByName(agentName: string) {
   );
 
   return typeof agent?.displayIcon === "string" ? agent.displayIcon : "";
-}
-
-async function getOpGgRankFallback(gameName: string, tagLine: string) {
-  const slug = `${gameName}-${tagLine}`;
-  const url = `https://op.gg/ko/valorant/profile/${encodeURIComponent(slug)}`;
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0",
-      Accept: "text/html",
-    },
-    cache: "no-store",
-  });
-  if (!response.ok) return null;
-
-  const html = decodeHtml(await response.text());
-  const currentTierId = Number(html.match(/"competitiveTier":(\d+)/)?.[1] ?? 0);
-  const historyTierId = Number(html.match(/"tierHistories":\[\{"id":\d+,"seasonId":"[^"]+","tierId":(\d+)/)?.[1] ?? 0);
-  const tierId = currentTierId || historyTierId;
-  if (!tierId) return null;
-
-  const tierPattern = new RegExp(
-    `"id":${tierId},"name":"([^"]+)","localizedName":"([^"]+)","division":(\\d+)[^}]*"imageUrl":"([^"]+)"`,
-    "i"
-  );
-  const tierMatch = html.match(tierPattern);
-  if (!tierMatch) return null;
-
-  const [, name, localizedName, division, imageUrl] = tierMatch;
-  const tierName = division === "0" ? localizedName : `${localizedName} ${division}`;
-
-  return {
-    tierId,
-    tierName: tierName || name,
-    rankIcon: imageUrl,
-    isCurrent: currentTierId > 0,
-  };
 }
 
 export async function getPlayerByRiotId(

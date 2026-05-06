@@ -176,6 +176,53 @@ function UserPlaceholderIcon() {
   );
 }
 
+function ScoreboardPortrait({
+  name,
+  agent,
+  cardIcon,
+  agentIcon,
+  level,
+  isPrivate,
+}: {
+  name: string;
+  agent: string;
+  cardIcon: string;
+  agentIcon: string;
+  level: number | null;
+  isPrivate: boolean;
+}) {
+  return (
+    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-[#2a3540] ring-1 ring-white/10">
+      {isPrivate ? (
+        <div className="flex h-full w-full items-center justify-center">
+          <UserPlaceholderIcon />
+        </div>
+      ) : cardIcon ? (
+        <>
+          <img
+            src={cardIcon}
+            alt={name || agent}
+            className="h-full w-full object-cover object-top"
+          />
+          <div className="absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/80 to-transparent" />
+        </>
+      ) : agentIcon ? (
+        <img src={agentIcon} alt={agent} className="h-full w-full object-cover" />
+      ) : null}
+      {!isPrivate && agentIcon && cardIcon && (
+        <span className="absolute right-0.5 top-0.5 rounded bg-black/55 p-[2px]">
+          <img src={agentIcon} alt={agent} className="h-3 w-3 rounded-sm object-cover" />
+        </span>
+      )}
+      {level !== null && (
+        <span className="absolute bottom-0 left-0 rounded-tr bg-black/80 px-1 text-[9px] font-bold text-white">
+          {level}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ScoreboardTable({ players, myPuuid, label, accent }: {
   players: ScoreboardPlayer[];
   myPuuid: string;
@@ -225,22 +272,14 @@ function ScoreboardTable({ players, myPuuid, label, accent }: {
               >
                 <td className="py-2 pl-3">
                   <div className="flex items-center gap-2">
-                    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-[#2a3540]">
-                      {p.isPrivate ? (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <UserPlaceholderIcon />
-                        </div>
-                      ) : p.cardIcon ? (
-                        <img src={p.cardIcon} alt={p.name || p.agent} className="h-full w-full object-cover" />
-                      ) : p.agentIcon ? (
-                        <img src={p.agentIcon} alt={p.agent} className="h-full w-full object-cover" />
-                      ) : null}
-                      {p.level !== null && (
-                        <span className="absolute bottom-0 left-0 rounded-tr bg-black/70 px-1 text-[9px] font-bold text-white">
-                          {p.level}
-                        </span>
-                      )}
-                    </div>
+                    <ScoreboardPortrait
+                      name={p.name}
+                      agent={p.agent}
+                      cardIcon={p.cardIcon}
+                      agentIcon={p.agentIcon}
+                      level={p.level}
+                      isPrivate={p.isPrivate}
+                    />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
                         <span className={`truncate text-sm font-black ${isMe ? "text-[#ff4655]" : "text-white"}`}>

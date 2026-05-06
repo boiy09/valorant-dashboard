@@ -48,6 +48,49 @@ function fmtDate(iso: string) {
   });
 }
 
+function PlayerPortrait({
+  player,
+}: {
+  player: PlayerRow;
+}) {
+  return (
+    <div className="relative h-9 w-9 flex-shrink-0 overflow-hidden rounded bg-[#2a3540] ring-1 ring-white/10">
+      {player.cardIcon ? (
+        <>
+          <img
+            src={player.cardIcon}
+            alt={player.name || player.agent}
+            className="h-full w-full object-cover object-top"
+          />
+          <div className="absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-black/80 to-transparent" />
+        </>
+      ) : player.agentIcon ? (
+        <img
+          src={player.agentIcon}
+          alt={player.agent}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="h-full w-full bg-[#2a3540]" />
+      )}
+      {player.agentIcon && player.cardIcon && (
+        <span className="absolute right-0.5 top-0.5 rounded bg-black/55 p-[2px]">
+          <img
+            src={player.agentIcon}
+            alt={player.agent}
+            className="h-3 w-3 rounded-sm object-cover"
+          />
+        </span>
+      )}
+      {player.level !== null && (
+        <span className="absolute bottom-0 left-0 rounded-tr bg-black/80 px-1 text-[8px] font-bold text-white">
+          {player.level}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function PlayerTable({
   players,
   myPuuid,
@@ -88,15 +131,7 @@ function PlayerTable({
                 {/* 플레이어 */}
                 <td className="py-2 pl-3">
                   <div className="flex items-center gap-2">
-                    {player.agentIcon ? (
-                      <img
-                        src={player.agentIcon}
-                        alt={player.agent}
-                        className="w-7 h-7 rounded flex-shrink-0 object-cover"
-                      />
-                    ) : (
-                      <div className="w-7 h-7 rounded bg-[#2a3540] flex-shrink-0" />
-                    )}
+                    <PlayerPortrait player={player} />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
                         <span className={`font-bold truncate ${isMe ? "text-[#ff4655]" : "text-white"}`}>

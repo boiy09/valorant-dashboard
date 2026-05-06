@@ -335,31 +335,29 @@ export async function getAuthTokens(
 }
 
 export async function refreshTokens(ssid: string): Promise<AuthResult> {
-  // Step 1: 새 쿠키 초기화
-  const init = await step1Init();
-  if ("error" in init) return { status: "error", message: init.error };
-
-  // ssid 쿠키를 병합해서 Step 2 시도 (re-auth without password)
-  const cookiesWithSsid = mergeCookies(init.cookies, ssid);
-
   try {
-    // ssid로 무인증 토큰 재발급 시도
+    // ssid 쿠키를 init POST에 포함 → 유효한 ssid면 즉시 token 반환
     const response = await fetch(AUTH_URL, {
-      method: "GET",
+      method: "POST",
       headers: {
         ...BASE_HEADERS,
-        Cookie: cookiesWithSsid,
+        "Content-Type": "application/json",
+        Cookie: ssid,
       },
+      body: JSON.stringify(AUTH_CLIENT_PAYLOAD),
       cache: "no-store",
     });
 
     if (!response.ok) {
+      console.error(`[riotAuth] refreshTokens 실패 ${response.status}`);
       return { status: "error", message: `토큰 갱신 실패: ${response.status}` };
     }
 
     const newCookies = parseCookies(response);
-    const mergedCookies = mergeCookies(cookiesWithSsid, newCookies);
+    const mergedCookies = mergeCookies(ssid, newCookies);
     const data = await response.json() as Record<string, unknown>;
+
+    console.log(`[riotAuth] refreshTokens 응답 type:`, data.type);
 
     if (data.type === "response") {
       const uri = (data as any)?.response?.parameters?.uri as string | undefined;
@@ -369,7 +367,9 @@ export async function refreshTokens(ssid: string): Promise<AuthResult> {
       return { status: "success", ...tokens, cookies: mergedCookies };
     }
 
-    return { status: "error", message: "세션이 만료되었습니다. 재로그인이 필요합니다." };
+    // type === "auth": ssid 만료 또는 무효
+    console.error(`[riotAuth] refreshTokens 실패 응답:`, JSON.stringify(data).slice(0, 200));
+    return { status: "error", message: "ssid가 만료되었거나 유효하지 않습니다. 다시 로그인 후 복사해 주세요." };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "알 수 없는 오류";
     return { status: "error", message: `네트워크 오류: ${message}` };

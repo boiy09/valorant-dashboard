@@ -183,6 +183,17 @@ function toString(value: unknown, fallback = "정보 없음") {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
+}
+
+function normalizeTeamId(value: unknown) {
+  return toString(value, "").trim().toLowerCase();
+}
+
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
@@ -432,7 +443,17 @@ export async function getRecentMatches(
     const agent = asRecord(me?.agent);
     const agentNestedAssets = asRecord(agent.assets);
     const agentName = toString(me?.agent?.name, "요원 정보 없음");
-    const agentIcon = toString(agentAssets.small ?? agentNestedAssets.small ?? agent.small, "");
+    const agentIcon = firstString(
+      agentAssets.small,
+      agentAssets.displayIcon,
+      agentAssets.fullPortrait,
+      agentNestedAssets.small,
+      agentNestedAssets.displayIcon,
+      agentNestedAssets.fullPortrait,
+      agent.small,
+      agent.displayIcon,
+      agent.fullPortrait
+    );
 
     function teamRoundsWon(t: any): number {
       return toNumber(t.rounds_won ?? asRecord(t.rounds).won ?? t.roundsWon);
@@ -440,19 +461,25 @@ export async function getRecentMatches(
     const totalRounds = teams.reduce((sum: number, t: any) => sum + teamRoundsWon(t), 0);
     const rawRounds = asArray<Record<string, unknown>>(match.rounds);
     const scoreboardRounds = rawRounds.map((round, index) => {
-      const winningTeam = asRecord(round.winning_team ?? round.winningTeam);
+      const winningTeamRaw = round.winning_team ?? round.winningTeam ?? round.winner;
+      const winningTeam = asRecord(winningTeamRaw);
       const result = asRecord(round.result);
       const ceremony = asRecord(round.ceremony);
 
       return {
         round: toNumber(round.round ?? round.round_number ?? round.roundNumber, index + 1),
-        winningTeamId: toString(
-          round.winning_team_id ??
-            round.winningTeamId ??
-            winningTeam.team_id ??
-            winningTeam.teamId ??
+        winningTeamId: normalizeTeamId(
+          firstString(
+            round.winning_team_id,
+            round.winningTeamId,
+            round.winner_team_id,
+            round.winnerTeamId,
+            typeof winningTeamRaw === "string" ? winningTeamRaw : "",
+            winningTeam.team_id,
+            winningTeam.teamId,
             winningTeam.id,
-          ""
+            winningTeam.name
+          )
         ),
         result: toString(result.code ?? result.name ?? round.result_code ?? round.result, ""),
         ceremony: toString(ceremony.code ?? ceremony.name ?? round.ceremony, ""),
@@ -472,11 +499,25 @@ export async function getRecentMatches(
       const pAssets = asRecord(asRecord(p.assets ?? {}).agent ?? {});
       const pAgent = asRecord(p.agent ?? {});
       const pAgentNested = asRecord(pAgent.assets ?? {});
-      const pIcon = (pAssets.small ?? pAgentNested.small ?? pAgent.small ?? pAssets.bust ?? pAgentNested.bust) as string ?? "";
+      const pAgentName = toString(pAgent.name ?? p.character?.name ?? p.character_name, "Unknown");
+      const pIcon =
+        firstString(
+          pAssets.small,
+          pAssets.displayIcon,
+          pAssets.fullPortrait,
+          pAssets.bust,
+          pAgentNested.small,
+          pAgentNested.displayIcon,
+          pAgentNested.fullPortrait,
+          pAgentNested.bust,
+          pAgent.small,
+          pAgent.displayIcon,
+          pAgent.fullPortrait
+        ) || (await getAgentIconByName(pAgentName));
       const pTier = asRecord(p.tier ?? {});
       const pName = (p.name ?? p.game_name ?? "") as string;
       const pTag = (p.tag ?? p.game_tag ?? p.tagLine ?? "") as string;
-      const pTeamId = (p.team_id ?? p.teamId ?? "") as string;
+      const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
       return {
         puuid: toString(p.puuid, ""),
@@ -485,7 +526,7 @@ export async function getRecentMatches(
         teamId: pTeamId,
         level: toNumber(p.level ?? p.account_level, -1) >= 0 ? toNumber(p.level ?? p.account_level) : null,
         cardIcon: getPlayerCardIcon(p),
-        agent: toString(pAgent.name, "Unknown"),
+        agent: pAgentName,
         agentIcon: pIcon,
         tierName: toString(pTier.name, "Unranked"),
         tierId: pTierId,
@@ -502,7 +543,7 @@ export async function getRecentMatches(
     }));
 
     const scoreboardTeams: ScoreboardTeam[] = teams.map((t: any) => ({
-      teamId: toString(t.team_id ?? t.teamId, ""),
+      teamId: normalizeTeamId(t.team_id ?? t.teamId ?? t.team),
       roundsWon: teamRoundsWon(t),
       won: Boolean(t.won ?? t.has_won),
     }));
@@ -528,7 +569,7 @@ export async function getRecentMatches(
       kills: toNumber(stats?.kills),
       deaths: toNumber(stats?.deaths),
       assists: toNumber(stats?.assists),
-      score: toNumber(stats?.score),
+      score: totalRounds > 0 ? Math.round(toNumber(stats?.score) / totalRounds) : 0,
       teamScore,
       enemyScore,
       headshots: toNumber(stats?.headshots),

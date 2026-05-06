@@ -326,7 +326,6 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
               </div>
               {match.scoreboard && (() => {
                 const sb = match.scoreboard;
-                const result = match.result;
                 const myTeamId = sb.players.find(p => p.puuid === puuid)?.teamId ?? "";
                 const myTeamPlayers = sb.players.filter(p => p.teamId === myTeamId);
                 const enemyTeamPlayers = sb.players.filter(p => p.teamId !== myTeamId);
@@ -361,12 +360,10 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                         </div>
                       </div>
                     </div>
-                    <div className="grid grid-cols-5 border-b border-[#0e1821] bg-[#2a4054] text-center text-sm font-bold text-white">
-                      {["Scoreboard", "Performance", "Economy", "Rounds", "Duels"].map((tab, tabIndex) => (
-                        <div key={tab} className={`py-3 ${tabIndex === 0 ? "border-b-2 border-[#ff4655]" : ""}`}>
-                          {tab}
-                        </div>
-                      ))}
+                    <div className="border-b border-[#0e1821] bg-[#2a4054] text-sm font-bold text-white">
+                      <div className="inline-flex min-w-[140px] justify-center border-b-2 border-[#ff4655] py-3">
+                        Scoreboard
+                      </div>
                     </div>
                     {sb.rounds.length > 0 && (
                       <div className="bg-[#07131e] px-4 py-4">
@@ -383,7 +380,7 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                                   }`}
                                   title={`${round.round}R ${round.result || round.ceremony || ""}`}
                                 >
-                                  {isMyRound ? "⚔" : "·"}
+                                  {isMyRound ? "X" : "-"}
                                 </div>
                               );
                             })}
@@ -400,7 +397,7 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                                   }`}
                                   title={`${round.round}R ${round.result || round.ceremony || ""}`}
                                 >
-                                  {isEnemyRound ? "⚔" : "·"}
+                                  {isEnemyRound ? "X" : "-"}
                                 </div>
                               );
                             })}

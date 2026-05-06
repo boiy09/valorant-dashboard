@@ -23,6 +23,11 @@ interface RankingEntry {
   image: string | null;
 }
 
+interface RankingPeriod {
+  start: string;
+  end: string;
+}
+
 function fmtTime(seconds: number) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -33,6 +38,13 @@ function fmtRankingTime(seconds: number, hours: number, minutes: number) {
   if (seconds < 60) return `${seconds}s`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+}
+
+function fmtDateRange(period: RankingPeriod | null) {
+  if (!period) return "";
+
+  const format = (date: string) => date.replaceAll("-", ".");
+  return `${format(period.start)} - ${format(period.end)}`;
 }
 
 function isActivityData(value: unknown): value is ActivityData {
@@ -54,6 +66,7 @@ export default function ActivityPageClient() {
   const [activity, setActivity] = useState<ActivityData | null>(null);
   const [activityReady, setActivityReady] = useState(false);
   const [ranking, setRanking] = useState<RankingEntry[]>([]);
+  const [rankingPeriod, setRankingPeriod] = useState<RankingPeriod | null>(null);
   const [rankType, setRankType] = useState<"weekly" | "monthly">("weekly");
 
   useEffect(() => {
@@ -69,8 +82,16 @@ export default function ActivityPageClient() {
   useEffect(() => {
     fetch(`/api/ranking?type=${rankType}`)
       .then((response) => response.json())
-      .then((data) => setRanking(Array.isArray(data?.ranking) ? data.ranking : []))
-      .catch(() => setRanking([]));
+      .then((data) => {
+        setRanking(Array.isArray(data?.ranking) ? data.ranking : []);
+        setRankingPeriod(
+          typeof data?.period?.start === "string" && typeof data?.period?.end === "string" ? data.period : null
+        );
+      })
+      .catch(() => {
+        setRanking([]);
+        setRankingPeriod(null);
+      });
   }, [rankType]);
 
   const summaryCards = [
@@ -124,7 +145,10 @@ export default function ActivityPageClient() {
         <div className="flex flex-col gap-4">
           <div className="val-card p-5">
             <div className="mb-4 flex items-center justify-between">
-              <div className="text-xs uppercase tracking-widest text-[#7b8a96]">Activity Ranking</div>
+              <div>
+                <div className="text-xs uppercase tracking-widest text-[#7b8a96]">Activity Ranking</div>
+                <div className="mt-1 text-[11px] font-semibold text-[#8da0ad]">{fmtDateRange(rankingPeriod)}</div>
+              </div>
               <div className="flex gap-1">
                 {(["weekly", "monthly"] as const).map((type) => (
                   <button

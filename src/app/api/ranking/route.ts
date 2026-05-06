@@ -87,6 +87,7 @@ export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get("type") ?? "weekly"; // weekly | monthly
 
   const todayKey = toKstDateKey(new Date());
+  const periodEnd = kstDateKeyToUtcStart(todayKey);
   let since: Date;
   if (type === "weekly") {
     since = kstDateKeyToUtcStart(toKstDateKey(addDays(kstDateKeyToUtcStart(todayKey), -6)));
@@ -169,5 +170,12 @@ export async function GET(req: NextRequest) {
       minutes: Math.floor((item.seconds % 3600) / 60),
     }));
 
-  return Response.json({ ranking, type });
+  return Response.json({
+    ranking,
+    type,
+    period: {
+      start: toKstDateKey(since),
+      end: toKstDateKey(periodEnd),
+    },
+  });
 }

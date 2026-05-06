@@ -23,6 +23,7 @@ export interface RankData {
   tier: string;
   tierName: string;
   rr: number;
+  rrChange: number;
   peakTier: string;
   peakTierName: string;
   wins: number;
@@ -42,6 +43,8 @@ export interface MatchStats {
   deaths: number;
   assists: number;
   score: number;
+  teamScore: number | null;
+  enemyScore: number | null;
   headshots: number;
   bodyshots: number;
   legshots: number;
@@ -136,6 +139,10 @@ function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
 export function parseRiotId(input: string) {
   const [gameName, tagLine] = input.split("#");
   if (!gameName || !tagLine) return null;
@@ -154,6 +161,32 @@ function getMatchResult(match: any, puuid: string): MatchResult {
   if (myTeam?.won === true || myTeam?.has_won === true) return "승리";
   if (otherTeam?.won === true || otherTeam?.has_won === true) return "패배";
   return "무효";
+}
+
+function getTeamScores(match: unknown, puuid: string) {
+  const source = asRecord(match);
+  const players = asArray<Record<string, unknown>>(source.players);
+  const me = players.find((player) => player?.puuid === puuid);
+  if (!me) return { teamScore: null, enemyScore: null };
+
+  const teams = asArray<Record<string, unknown>>(source.teams);
+  const myTeam = teams.find((team) => team?.team_id === me.team_id);
+  const otherTeam = teams.find((team) => team?.team_id !== me.team_id);
+  const myTeamRounds = asRecord(myTeam?.rounds);
+  const otherTeamRounds = asRecord(otherTeam?.rounds);
+  const teamScore = toNumber(myTeam?.rounds_won ?? myTeamRounds.won ?? myTeam?.roundsWon, -1);
+  const enemyScore = toNumber(otherTeam?.rounds_won ?? otherTeamRounds.won ?? otherTeam?.roundsWon, -1);
+
+  return {
+    teamScore: teamScore >= 0 ? teamScore : null,
+    enemyScore: enemyScore >= 0 ? enemyScore : null,
+  };
+}
+
+function getLatestSeasonWithGames(bySeason: unknown) {
+  return Object.entries(asRecord(bySeason))
+    .filter(([, value]) => toNumber(asRecord(value).number_of_games) > 0)
+    .sort(([a], [b]) => b.localeCompare(a))[0]?.[1] ?? null;
 }
 
 export async function getPlayerByRiotId(
@@ -182,19 +215,25 @@ export async function getRankByPuuid(
   region: ValorantRegion = "kr"
 ): Promise<RankData | null> {
   try {
-    const response = await henrikClient.get(`/v2/by-puuid/mmr/${region}/${puuid}`);
+    const response = await henrikClient.get(`/v3/by-puuid/mmr/${region}/pc/${puuid}`);
     const data = response.data?.data;
     const current = data?.current_data ?? {};
     const peak = data?.highest_rank ?? {};
+    const latestSeason = asRecord(getLatestSeasonWithGames(data?.by_season));
+    const wins = toNumber(latestSeason.wins ?? data?.wins);
+    const games = latestSeason.number_of_games
+      ? toNumber(latestSeason.number_of_games)
+      : toNumber(data?.wins) + toNumber(data?.losses);
 
     return {
       tier: toString(current?.currenttier_patched, "언랭크"),
       tierName: toString(current?.currenttier_patched, "언랭크"),
       rr: toNumber(current?.ranking_in_tier),
+      rrChange: toNumber(current?.mmr_change_to_last_game),
       peakTier: toString(peak?.patched_tier, "기록 없음"),
       peakTierName: toString(peak?.patched_tier, "기록 없음"),
-      wins: toNumber(data?.wins),
-      games: toNumber(data?.wins) + toNumber(data?.losses),
+      wins,
+      games: games > 0 ? games : toNumber(latestSeason.number_of_games),
       rankIcon: current?.images?.small ?? null,
       peakRankIcon: peak?.images?.small ?? null,
     };
@@ -218,6 +257,7 @@ export async function getRecentMatches(
     const players = asArray<any>(match.players);
     const me = players.find((player) => player?.puuid === puuid) ?? {};
     const stats = me?.stats ?? {};
+    const { teamScore, enemyScore } = getTeamScores(match, puuid);
 
     return {
       matchId: toString(match?.metadata?.match_id, ""),
@@ -230,6 +270,8 @@ export async function getRecentMatches(
       deaths: toNumber(stats?.deaths),
       assists: toNumber(stats?.assists),
       score: toNumber(stats?.score),
+      teamScore,
+      enemyScore,
       headshots: toNumber(stats?.headshots),
       bodyshots: toNumber(stats?.bodyshots),
       legshots: toNumber(stats?.legshots),

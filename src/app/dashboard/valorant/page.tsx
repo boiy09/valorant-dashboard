@@ -72,6 +72,10 @@ function buildSummary(matches: MatchStats[]) {
   return { wins, losses, winRate, avgKills, avgHs };
 }
 
+function buildTrackerUrl(riotId: string) {
+  return `https://tracker.gg/valorant/profile/riot/${encodeURIComponent(riotId)}/overview?platform=pc&playlist=competitive`;
+}
+
 function EmptyRegionCard({ region }: { region: RiotRegion }) {
   return (
     <div className="val-card p-5">
@@ -90,7 +94,7 @@ function EmptyRegionCard({ region }: { region: RiotRegion }) {
   );
 }
 
-function RegionMatchList({ matches }: { matches: MatchStats[] }) {
+function RegionMatchList({ matches, trackerUrl }: { matches: MatchStats[]; trackerUrl: string }) {
   if (matches.length === 0) {
     return <div className="val-card p-4 text-[#7b8a96] text-sm">최근 매치 데이터가 아직 없습니다.</div>;
   }
@@ -104,9 +108,9 @@ function RegionMatchList({ matches }: { matches: MatchStats[] }) {
           match.deaths > 0 ? (match.kills / match.deaths).toFixed(2) : match.kills.toFixed(2);
 
         return (
-          <div
+          <details
             key={`${match.matchId}-${index}`}
-            className="val-card px-5 py-3 flex items-center gap-4"
+            className="val-card group"
             style={{
               borderLeftWidth: 3,
               borderLeftStyle: "solid",
@@ -118,46 +122,80 @@ function RegionMatchList({ matches }: { matches: MatchStats[] }) {
                     : "#52525b",
             }}
           >
-            {match.agentIcon ? (
-              <img
-                src={match.agentIcon}
-                alt={match.agent}
-                className="w-10 h-10 rounded object-cover flex-shrink-0"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded bg-[#111c24] flex-shrink-0" />
-            )}
-            <div className="flex-shrink-0 w-14">
-              <div
-                className={`font-black text-sm ${
-                  match.result === "승리"
-                    ? "text-green-400"
-                    : match.result === "패배"
-                      ? "text-[#ff4655]"
-                      : "text-zinc-400"
-                }`}
-              >
-                {match.result}
+            <summary className="flex cursor-pointer list-none items-center gap-4 px-5 py-3">
+              {match.agentIcon ? (
+                <img
+                  src={match.agentIcon}
+                  alt={match.agent}
+                  className="w-10 h-10 rounded object-cover flex-shrink-0"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded bg-[#111c24] flex-shrink-0" />
+              )}
+              <div className="flex-shrink-0 w-14">
+                <div
+                  className={`font-black text-sm ${
+                    match.result === "승리"
+                      ? "text-green-400"
+                      : match.result === "패배"
+                        ? "text-[#ff4655]"
+                        : "text-zinc-400"
+                  }`}
+                >
+                  {match.result}
+                </div>
+                <div className="text-[#7b8a96] text-xs">{match.agent}</div>
               </div>
-              <div className="text-[#7b8a96] text-xs">{match.agent}</div>
+              <div className="hidden sm:block text-[#7b8a96] text-sm w-16 flex-shrink-0">{match.map}</div>
+              <div className="flex-1">
+                <span className="text-white font-bold">{match.kills}</span>
+                <span className="text-[#7b8a96] text-sm"> / </span>
+                <span className="text-[#ff4655] font-bold">{match.deaths}</span>
+                <span className="text-[#7b8a96] text-sm"> / </span>
+                <span className="text-white font-bold">{match.assists}</span>
+                <span className="text-[#7b8a96] text-xs ml-2">KD {kd}</span>
+              </div>
+              <div className="hidden md:flex items-center gap-1 flex-shrink-0">
+                <span className="text-white text-sm">{hs}%</span>
+                <span className="text-[#7b8a96] text-xs">HS</span>
+              </div>
+              <div className="text-[#7b8a96] text-xs text-right flex-shrink-0">
+                {match.playedAt.toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}
+              </div>
+            </summary>
+            <div className="border-t border-[#2a3540] px-5 py-3">
+              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <div>
+                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">스코어</div>
+                  <div className="font-bold text-white">
+                    {match.teamScore !== null && match.enemyScore !== null
+                      ? `${match.teamScore} : ${match.enemyScore}`
+                      : "-"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">ACS</div>
+                  <div className="font-bold text-white">{match.score}</div>
+                </div>
+                <div>
+                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">헤드샷</div>
+                  <div className="font-bold text-white">{hs}%</div>
+                </div>
+                <div>
+                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">모드</div>
+                  <div className="font-bold text-white">{match.mode}</div>
+                </div>
+              </div>
+              <a
+                href={trackerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex text-xs font-bold text-[#ff4655] hover:text-white"
+              >
+                tracker.gg에서 상세 보기
+              </a>
             </div>
-            <div className="hidden sm:block text-[#7b8a96] text-sm w-16 flex-shrink-0">{match.map}</div>
-            <div className="flex-1">
-              <span className="text-white font-bold">{match.kills}</span>
-              <span className="text-[#7b8a96] text-sm"> / </span>
-              <span className="text-[#ff4655] font-bold">{match.deaths}</span>
-              <span className="text-[#7b8a96] text-sm"> / </span>
-              <span className="text-white font-bold">{match.assists}</span>
-              <span className="text-[#7b8a96] text-xs ml-2">KD {kd}</span>
-            </div>
-            <div className="hidden md:flex items-center gap-1 flex-shrink-0">
-              <span className="text-white text-sm">{hs}%</span>
-              <span className="text-[#7b8a96] text-xs">HS</span>
-            </div>
-            <div className="text-[#7b8a96] text-xs text-right flex-shrink-0">
-              {match.playedAt.toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}
-            </div>
-          </div>
+          </details>
         );
       })}
     </div>
@@ -167,6 +205,7 @@ function RegionMatchList({ matches }: { matches: MatchStats[] }) {
 function RegionSection({ data }: { data: RegionStats }) {
   const summary = buildSummary(data.recentMatches);
   const [gameName, tagLine] = data.riotId.split("#");
+  const trackerUrl = buildTrackerUrl(data.riotId);
 
   return (
     <section className="mb-8">
@@ -177,7 +216,14 @@ function RegionSection({ data }: { data: RegionStats }) {
           </div>
           <h2 className="text-xl font-black text-white">{data.riotId}</h2>
         </div>
-        <div className="text-[#7b8a96] text-xs">최근 10경기 기준</div>
+        <a
+          href={trackerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#7b8a96] text-xs hover:text-[#ff4655] transition-colors"
+        >
+          tracker.gg 경쟁전 보기
+        </a>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -193,6 +239,18 @@ function RegionSection({ data }: { data: RegionStats }) {
               <div>
                 <div className="text-xl font-black text-white">{data.rank.tierName}</div>
                 <div className="text-[#ff4655] font-bold text-lg">{data.rank.rr} RR</div>
+                <div
+                  className={`text-xs font-bold ${
+                    data.rank.rrChange > 0
+                      ? "text-green-400"
+                      : data.rank.rrChange < 0
+                        ? "text-[#ff4655]"
+                        : "text-[#7b8a96]"
+                  }`}
+                >
+                  최근 변동 {data.rank.rrChange > 0 ? "+" : ""}
+                  {data.rank.rrChange} RR
+                </div>
                 <div className="text-[#7b8a96] text-xs mt-1">
                   {data.rank.wins}승 / {Math.max(data.rank.games - data.rank.wins, 0)}패
                 </div>
@@ -260,7 +318,7 @@ function RegionSection({ data }: { data: RegionStats }) {
 
       <div className="mb-6">
         <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">최근 매치</div>
-        <RegionMatchList matches={data.recentMatches} />
+        <RegionMatchList matches={data.recentMatches} trackerUrl={trackerUrl} />
       </div>
 
       <div>

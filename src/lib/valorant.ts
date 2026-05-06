@@ -194,6 +194,14 @@ function normalizeTeamId(value: unknown) {
   return toString(value, "").trim().toLowerCase();
 }
 
+function splitRiotId(value: string) {
+  const [name, tag] = value.split("#");
+  return {
+    name: name?.trim() ?? "",
+    tag: tag?.trim() ?? "",
+  };
+}
+
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
@@ -263,16 +271,47 @@ function getLatestSeasonWithGames(bySeason: unknown) {
 function getPlayerCardIcon(player: Record<string, unknown>) {
   const assets = asRecord(player.assets);
   const card = asRecord(player.card ?? player.player_card ?? assets.card);
-  return toString(
+  const account = asRecord(player.account);
+  const accountCard = asRecord(account.card);
+  const cardId = firstString(
+    player.player_card,
+    player.playerCard,
+    player.player_card_id,
+    player.playerCardId,
+    card.id,
+    card.uuid,
+    account.card
+  );
+  const directUrl = firstString(
     card.small ??
       card.wide ??
       card.large ??
       card.displayIcon ??
       card.smallArt ??
+      card.wideArt ??
+      card.largeArt ??
+      accountCard.small ??
+      accountCard.wide ??
+      accountCard.large ??
       assets.card_small ??
-      assets.player_card_small,
-    ""
+      assets.player_card_small ??
+      assets.playerCardSmall
   );
+  if (directUrl) return directUrl;
+  if (/^[0-9a-f-]{36}$/i.test(cardId)) {
+    return `https://media.valorant-api.com/playercards/${cardId}/smallart.png`;
+  }
+  return "";
+}
+
+async function getAccountByPuuid(puuid: string) {
+  if (!puuid) return null;
+  const key = `account:puuid:${puuid}`;
+  const { data } = await apiCache.getOrFetch(key, TTL.MEDIUM, async () => {
+    const response = await henrikClient.get(`/v1/by-puuid/account/${puuid}`);
+    return response.data?.data ?? null;
+  });
+  return asRecord(data);
 }
 
 async function getRankIconByTier(tierId: number) {
@@ -515,17 +554,38 @@ export async function getRecentMatches(
           pAgent.fullPortrait
         ) || (await getAgentIconByName(pAgentName));
       const pTier = asRecord(p.tier ?? {});
-      const pName = (p.name ?? p.game_name ?? "") as string;
-      const pTag = (p.tag ?? p.game_tag ?? p.tagLine ?? "") as string;
+      const pAccount = asRecord(p.account ?? {});
+      const riotId = splitRiotId(
+        firstString(
+          p.riot_id,
+          p.riotId,
+          p.display_name,
+          p.displayName,
+          pAccount.riot_id,
+          pAccount.riotId,
+          pAccount.display_name,
+          pAccount.displayName
+        )
+      );
+      const pPuuid = toString(p.puuid, "");
+      const localName = firstString(p.name, p.game_name, p.gameName, pAccount.name, pAccount.game_name, riotId.name);
+      const localTag = firstString(p.tag, p.game_tag, p.tagLine, p.tag_line, pAccount.tag, pAccount.tagLine, riotId.tag);
+      const localCardIcon = getPlayerCardIcon(p);
+      const accountFallback =
+        !localName || !localTag || !localCardIcon ? await getAccountByPuuid(pPuuid).catch(() => null) : null;
+      const fallbackCard = asRecord(accountFallback?.card);
+      const pName = localName || firstString(accountFallback?.name, accountFallback?.game_name);
+      const pTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
+      const pCardIcon = localCardIcon || firstString(fallbackCard.small, fallbackCard.wide, fallbackCard.large);
       const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
       return {
-        puuid: toString(p.puuid, ""),
+        puuid: pPuuid,
         name: pName,
         tag: pTag,
         teamId: pTeamId,
         level: toNumber(p.level ?? p.account_level, -1) >= 0 ? toNumber(p.level ?? p.account_level) : null,
-        cardIcon: getPlayerCardIcon(p),
+        cardIcon: pCardIcon,
         agent: pAgentName,
         agentIcon: pIcon,
         tierName: toString(pTier.name, "Unranked"),

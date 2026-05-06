@@ -334,20 +334,24 @@ export default function RiotConnectPage() {
                   <div className="w-px flex-1 bg-[#2a3540] my-1" style={{ minHeight: "24px" }} />
                 </div>
                 <div className="pb-6 flex-1">
-                  <div className="text-white font-semibold text-sm mb-1">개발자 도구에서 ssid 쿠키 복사</div>
+                  <div className="text-white font-semibold text-sm mb-1">개발자 도구 Network 탭에서 쿠키 전체 복사</div>
                   <div className="text-[#7b8a96] text-sm leading-relaxed mb-2">
-                    로그인 후 <span className="text-white font-medium">auth.riotgames.com</span> 탭에서 아래 순서로 진행하세요.
+                    로그인 후 <span className="text-white font-medium">auth.riotgames.com</span> 요청의 Cookie 헤더를 복사해야 합니다.
                   </div>
                   <ol className="text-[#7b8a96] text-xs space-y-1.5 list-none">
-                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">1.</span><span><span className="text-white font-bold">F12</span> 또는 <span className="text-white font-bold">우클릭 → 검사</span>로 개발자 도구 열기</span></li>
-                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">2.</span><span><span className="text-white font-bold">Application</span> 탭 클릭 (Chrome) / <span className="text-white font-bold">저장소</span> 탭 (Firefox)</span></li>
-                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">3.</span><span>왼쪽 메뉴에서 <span className="text-white font-bold">Cookies → https://auth.riotgames.com</span> 클릭</span></li>
-                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">4.</span><span>목록에서 <span className="text-[#0ac8b9] font-bold">ssid</span> 항목 찾기</span></li>
-                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">5.</span><span>Value 열의 값을 <span className="text-white font-bold">더블클릭 후 전체 복사</span></span></li>
+                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">1.</span><span><span className="text-white font-bold">F12</span>으로 개발자 도구 열기 → <span className="text-white font-bold">Network</span> 탭 클릭</span></li>
+                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">2.</span><span>필터 입력창에 <span className="text-white font-bold">auth.riotgames.com</span> 입력</span></li>
+                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">3.</span><span>Riot 로그인 페이지를 새로고침하거나 로그인 재시도</span></li>
+                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">4.</span><span>목록에서 <span className="text-white font-bold">auth.riotgames.com</span> 요청 하나 클릭</span></li>
+                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">5.</span><span><span className="text-white font-bold">Request Headers</span> → <span className="text-[#0ac8b9] font-bold">Cookie:</span> 항목 찾기</span></li>
+                    <li className="flex gap-2"><span className="text-[#0ac8b9] font-bold flex-shrink-0">6.</span><span>Cookie 값 전체를 <span className="text-white font-bold">우클릭 → Copy value</span> 또는 드래그 후 복사</span></li>
                   </ol>
                   <div className="mt-3 bg-[#0f1923] border border-[#2a3540] rounded px-3 py-2 text-[11px] font-mono overflow-hidden">
-                    <span className="text-[#7b8a96]">ssid  </span>
-                    <span className="text-[#0ac8b9] font-bold">eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVC...</span>
+                    <span className="text-[#7b8a96]">Cookie: </span>
+                    <span className="text-[#0ac8b9] font-bold">ssid=eyJ...; sub=afafa...; tdid=eyJ...; csid=OrSpr...</span>
+                  </div>
+                  <div className="mt-2 text-[10px] text-[#7b8a96] bg-[#0ac8b9]/5 border border-[#0ac8b9]/20 rounded px-2.5 py-1.5">
+                    💡 ssid 하나만으론 안 됩니다. Cookie 헤더의 <span className="text-white">전체 문자열</span>을 복사해야 자동 갱신이 가능합니다.
                   </div>
                 </div>
               </div>
@@ -368,18 +372,18 @@ export default function RiotConnectPage() {
             <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">ssid 쿠키 붙여넣기</div>
             <form onSubmit={handleSsidSubmit} className="space-y-3">
               <div>
-                <label className="text-white text-sm font-medium block mb-1.5">ssid 쿠키 값</label>
+                <label className="text-white text-sm font-medium block mb-1.5">Cookie 헤더 전체 값</label>
                 <textarea
                   value={ssid}
                   onChange={(e) => { setSsid(e.target.value); setSsidState("idle"); }}
-                  placeholder="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVC... (ssid= 없이 값만 붙여넣어도 됩니다)"
+                  placeholder="ssid=eyJ...; sub=afafa29f...; tdid=eyJ...; csid=OrSpr..."
                   rows={3}
                   className="w-full px-3 py-2.5 text-xs text-white bg-[#0f1923] border border-[#2a3540] rounded focus:outline-none focus:border-[#0ac8b9] resize-none font-mono placeholder:text-[#3a4a55]"
                   required
                   disabled={ssidState === "loading"}
                 />
                 <div className="mt-1 text-[#7b8a96] text-[11px]">
-                  <span className="text-[#0ac8b9]">ssid=값</span> 형태로 복사했거나 값만 복사했거나 모두 가능합니다.
+                  Network 탭 Request Headers의 <span className="text-[#0ac8b9]">Cookie:</span> 값 전체를 붙여넣으세요. ssid 하나만 붙여넣으면 작동하지 않습니다.
                 </div>
               </div>
               {ssidState === "error" && (

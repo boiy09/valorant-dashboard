@@ -71,12 +71,57 @@ async function getAccountByPuuid(puuid: string) {
   return asRecord(data);
 }
 
+async function getRankIconByTier(tierId: number) {
+  if (tierId <= 0) return null;
+
+  const { data } = await apiCache.getOrFetch("match-competitive-tiers:ko-KR", MATCH_TTL, async () => {
+    const response = await fetch("https://valorant-api.com/v1/competitivetiers?language=ko-KR");
+    const payload = await response.json();
+    return payload?.data ?? [];
+  });
+
+  const bundles = asArray<Record<string, unknown>>(data);
+  for (const bundle of bundles.slice().reverse()) {
+    const tiers = asArray<Record<string, unknown>>(bundle.tiers);
+    const tier = tiers.find((item) => toNumber(item.tier) === tierId);
+    if (typeof tier?.smallIcon === "string" && tier.smallIcon) return tier.smallIcon;
+    if (typeof tier?.largeIcon === "string" && tier.largeIcon) return tier.largeIcon;
+  }
+
+  return null;
+}
+
+async function getCurrentRankByPuuid(puuid: string) {
+  if (!puuid) return null;
+  const key = `match-current-rank:${puuid}`;
+  const { data } = await apiCache.getOrFetch(key, MATCH_TTL, async () => {
+    for (const region of ["kr", "ap"] as const) {
+      const response = await henrikClient.get(`/v3/by-puuid/mmr/${region}/pc/${puuid}`).catch(() =>
+        henrikClient.get(`/v2/by-puuid/mmr/${region}/${puuid}`).catch(() => null)
+      );
+      if (response?.data?.data) return response.data.data;
+    }
+    return null;
+  });
+
+  const current = asRecord(data?.current ?? data?.current_data);
+  const tier = asRecord(current.tier);
+  const tierId = toNumber(tier.id ?? current.currenttier ?? data?.currenttier);
+  if (tierId <= 0) return null;
+
+  return {
+    tierId,
+    tierName: firstString(tier.name, current.currenttierpatched, data?.currenttierpatched) || "Unranked",
+    tierIcon: await getRankIconByTier(tierId),
+  };
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ matchId: string }> }
 ) {
   const { matchId } = await params;
-  const cacheKey = `match:v2:${matchId}`;
+  const cacheKey = `match:v3:${matchId}`;
 
   const cached = apiCache.get<object>(cacheKey, MATCH_TTL);
   if (cached) return Response.json(cached);
@@ -138,6 +183,12 @@ export async function GET(
       const displayName = localName || fallbackName || rawName;
       const displayTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
       const isPrivate = !localName && !fallbackName && !rawNameIsUsable;
+      const matchTierId = toNumber(tier.id);
+      const rankFallback = matchTierId > 0 ? null : await getCurrentRankByPuuid(puuid).catch(() => null);
+      const finalTierId = matchTierId || rankFallback?.tierId || 0;
+      const finalTierName =
+        matchTierId > 0 ? firstString(tier.name) || "Unranked" : rankFallback?.tierName ?? "Unranked";
+      const finalTierIcon = rankFallback?.tierIcon ?? (await getRankIconByTier(finalTierId));
 
       return {
         puuid,
@@ -158,9 +209,9 @@ export async function GET(
           "",
         agent: agentName,
         agentIcon,
-        tierName: (tier.name as string) ?? "Unranked",
-        tierId: toNumber(tier.id),
-        tierIcon: "",
+        tierName: finalTierName,
+        tierId: finalTierId,
+        tierIcon: finalTierIcon,
         acs: totalRounds > 0 ? Math.round(score / totalRounds) : 0,
         kills,
         deaths,

@@ -22,12 +22,61 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
+}
+
+function isPrivateLikeName(value: unknown) {
+  if (typeof value !== "string") return true;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return true;
+  return (
+    normalized === "private" ||
+    normalized === "hidden" ||
+    normalized === "anonymous" ||
+    normalized === "unknown" ||
+    normalized === "player" ||
+    normalized === "비공개" ||
+    normalized.includes("비공개") ||
+    normalized.includes("익명")
+  );
+}
+
+function isAgentName(value: string, agentName: string) {
+  return Boolean(value) && value.trim().toLowerCase() === agentName.trim().toLowerCase();
+}
+
+function firstPlayerName(agentName: string, ...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const name = value.trim();
+    if (isPrivateLikeName(name) || isAgentName(name, agentName)) continue;
+    return name;
+  }
+  return "";
+}
+
+async function getAccountByPuuid(puuid: string) {
+  if (!puuid) return null;
+  const key = `match-account:puuid:${puuid}`;
+  const { data } = await apiCache.getOrFetch(key, MATCH_TTL, async () => {
+    const response = await henrikClient.get(`/v2/by-puuid/account/${puuid}`).catch(() =>
+      henrikClient.get(`/v1/by-puuid/account/${puuid}`).catch(() => null)
+    );
+    return response?.data?.data ?? null;
+  });
+  return asRecord(data);
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ matchId: string }> }
 ) {
   const { matchId } = await params;
-  const cacheKey = `match:${matchId}`;
+  const cacheKey = `match:v2:${matchId}`;
 
   const cached = apiCache.get<object>(cacheKey, MATCH_TTL);
   if (cached) return Response.json(cached);
@@ -45,7 +94,7 @@ export async function GET(
       0
     );
 
-    const processedPlayers = players.map((player) => {
+    const processedPlayers = await Promise.all(players.map(async (player) => {
       const stats = asRecord(player.stats);
       const kills = toNumber(stats.kills);
       const deaths = toNumber(stats.deaths);
@@ -71,11 +120,30 @@ export async function GET(
       const economy = asRecord(player.economy);
       const assets = asRecord(player.assets);
       const card = asRecord(player.card ?? player.player_card ?? assets.card);
+      const puuid = firstString(player.puuid);
+      const agentName = firstString(agent.name, player.character_name, "Unknown");
+      const rawName = firstString(player.game_name, player.gameName, player.name, player.player_name, player.playerName);
+      const rawNameIsUsable = !isAgentName(rawName, agentName) && !isPrivateLikeName(rawName);
+      const localName = firstPlayerName(agentName, player.game_name, player.gameName, player.name, player.player_name, player.playerName);
+      const localTag = firstString(player.tag, player.tagLine, player.tag_line, player.game_tag);
+      const accountFallback =
+        !localName || !localTag || !rawNameIsUsable ? await getAccountByPuuid(puuid).catch(() => null) : null;
+      const fallbackCard = asRecord(accountFallback?.card);
+      const fallbackName = firstPlayerName(
+        agentName,
+        accountFallback?.game_name,
+        accountFallback?.gameName,
+        accountFallback?.name
+      );
+      const displayName = localName || fallbackName || rawName;
+      const displayTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
+      const isPrivate = !localName && !fallbackName && !rawNameIsUsable;
 
       return {
-        puuid: player.puuid,
-        name: player.name,
-        tag: player.tag,
+        puuid,
+        name: isPrivate ? "비공개" : displayName,
+        tag: isPrivate ? "" : displayTag,
+        isPrivate,
         teamId: player.team_id,
         level: toNumber(player.level ?? player.account_level, -1) >= 0 ? toNumber(player.level ?? player.account_level) : null,
         cardIcon:
@@ -84,8 +152,11 @@ export async function GET(
           (card.large as string) ??
           (card.displayIcon as string) ??
           (assets.card_small as string) ??
+          (fallbackCard.small as string) ??
+          (fallbackCard.wide as string) ??
+          (fallbackCard.large as string) ??
           "",
-        agent: (agent.name as string) ?? "Unknown",
+        agent: agentName,
         agentIcon,
         tierName: (tier.name as string) ?? "Unranked",
         tierId: toNumber(tier.id),
@@ -100,7 +171,7 @@ export async function GET(
         adr: totalRounds > 0 && damageDealt > 0 ? Math.round(damageDealt / totalRounds) : null,
         spentCredits: toNumber(economy.spent),
       };
-    });
+    }));
 
     const processedTeams = teams.map((team) => ({
       teamId: team.team_id as string,

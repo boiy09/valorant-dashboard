@@ -205,6 +205,22 @@ function firstString(...values: unknown[]) {
   return "";
 }
 
+function isPrivateLikeName(value: unknown) {
+  if (typeof value !== "string") return true;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return true;
+  return (
+    normalized === "private" ||
+    normalized === "hidden" ||
+    normalized === "anonymous" ||
+    normalized === "unknown" ||
+    normalized === "player" ||
+    normalized === "비공개" ||
+    normalized.includes("비공개") ||
+    normalized.includes("익명")
+  );
+}
+
 function normalizeTeamId(value: unknown) {
   return toString(value, "").trim().toLowerCase();
 }
@@ -225,7 +241,7 @@ function firstPlayerName(agentName: string, ...values: unknown[]) {
   for (const value of values) {
     if (typeof value !== "string") continue;
     const name = value.trim();
-    if (!name || isAgentName(name, agentName)) continue;
+    if (isPrivateLikeName(name) || isAgentName(name, agentName)) continue;
     return name;
   }
   return "";
@@ -634,15 +650,18 @@ export async function getRecentMatches(
         riotId.tag
       );
       const localCardIcon = getPlayerCardIcon(p);
+      const rawName = firstString(p.game_name, p.gameName, p.name, p.player_name, p.playerName);
+      const rawNameIsAgent = isAgentName(rawName, pAgentName);
+      const rawNameIsUsable = !rawNameIsAgent && !isPrivateLikeName(rawName);
       const accountFallback =
-        !localName || !localTag || !localCardIcon ? await getAccountByPuuid(pPuuid).catch(() => null) : null;
+        !localName || !localTag || !localCardIcon || !rawNameIsUsable
+          ? await getAccountByPuuid(pPuuid).catch(() => null)
+          : null;
       const fallbackCard = asRecord(accountFallback?.card);
       const pName = localName || firstPlayerName(pAgentName, accountFallback?.game_name, accountFallback?.gameName, accountFallback?.name);
       const pTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
-      const agentLikeRawName = isAgentName(firstString(p.name, p.game_name, p.gameName), pAgentName);
-      const rawName = firstString(p.game_name, p.gameName, p.name, p.player_name, p.playerName);
-      const isPrivate = !pName && !rawName;
-      const displayName = pName || (agentLikeRawName ? pAgentName : rawName);
+      const isPrivate = !pName && !rawNameIsUsable;
+      const displayName = pName || rawName;
       const pCardIcon = localCardIcon || firstString(fallbackCard.small, fallbackCard.wide, fallbackCard.large);
       const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
@@ -656,7 +675,7 @@ export async function getRecentMatches(
         isPrivate,
         teamId: pTeamId,
         level: toNumber(p.level ?? p.account_level, -1) >= 0 ? toNumber(p.level ?? p.account_level) : null,
-        cardIcon: isPrivate ? "" : pCardIcon,
+        cardIcon: pCardIcon,
         agent: pAgentName,
         agentIcon: pIcon,
         tierName: finalTierName,

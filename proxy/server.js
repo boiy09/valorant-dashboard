@@ -3,7 +3,11 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
-const { chromium } = require('playwright');
+
+// playwright-extra + stealth: headless 브라우저 탐지 우회
+const { chromium } = require('playwright-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+chromium.use(StealthPlugin());
 
 const app = express();
 app.use(express.json());
@@ -268,7 +272,6 @@ app.post('/qr/init', async (req, res) => {
       return res.status(500).json({ status: 'error', message: 'QR 응답 파싱 실패', raw: text });
     }
 
-    // loginToken 필드 추출 (응답 구조에 따라 다를 수 있음)
     const loginToken = data.loginToken || data.login_token || data.token;
     if (!loginToken) {
       return res.status(500).json({ status: 'error', message: 'loginToken을 찾을 수 없습니다.', raw: data });
@@ -322,16 +325,10 @@ app.get('/qr/poll', async (req, res) => {
       return res.status(500).json({ status: 'error', message: '폴링 응답 파싱 실패', raw: text });
     }
 
-    // type: 'pending' | 'authenticated' | 'expired'
     console.log('[proxy] QR poll type:', data.type || data.status);
 
     if (data.type === 'authenticated' || data.status === 'authenticated') {
-      // 인증됨 - 토큰 교환
-      // 응답에 redirect_uri나 access_token이 있을 수 있음
-      const uri = data?.response?.parameters?.uri
-        || data?.redirect_uri
-        || data?.uri;
-
+      const uri = data?.response?.parameters?.uri || data?.redirect_uri || data?.uri;
       if (uri) {
         const tokens = parseTokensFromUri(uri);
         if (tokens) {
@@ -340,14 +337,12 @@ app.get('/qr/poll', async (req, res) => {
         }
       }
 
-      // access_token이 직접 포함된 경우
       const accessToken = data?.access_token || data?.accessToken;
       const idToken = data?.id_token || data?.idToken;
       if (accessToken) {
         return res.json({ status: 'success', accessToken, idToken: idToken || '', cookies: '' });
       }
 
-      // 토큰이 없으면 raw 반환하여 디버깅
       return res.json({ status: 'authenticated_raw', raw: data });
     }
 
@@ -355,7 +350,6 @@ app.get('/qr/poll', async (req, res) => {
       return res.json({ status: 'expired' });
     }
 
-    // pending
     return res.json({ status: 'pending' });
   } catch (err) {
     console.error('[proxy] /qr/poll 오류:', err);
@@ -364,7 +358,7 @@ app.get('/qr/poll', async (req, res) => {
 });
 
 // ──────────────────────────────────────────────
-// Playwright 브라우저 기반 로그인
+// Playwright 브라우저 기반 로그인 (stealth 적용)
 // ──────────────────────────────────────────────
 
 const RIOT_AUTH_URL =
@@ -400,33 +394,108 @@ function parseHashTokens(hash) {
   }
 }
 
+async function launchBrowser() {
+  return chromium.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--disable-dev-shm-usage',
+      '--lang=ko-KR,ko',
+    ],
+  });
+}
+
+async function createContext(browser) {
+  return browser.newContext({
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    locale: 'ko-KR',
+    viewport: { width: 1280, height: 800 },
+    // 실제 브라우저처럼 accept-language 헤더 설정
+    extraHTTPHeaders: {
+      'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+    },
+  });
+}
+
+// Riot 로그인 페이지 셀렉터 (여러 가능한 형태 대응)
+const USERNAME_SELECTORS = [
+  'input[name="username"]',
+  'input[type="text"][data-testid]',
+  'input[autocomplete="username"]',
+  'input[type="text"]',
+];
+
+const PASSWORD_SELECTORS = [
+  'input[name="password"]',
+  'input[type="password"]',
+  'input[autocomplete="current-password"]',
+];
+
+const MFA_SELECTORS = [
+  'input[name="code"]',
+  'input[id="code"]',
+  'input[aria-label*="code" i]',
+  'input[aria-label*="verification" i]',
+  'input[placeholder*="code" i]',
+  'input[data-testid*="code" i]',
+];
+
+async function findSelector(page, selectors, timeout = 5000) {
+  for (const sel of selectors) {
+    try {
+      await page.waitForSelector(sel, { timeout });
+      return sel;
+    } catch {
+      // 다음 셀렉터 시도
+    }
+  }
+  return null;
+}
+
 async function doLogin(page, username, password) {
   console.log('[browser] Riot 로그인 페이지 이동...');
-  await page.goto(RIOT_AUTH_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.goto(RIOT_AUTH_URL, { waitUntil: 'networkidle', timeout: 30000 });
 
-  // 페이지 제목/URL 확인
-  console.log('[browser] 현재 URL:', page.url());
+  const currentUrl = page.url();
+  console.log('[browser] 현재 URL:', currentUrl);
 
   // 사용자 이름 입력
-  await page.waitForSelector('input[name="username"]', { timeout: 15000 });
-  await page.fill('input[name="username"]', username);
+  const usernameSel = await findSelector(page, USERNAME_SELECTORS, 15000);
+  if (!usernameSel) {
+    const pageContent = await page.content().catch(() => '');
+    console.error('[browser] 사용자 이름 필드 없음. 페이지:', pageContent.substring(0, 500));
+    throw new Error('로그인 페이지를 로드할 수 없습니다. 사용자 이름 입력 필드를 찾지 못했습니다.');
+  }
+
+  await page.fill(usernameSel, username);
   console.log('[browser] 아이디 입력 완료');
 
-  // Enter로 제출 (버튼 타입에 무관하게 동작)
-  await page.press('input[name="username"]', 'Enter');
-  await page.waitForTimeout(2000);
-  console.log('[browser] 아이디 제출 후 URL:', page.url());
+  // Enter로 제출 (비밀번호 화면으로 넘어감)
+  await page.press(usernameSel, 'Enter');
 
-  // 비밀번호 입력
-  const pwSelector = 'input[name="password"], input[type="password"]';
-  try {
-    await page.waitForSelector(pwSelector, { timeout: 8000 });
-    await page.fill(pwSelector, password);
-    console.log('[browser] 비밀번호 입력 완료');
-    await page.press(pwSelector, 'Enter');
-  } catch (e) {
-    console.error('[browser] 비밀번호 필드 없음:', e.message);
+  // 비밀번호 필드 대기 (최대 10초)
+  const passwordSel = await findSelector(page, PASSWORD_SELECTORS, 10000);
+  if (!passwordSel) {
+    // 이미 비밀번호가 같은 화면에 있을 수 있음 (아이디+비밀번호 동시 표시)
+    console.log('[browser] Enter 후 비밀번호 필드 없음. 초기 화면에서 비밀번호 찾기 시도...');
+    const pwSel2 = await findSelector(page, PASSWORD_SELECTORS, 3000);
+    if (!pwSel2) {
+      throw new Error('비밀번호 입력 필드를 찾지 못했습니다.');
+    }
   }
+
+  const finalPwSel = passwordSel || 'input[type="password"]';
+  await page.fill(finalPwSel, password);
+  console.log('[browser] 비밀번호 입력 완료');
+
+  // 로그인 제출
+  await page.press(finalPwSel, 'Enter');
+  console.log('[browser] 로그인 제출 완료');
 }
 
 // POST /auth/browser - Playwright 브라우저로 로그인
@@ -440,47 +509,40 @@ app.post('/auth/browser', async (req, res) => {
 
   let browser;
   try {
-    browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      locale: 'ko-KR',
-    });
+    browser = await launchBrowser();
+    const context = await createContext(browser);
     const page = await context.newPage();
 
-    // 토큰 캡처용 - framenavigated에서 URL 직접 파싱
+    // 토큰 캡처용 - playvalorant.com으로 리다이렉트되면 URL에서 해시 파싱
     let capturedTokens = null;
     const tokenCapturePromise = new Promise((resolve) => {
-      page.on('framenavigated', async (frame) => {
+      page.on('framenavigated', (frame) => {
         if (frame !== page.mainFrame()) return;
         const url = frame.url();
         console.log('[browser] 네비게이션:', url.substring(0, 200));
+
         if (url.includes('playvalorant.com')) {
-          // 1) URL에서 직접 해시 파싱
+          // URL에서 직접 해시 파싱
           const hashIdx = url.indexOf('#');
           if (hashIdx !== -1) {
             capturedTokens = parseHashTokens(url.slice(hashIdx));
             console.log('[browser] URL 해시에서 토큰:', capturedTokens ? '성공' : '파싱 실패');
           }
-          // 2) JS evaluate 폴백
-          if (!capturedTokens) {
-            const hash = await page.evaluate(() => window.location.hash).catch(() => '');
-            console.log('[browser] JS hash:', hash.substring(0, 100));
-            if (hash) capturedTokens = parseHashTokens(hash);
-          }
           if (capturedTokens) resolve(capturedTokens);
         }
       });
-      // 15초 후 타임아웃 resolve (null로)
-      setTimeout(() => resolve(null), 15000);
+
+      // 20초 후 타임아웃
+      setTimeout(() => resolve(null), 20000);
     });
 
     await doLogin(page, username, password);
-    console.log('[browser] 로그인 제출 완료, 결과 대기...');
 
-    // MFA 여부 먼저 확인 (2초 대기)
-    await page.waitForTimeout(2000);
-    const mfaInput = await page.$('input[name="code"], input[id="code"], input[aria-label*="code" i], input[placeholder*="code" i]');
-    if (mfaInput) {
+    // MFA 여부 확인 (3초 대기)
+    await page.waitForTimeout(3000);
+
+    const mfaSel = await findSelector(page, MFA_SELECTORS, 2000);
+    if (mfaSel) {
       const sessionId = crypto.randomUUID();
       browserSessions.set(sessionId, { browser, page, context, tokenCapturePromise });
       scheduleSessionCleanup(sessionId, browser);
@@ -488,10 +550,17 @@ app.post('/auth/browser', async (req, res) => {
       return res.json({ status: 'mfa', sessionId });
     }
 
-    // 토큰 대기 (최대 15초)
+    // 토큰 대기 (최대 20초)
     capturedTokens = await tokenCapturePromise;
-    const currentUrl = page.url();
-    console.log('[browser] 최종 URL:', currentUrl.substring(0, 150));
+    const finalUrl = page.url();
+    console.log('[browser] 최종 URL:', finalUrl.substring(0, 200));
+
+    // JS에서 hash 한 번 더 시도 (리다이렉트 이후 이미 도착한 경우)
+    if (!capturedTokens && finalUrl.includes('playvalorant.com')) {
+      const hash = await page.evaluate(() => window.location.hash).catch(() => '');
+      console.log('[browser] JS hash 폴백:', hash.substring(0, 100));
+      if (hash) capturedTokens = parseHashTokens(hash);
+    }
 
     if (capturedTokens) {
       const cookies = await context.cookies('https://auth.riotgames.com');
@@ -502,14 +571,25 @@ app.post('/auth/browser', async (req, res) => {
       return res.json({ status: 'success', ...capturedTokens, cookies: ssid });
     }
 
-    // 오류 메시지 확인
-    const errorText = await page.$eval(
-      '[class*="error"], [class*="Error"], [role="alert"]',
-      el => el.textContent?.trim()
-    ).catch(() => null);
+    // 실패 - 오류 메시지 수집
+    const errorSelectors = [
+      '[class*="error" i]',
+      '[class*="Error" i]',
+      '[role="alert"]',
+      '[data-testid*="error" i]',
+      'p[class*="hint" i]',
+    ];
+    let errorText = null;
+    for (const sel of errorSelectors) {
+      errorText = await page.$eval(sel, el => el.textContent?.trim()).catch(() => null);
+      if (errorText) break;
+    }
+
+    // 스크린샷 (디버깅용)
+    await page.screenshot({ path: '/tmp/riot_login_fail.png' }).catch(() => {});
 
     await browser.close();
-    console.error('[browser] 로그인 실패. URL:', currentUrl, '오류:', errorText);
+    console.error('[browser] 로그인 실패. URL:', finalUrl, '오류:', errorText);
     return res.json({ status: 'error', message: errorText || '아이디 또는 비밀번호가 올바르지 않습니다.' });
 
   } catch (err) {
@@ -534,45 +614,54 @@ app.post('/auth/browser/mfa', async (req, res) => {
   }
 
   browserSessions.delete(sessionId);
-  const { browser, page, context } = session;
+  const { browser, page, context, tokenCapturePromise } = session;
 
   try {
-    let capturedTokens = null;
-    page.on('framenavigated', async (frame) => {
-      if (frame === page.mainFrame()) {
-        const url = frame.url();
-        if (url.includes('playvalorant.com/opt_in')) {
-          const hash = await page.evaluate(() => window.location.hash).catch(() => '');
-          if (hash) capturedTokens = parseHashTokens(hash);
+    // MFA 완료 후 토큰 캡처용 리스너 추가 (이미 tokenCapturePromise가 있음)
+    page.on('framenavigated', (frame) => {
+      if (frame !== page.mainFrame()) return;
+      const url = frame.url();
+      if (url.includes('playvalorant.com/opt_in')) {
+        const hashIdx = url.indexOf('#');
+        if (hashIdx !== -1) {
+          const tokens = parseHashTokens(url.slice(hashIdx));
+          if (tokens) {
+            console.log('[browser] MFA 후 토큰 캡처 성공');
+          }
         }
       }
     });
 
     // MFA 코드 입력
-    const mfaInput = await page.$('input[name="code"], input[id="code"], input[aria-label*="code" i], input[placeholder*="code" i]');
-    if (!mfaInput) {
+    const mfaSel = await findSelector(page, MFA_SELECTORS, 5000);
+    if (!mfaSel) {
       await browser.close();
       return res.json({ status: 'error', message: 'MFA 입력창을 찾을 수 없습니다.' });
     }
-    await mfaInput.fill(code);
-    await page.click('button[type="submit"]');
+    await page.fill(mfaSel, code);
+    await page.press(mfaSel, 'Enter');
 
-    await page.waitForTimeout(4000);
+    // 결과 대기 (최대 10초)
+    await page.waitForTimeout(5000);
     const currentUrl = page.url();
+    console.log('[browser] MFA 후 URL:', currentUrl.substring(0, 200));
 
-    if (currentUrl.includes('playvalorant.com') || capturedTokens) {
+    let capturedTokens = null;
+
+    if (currentUrl.includes('playvalorant.com')) {
+      const hashIdx = currentUrl.indexOf('#');
+      if (hashIdx !== -1) capturedTokens = parseHashTokens(currentUrl.slice(hashIdx));
       if (!capturedTokens) {
         const hash = await page.evaluate(() => window.location.hash).catch(() => '');
-        capturedTokens = parseHashTokens(hash);
+        if (hash) capturedTokens = parseHashTokens(hash);
       }
+    }
+
+    if (capturedTokens) {
       const cookies = await context.cookies('https://auth.riotgames.com');
       const ssidCookie = cookies.find(c => c.name === 'ssid');
       const ssid = ssidCookie ? `ssid=${ssidCookie.value}` : '';
       await browser.close();
-
-      if (!capturedTokens) {
-        return res.json({ status: 'error', message: '토큰을 추출하지 못했습니다.' });
-      }
       console.log('[browser] MFA 로그인 성공!');
       return res.json({ status: 'success', ...capturedTokens, cookies: ssid });
     }

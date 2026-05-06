@@ -220,7 +220,7 @@ export default function RiotConnectPage() {
                 {/* Step 1 전용: Riot 로그인 버튼 */}
                 {i === 0 && (
                   <a
-                    href="https://auth.riotgames.com/login"
+                    href="https://account.riotgames.com"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-[#ff4655] hover:bg-[#cc3644] text-white text-xs font-bold rounded transition-colors"

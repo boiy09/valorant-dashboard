@@ -106,16 +106,63 @@ function fmtMatchDate(date: string) {
   });
 }
 
-function roundWinMark(result: string, ceremony: string) {
+function roundWinType(result: string, ceremony: string): "defuse" | "spike" | "time" | "surrender" | "elimination" {
   const text = `${result} ${ceremony}`.toLowerCase();
-  if (text.includes("defus")) return { mark: "D", label: "해체 승리" };
+  if (text.includes("defus")) return "defuse";
   if (text.includes("deton") || text.includes("explode") || text.includes("spike") || text.includes("bomb")) {
-    return { mark: "S", label: "스파이크 승리" };
+    return "spike";
   }
-  if (text.includes("time") || text.includes("timeout")) return { mark: "T", label: "시간 승리" };
-  if (text.includes("surrender") || text.includes("forfeit")) return { mark: "F", label: "항복" };
-  if (text.includes("elim") || text.includes("kill")) return { mark: "X", label: "전멸 승리" };
-  return { mark: "X", label: result || ceremony || "라운드 승리" };
+  if (text.includes("time") || text.includes("timeout")) return "time";
+  if (text.includes("surrender") || text.includes("forfeit")) return "surrender";
+  return "elimination";
+}
+
+function roundWinLabel(type: ReturnType<typeof roundWinType>) {
+  if (type === "defuse") return "스파이크 해체";
+  if (type === "spike") return "스파이크 폭발";
+  if (type === "time") return "시간 승리";
+  if (type === "surrender") return "항복";
+  return "전멸";
+}
+
+function RoundResultIcon({ type }: { type: ReturnType<typeof roundWinType> }) {
+  if (type === "spike") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+        <path fill="currentColor" d="M12 2 6.8 8.4l2.1 2.2L12 6.8l3.1 3.8 2.1-2.2L12 2Z" />
+        <path fill="currentColor" d="M8.4 11.3h7.2l1.1 7.7L12 22l-4.7-3 1.1-7.7Zm2.5 2.1-.5 4.4 1.6 1 1.6-1-.5-4.4h-2.2Z" />
+      </svg>
+    );
+  }
+  if (type === "defuse") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+        <path fill="currentColor" d="M12 2 7 8.2l2.1 2.1L12 6.8l2.9 3.5L17 8.2 12 2Z" opacity="0.55" />
+        <path fill="currentColor" d="M6.2 11.5h11.6v2.1H6.2v-2.1Zm2 4h7.6v2.1H8.2v-2.1Z" />
+        <path fill="currentColor" d="M18.9 4.3 21 6.4 7.1 20.3 5 18.2 18.9 4.3Z" />
+      </svg>
+    );
+  }
+  if (type === "time") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+        <path fill="currentColor" d="M7 2h10v5.2L13.8 12l3.2 4.8V22H7v-5.2l3.2-4.8L7 7.2V2Zm2.5 2.4v2.1l2.5 3.7 2.5-3.7V4.4h-5Zm2.5 9.4-2.5 3.7v2.1h5v-2.1L12 13.8Z" />
+      </svg>
+    );
+  }
+  if (type === "surrender") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+        <path fill="currentColor" d="M5 3h2.4v18H5V3Zm4 1.5h9.5l-2.3 4L18.5 12H9V4.5Z" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <path fill="currentColor" d="M4.7 3.2 2.8 5.1l5.8 5.8-4 4v3.5h3.5l4-4 6 6 1.9-1.9L4.7 3.2Z" />
+      <path fill="currentColor" d="m19.3 3.2 1.9 1.9-5.8 5.8 4 4v3.5h-3.5L2.8 5.1l1.9-1.9 11.2 11.2 1.7-1.7-4-4 5.7-5.5Z" />
+    </svg>
+  );
 }
 
 function ScoreboardTable({ players, myPuuid, label, accent }: {
@@ -384,16 +431,16 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                           <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
                             {sb.rounds.map((round) => {
                               const isMyRound = round.winningTeamId === myTeamId;
-                              const win = roundWinMark(round.result, round.ceremony);
+                              const type = roundWinType(round.result, round.ceremony);
                               return (
                                 <div
                                   key={`${match.matchId}-team-a-${round.round}`}
-                                  className={`flex h-5 min-w-0 items-center justify-center rounded-sm text-[12px] font-black leading-none ${
+                                  className={`flex h-5 min-w-0 items-center justify-center rounded-sm leading-none ${
                                     isMyRound ? "text-[#58ffd8]" : "text-[#263544]"
                                   }`}
-                                  title={`${round.round}R ${isMyRound ? win.label : ""} ${round.result || round.ceremony || ""}`}
+                                  title={`${round.round}R ${isMyRound ? roundWinLabel(type) : ""} ${round.result || round.ceremony || ""}`}
                                 >
-                                  {isMyRound ? win.mark : "-"}
+                                  {isMyRound ? <RoundResultIcon type={type} /> : <span className="text-[12px]">·</span>}
                                 </div>
                               );
                             })}
@@ -402,16 +449,16 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                           <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
                             {sb.rounds.map((round) => {
                               const isEnemyRound = round.winningTeamId && round.winningTeamId !== myTeamId;
-                              const win = roundWinMark(round.result, round.ceremony);
+                              const type = roundWinType(round.result, round.ceremony);
                               return (
                                 <div
                                   key={`${match.matchId}-team-b-${round.round}`}
-                                  className={`flex h-5 min-w-0 items-center justify-center rounded-sm text-[12px] font-black leading-none ${
+                                  className={`flex h-5 min-w-0 items-center justify-center rounded-sm leading-none ${
                                     isEnemyRound ? "text-[#ff5f75]" : "text-[#263544]"
                                   }`}
-                                  title={`${round.round}R ${isEnemyRound ? win.label : ""} ${round.result || round.ceremony || ""}`}
+                                  title={`${round.round}R ${isEnemyRound ? roundWinLabel(type) : ""} ${round.result || round.ceremony || ""}`}
                                 >
-                                  {isEnemyRound ? win.mark : "-"}
+                                  {isEnemyRound ? <RoundResultIcon type={type} /> : <span className="text-[12px]">·</span>}
                                 </div>
                               );
                             })}
@@ -425,11 +472,13 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                             ))}
                           </div>
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 pl-[58px] text-[10px] text-[#6f8291]">
-                          <span>X 전멸</span>
-                          <span>S 스파이크</span>
-                          <span>D 해체</span>
-                          <span>T 시간</span>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 pl-[58px] text-[10px] text-[#6f8291]">
+                          {(["elimination", "spike", "defuse", "time"] as const).map((type) => (
+                            <span key={type} className="inline-flex items-center gap-1">
+                              <RoundResultIcon type={type} />
+                              {roundWinLabel(type)}
+                            </span>
+                          ))}
                         </div>
                       </div>
                     )}

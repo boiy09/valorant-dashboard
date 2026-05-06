@@ -272,6 +272,7 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
               </div>
               {match.scoreboard && (() => {
                 const sb = match.scoreboard;
+                const result = match.result;
                 const myTeamId = sb.players.find(p => p.puuid === puuid)?.teamId ?? "";
                 const myTeamPlayers = sb.players.filter(p => p.teamId === myTeamId);
                 const enemyTeamPlayers = sb.players.filter(p => p.teamId !== myTeamId);

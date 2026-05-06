@@ -39,11 +39,18 @@ export async function GET(req: NextRequest) {
   }
 
   const enc = encodeURIComponent;
+  const slug = `${enc(gameName)}-${enc(tagLine)}`;
   const results = await Promise.all([
-    tryUrl(`https://www.op.gg/api/v1/valorant/summoners/${region}/${enc(gameName)}-${enc(tagLine)}`),
-    tryUrl(`https://www.op.gg/api/v1/valorant/summoners/${region}/${enc(gameName)}-${enc(tagLine)}/matches?limit=5`),
-    tryUrl(`https://op.gg/valorant/api/v1/profiles/${region}/${enc(gameName)}-${enc(tagLine)}/matches`),
-    tryUrl(`https://lol.op.gg/api/v1/valorant/summoner?gameName=${enc(gameName)}&tagLine=${enc(tagLine)}&region=${region}`),
+    // 프로필 조회
+    tryUrl(`https://www.op.gg/valorant/api/v1/summoners/${region}?gameName=${enc(gameName)}&tagLine=${enc(tagLine)}`),
+    tryUrl(`https://www.op.gg/valorant/api/v1/summoners/${region}/${slug}`),
+    tryUrl(`https://www.op.gg/api/v1/valorant/summoners/${region}?gameName=${enc(gameName)}&tagLine=${enc(tagLine)}`),
+    // 매치 목록
+    tryUrl(`https://www.op.gg/valorant/api/v1/summoners/${region}/${slug}/matches`),
+    tryUrl(`https://www.op.gg/api/v1/valorant/summoners/${region}/${slug}/matches?limit=5`),
+    // Next.js 내부 API
+    tryUrl(`https://op.gg/_next/data/valorant/profile/${region}/${slug}.json`),
+    tryUrl(`https://www.op.gg/valorant/profile/${region}/${slug}/matches`),
   ]);
 
   return Response.json(results);

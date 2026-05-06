@@ -150,12 +150,24 @@ export async function getStore(
   const shard = regionToShard(region);
   const headers = await pvpHeaders(accessToken, entitlementsToken);
 
-  const response = await fetch(
+  let response = await fetch(
     `https://pd.${shard}.a.pvp.net/store/v3/storefront/${puuid}`,
     { headers }
   );
 
+  // v3가 실패하면 v2 시도
   if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    console.error(`[store] v3 실패 ${response.status}:`, body.slice(0, 200));
+    response = await fetch(
+      `https://pd.${shard}.a.pvp.net/store/v2/storefront/${puuid}`,
+      { headers }
+    );
+  }
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    console.error(`[store] v2 실패 ${response.status}:`, body.slice(0, 200));
     throw new Error(`상점 조회 실패: ${response.status}`);
   }
 

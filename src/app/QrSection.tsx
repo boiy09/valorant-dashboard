@@ -44,13 +44,13 @@ export default function QrSection() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
         <QrCard
-          src="/qr-discord.png"
+          src="/discord-join-qr.png"
           alt="디스코드 입장 QR"
           title="디스코드 입장 QR"
           desc="발로세끼 Discord 서버 참가"
         />
         <QrCard
-          src="/qr-kakaotalk.png"
+          src="/kakao-openchat-qr.png"
           alt="오픈채팅 입장 QR"
           title="오픈채팅 입장 QR"
           desc="카카오톡 오픈채팅 참가"

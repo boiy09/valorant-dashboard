@@ -9,7 +9,7 @@ const USERINFO_URL = "https://auth.riotgames.com/userinfo";
 const GEO_URL = "https://riot-geo.pas.si.riotgames.com/pas/v1/product/valorant";
 
 // Riot 클라이언트로 위장하는 헤더
-const USER_AGENT = "RiotClient/86.0.2.1441.2510 %s (Windows;10;;Professional, x64)";
+const USER_AGENT = "RiotClient/86.0.2.1441.2510 rso-auth (Windows;10;;Professional, x64)";
 
 const BASE_HEADERS = {
   "User-Agent": USER_AGENT,

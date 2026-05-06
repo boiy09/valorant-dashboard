@@ -33,6 +33,41 @@ export interface RankData {
   peakRankIcon?: string | null;
 }
 
+export interface ScoreboardPlayer {
+  puuid: string;
+  name: string;
+  tag: string;
+  teamId: string;
+  agent: string;
+  agentIcon: string;
+  tierName: string;
+  tierId: number;
+  acs: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  plusMinus: number;
+  kd: number;
+  hsPercent: number;
+  adr: number | null;
+}
+
+export interface ScoreboardTeam {
+  teamId: string;
+  roundsWon: number;
+  won: boolean;
+}
+
+export interface MatchScoreboardData {
+  map: string;
+  mode: string;
+  startedAt: string;
+  gameLengthMs: number;
+  totalRounds: number;
+  players: ScoreboardPlayer[];
+  teams: ScoreboardTeam[];
+}
+
 export interface MatchStats {
   matchId: string;
   map: string;
@@ -50,6 +85,7 @@ export interface MatchStats {
   bodyshots: number;
   legshots: number;
   playedAt: Date;
+  scoreboard: MatchScoreboardData | null;
 }
 
 export interface MmrHistoryEntry {
@@ -362,6 +398,7 @@ export async function getRecentMatches(
 
   return Promise.all(matches.map(async (match) => {
     const players = asArray<any>(match.players);
+    const teams = asArray<any>(match.teams);
     const me = players.find((player) => player?.puuid === puuid) ?? {};
     const stats = me?.stats ?? {};
     const { teamScore, enemyScore } = getTeamScores(match, puuid);
@@ -370,6 +407,59 @@ export async function getRecentMatches(
     const agentNestedAssets = asRecord(agent.assets);
     const agentName = toString(me?.agent?.name, "요원 정보 없음");
     const agentIcon = toString(agentAssets.small ?? agentNestedAssets.small ?? agent.small, "");
+
+    const totalRounds = teams.reduce((sum: number, t: any) => sum + toNumber(t.rounds_won), 0);
+
+    const scoreboardPlayers: ScoreboardPlayer[] = players.map((p: any) => {
+      const ps = asRecord(p.stats ?? {});
+      const pk = toNumber(ps.kills);
+      const pd = toNumber(ps.deaths);
+      const pa = toNumber(ps.assists);
+      const phs = toNumber(ps.headshots);
+      const pbs = toNumber(ps.bodyshots);
+      const pls = toNumber(ps.legshots);
+      const pScore = toNumber(ps.score);
+      const totalShots = phs + pbs + pls;
+      const pAssets = asRecord(asRecord(p.assets ?? {}).agent ?? {});
+      const pAgent = asRecord(p.agent ?? {});
+      const pAgentNested = asRecord(pAgent.assets ?? {});
+      const pIcon = toString(pAssets.small ?? pAgentNested.small ?? pAgent.small, "");
+      const pTier = asRecord(p.tier ?? {});
+      return {
+        puuid: toString(p.puuid, ""),
+        name: toString(p.name, ""),
+        tag: toString(p.tag, ""),
+        teamId: toString(p.team_id, ""),
+        agent: toString(pAgent.name, "Unknown"),
+        agentIcon: pIcon,
+        tierName: toString(pTier.name, "Unranked"),
+        tierId: toNumber(pTier.id),
+        acs: totalRounds > 0 ? Math.round(pScore / totalRounds) : 0,
+        kills: pk,
+        deaths: pd,
+        assists: pa,
+        plusMinus: pk - pd,
+        kd: pd > 0 ? Math.round((pk / pd) * 100) / 100 : pk,
+        hsPercent: totalShots > 0 ? Math.round((phs / totalShots) * 100) : 0,
+        adr: null,
+      };
+    });
+
+    const scoreboardTeams: ScoreboardTeam[] = teams.map((t: any) => ({
+      teamId: toString(t.team_id, ""),
+      roundsWon: toNumber(t.rounds_won),
+      won: Boolean(t.won),
+    }));
+
+    const scoreboard: MatchScoreboardData = {
+      map: toString(match?.metadata?.map?.name, "맵 정보 없음"),
+      mode: toString(match?.metadata?.queue?.name, "모드 정보 없음"),
+      startedAt: toString(match?.metadata?.started_at, ""),
+      gameLengthMs: toNumber(match?.metadata?.game_length_in_ms ?? match?.metadata?.game_length),
+      totalRounds,
+      players: scoreboardPlayers,
+      teams: scoreboardTeams,
+    };
 
     return {
       matchId: toString(match?.metadata?.match_id, ""),
@@ -388,6 +478,7 @@ export async function getRecentMatches(
       bodyshots: toNumber(stats?.bodyshots),
       legshots: toNumber(stats?.legshots),
       playedAt: new Date(match?.metadata?.started_at ?? Date.now()),
+      scoreboard,
     };
   }));
 }

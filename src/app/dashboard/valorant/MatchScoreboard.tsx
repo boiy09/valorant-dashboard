@@ -2,31 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { MatchScoreboardData, ScoreboardPlayer, ScoreboardTeam } from "@/lib/valorant";
 
-interface PlayerRow {
-  puuid: string;
-  name: string;
-  tag: string;
-  teamId: string;
-  agent: string;
-  agentIcon: string;
-  tierName: string;
-  tierId: number;
-  acs: number;
-  kills: number;
-  deaths: number;
-  assists: number;
-  plusMinus: number;
-  kd: number;
-  hsPercent: number;
-  adr: number | null;
-}
-
-interface Team {
-  teamId: string;
-  roundsWon: number;
-  won: boolean;
-}
+type PlayerRow = ScoreboardPlayer;
+type Team = ScoreboardTeam;
 
 interface MatchDetail {
   matchId: string;
@@ -189,35 +168,18 @@ export default function MatchScoreboard({
   matchId,
   myPuuid,
   result,
+  scoreboard: preloaded,
 }: {
   matchId: string;
   myPuuid: string;
   result: "승리" | "패배" | "무효";
+  scoreboard: MatchScoreboardData | null;
 }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<MatchDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
-
-  useEffect(() => {
-    if (!open || data || loading) return;
-    setLoading(true);
-    fetch(`/api/valorant/match/${matchId}`)
-      .then(async (r) => {
-        const json = await r.json();
-        if (!r.ok || json.error) {
-          setError(json.error ?? "매치 정보를 불러오지 못했습니다.");
-        } else {
-          setData(json);
-        }
-      })
-      .catch(() => setError("매치 정보를 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
-  }, [open, data, loading, matchId]);
 
   useEffect(() => {
     if (!open) return;
@@ -227,6 +189,10 @@ export default function MatchScoreboard({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
+
+  const data: MatchDetail | null = preloaded
+    ? { matchId, ...preloaded }
+    : null;
 
   const myTeamId = data?.players.find((p) => p.puuid === myPuuid)?.teamId;
   const teamA = data?.teams.find((t) => t.teamId === myTeamId);
@@ -288,18 +254,11 @@ export default function MatchScoreboard({
 
             {/* 본문 */}
             <div className="overflow-y-auto flex-1">
-              {loading && (
-                <div className="flex items-center justify-center gap-3 py-16 text-[#7b8a96]">
-                  <div className="w-4 h-4 border-2 border-[#ff4655] border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm">스코어보드 불러오는 중...</span>
-                </div>
+              {!data && (
+                <div className="px-5 py-8 text-center text-[#7b8a96] text-sm">스코어보드 데이터가 없습니다.</div>
               )}
 
-              {error && (
-                <div className="px-5 py-8 text-center text-[#ff4655] text-sm">{error}</div>
-              )}
-
-              {data && !loading && (
+              {data && (
                 <div>
                   {/* 내 팀 */}
                   <div className="px-5 pt-4 pb-1">

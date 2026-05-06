@@ -193,6 +193,7 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                   matchId={match.matchId}
                   myPuuid={puuid}
                   result={match.result}
+                  scoreboard={match.scoreboard}
                 />
                 <a
                   href={trackerUrl}

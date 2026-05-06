@@ -203,6 +203,20 @@ function splitRiotId(value: string) {
   };
 }
 
+function isAgentName(value: string, agentName: string) {
+  return Boolean(value) && value.trim().toLowerCase() === agentName.trim().toLowerCase();
+}
+
+function firstPlayerName(agentName: string, ...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const name = value.trim();
+    if (!name || isAgentName(name, agentName)) continue;
+    return name;
+  }
+  return "";
+}
+
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
@@ -577,25 +591,79 @@ export async function getRecentMatches(
         ) || (await getAgentIconByName(pAgentName));
       const pTier = asRecord(p.tier ?? {});
       const pAccount = asRecord(p.account ?? {});
+      const pPlayer = asRecord(p.player ?? {});
+      const pIdentity = asRecord(p.identity ?? {});
+      const pRiotId = asRecord(p.riotId ?? p.riot_id);
       const riotId = splitRiotId(
         firstString(
           p.riot_id,
           p.riotId,
           p.display_name,
           p.displayName,
+          p.player_name,
+          p.playerName,
           pAccount.riot_id,
           pAccount.riotId,
           pAccount.display_name,
-          pAccount.displayName
+          pAccount.displayName,
+          pPlayer.riot_id,
+          pPlayer.riotId,
+          pPlayer.display_name,
+          pPlayer.displayName,
+          pIdentity.riot_id,
+          pIdentity.riotId,
+          pIdentity.display_name,
+          pIdentity.displayName
         )
       );
-      const localName = firstString(p.name, p.game_name, p.gameName, pAccount.name, pAccount.game_name, riotId.name);
-      const localTag = firstString(p.tag, p.game_tag, p.tagLine, p.tag_line, pAccount.tag, pAccount.tagLine, riotId.tag);
+      const localName = firstPlayerName(
+        pAgentName,
+        p.game_name,
+        p.gameName,
+        p.name,
+        p.player_name,
+        p.playerName,
+        pAccount.game_name,
+        pAccount.gameName,
+        pAccount.name,
+        pPlayer.game_name,
+        pPlayer.gameName,
+        pPlayer.name,
+        pIdentity.game_name,
+        pIdentity.gameName,
+        pIdentity.name,
+        pRiotId.gameName,
+        pRiotId.game_name,
+        pRiotId.name,
+        riotId.name
+      );
+      const localTag = firstString(
+        p.tag,
+        p.game_tag,
+        p.tagLine,
+        p.tag_line,
+        pAccount.tag,
+        pAccount.game_tag,
+        pAccount.tagLine,
+        pAccount.tag_line,
+        pPlayer.tag,
+        pPlayer.game_tag,
+        pPlayer.tagLine,
+        pPlayer.tag_line,
+        pIdentity.tag,
+        pIdentity.game_tag,
+        pIdentity.tagLine,
+        pIdentity.tag_line,
+        pRiotId.tagLine,
+        pRiotId.tag_line,
+        pRiotId.tag,
+        riotId.tag
+      );
       const localCardIcon = getPlayerCardIcon(p);
       const accountFallback =
         !localName || !localTag || !localCardIcon ? await getAccountByPuuid(pPuuid).catch(() => null) : null;
       const fallbackCard = asRecord(accountFallback?.card);
-      const pName = localName || firstString(accountFallback?.name, accountFallback?.game_name);
+      const pName = localName || firstPlayerName(pAgentName, accountFallback?.game_name, accountFallback?.gameName, accountFallback?.name);
       const pTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
       const isPrivate = !pName;
       const pCardIcon = localCardIcon || firstString(fallbackCard.small, fallbackCard.wide, fallbackCard.large);

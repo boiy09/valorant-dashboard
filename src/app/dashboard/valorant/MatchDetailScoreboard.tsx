@@ -150,26 +150,26 @@ function ScoreboardTable({
           <col className="w-[190px]" />
           <col className="w-[120px]" />
           <col className="w-[70px]" />
-          <col className="w-[58px]" />
-          <col className="w-[58px]" />
-          <col className="w-[58px]" />
-          <col className="w-[70px]" />
-          <col className="w-[70px]" />
-          <col className="w-[70px]" />
-          <col className="w-[70px]" />
+          <col className="w-[54px]" />
+          <col className="w-[54px]" />
+          <col className="w-[54px]" />
+          <col className="w-[66px]" />
+          <col className="w-[66px]" />
+          <col className="w-[66px]" />
+          <col className="w-[66px]" />
         </colgroup>
         <thead>
           <tr className={`${headerClass}`}>
             <th className="py-2 pl-3 text-left font-bold">{label}</th>
             <th className="px-2 py-2 text-left font-medium">Match Rank</th>
-            <th className="px-2 py-2 text-right font-medium">ACS</th>
-            <th className="px-2 py-2 text-right font-medium">K</th>
-            <th className="px-2 py-2 text-right font-medium">D</th>
-            <th className="px-2 py-2 text-right font-medium">A</th>
-            <th className="px-2 py-2 text-right font-medium">+/-</th>
-            <th className="px-2 py-2 text-right font-medium">K/D</th>
-            <th className="px-2 py-2 text-right font-medium">HS%</th>
-            <th className="py-2 pr-3 text-right font-medium">ADR</th>
+            <th className="px-2 py-2 text-center font-medium">ACS</th>
+            <th className="px-2 py-2 text-center font-medium">K</th>
+            <th className="px-2 py-2 text-center font-medium">D</th>
+            <th className="px-2 py-2 text-center font-medium">A</th>
+            <th className="px-2 py-2 text-center font-medium">+/-</th>
+            <th className="px-2 py-2 text-center font-medium">K/D</th>
+            <th className="px-2 py-2 text-center font-medium">HS%</th>
+            <th className="px-2 py-2 text-center font-medium">ADR</th>
           </tr>
         </thead>
         <tbody>
@@ -209,18 +209,18 @@ function ScoreboardTable({
                     <span className={`truncate text-[11px] font-bold ${tierColor(player.tierId)}`}>{player.tierName}</span>
                   </div>
                 </td>
-                <td className="bg-[#24384a] px-2 py-2 text-right text-base font-black text-white">{player.acs}</td>
-                <td className="px-2 py-2 text-right text-base font-bold text-white">{player.kills}</td>
-                <td className="px-2 py-2 text-right text-base font-bold text-[#ff4655]">{player.deaths}</td>
-                <td className="px-2 py-2 text-right text-base font-bold text-white">{player.assists}</td>
-                <td className={`px-2 py-2 text-right text-base font-black ${player.plusMinus > 0 ? "text-green-400" : player.plusMinus < 0 ? "text-[#ff4655]" : "text-[#8da0ad]"}`}>
+                <td className="bg-[#24384a] px-2 py-2 text-center text-base font-black text-white">{player.acs}</td>
+                <td className="px-2 py-2 text-center text-base font-bold text-white">{player.kills}</td>
+                <td className="px-2 py-2 text-center text-base font-bold text-[#ff4655]">{player.deaths}</td>
+                <td className="px-2 py-2 text-center text-base font-bold text-white">{player.assists}</td>
+                <td className={`px-2 py-2 text-center text-base font-black ${player.plusMinus > 0 ? "text-green-400" : player.plusMinus < 0 ? "text-[#ff4655]" : "text-[#8da0ad]"}`}>
                   {player.plusMinus > 0 ? `+${player.plusMinus}` : player.plusMinus}
                 </td>
-                <td className={`px-2 py-2 text-right text-base font-black ${player.kd >= 1 ? "text-green-400" : "text-[#ff4655]"}`}>
+                <td className={`px-2 py-2 text-center text-base font-black ${player.kd >= 1 ? "text-green-400" : "text-[#ff4655]"}`}>
                   {player.kd.toFixed(1)}
                 </td>
-                <td className="px-2 py-2 text-right font-bold text-white">{player.hsPercent}%</td>
-                <td className="py-2 pr-3 text-right font-bold text-white">{player.adr ?? "--"}</td>
+                <td className="px-2 py-2 text-center font-bold text-white">{player.hsPercent}%</td>
+                <td className="px-2 py-2 text-center font-bold text-white">{player.adr ?? "--"}</td>
               </tr>
             );
           })}
@@ -401,7 +401,7 @@ export default function MatchDetailScoreboard({
                     className={`flex h-5 min-w-0 items-center justify-center rounded-sm leading-none ${isMyRound ? "text-[#58ffd8]" : "text-[#263544]"}`}
                     title={`${round.round}R ${isMyRound ? roundWinLabel(type) : ""} ${round.result || round.ceremony || ""}`}
                   >
-                    {isMyRound ? <RoundResultIcon type={type} /> : <span className="text-[12px]">·</span>}
+                    {isMyRound ? <RoundResultIcon type={type} /> : <span className="text-lg font-black leading-none">·</span>}
                   </div>
                 );
               })}
@@ -417,7 +417,7 @@ export default function MatchDetailScoreboard({
                     className={`flex h-5 min-w-0 items-center justify-center rounded-sm leading-none ${isEnemyRound ? "text-[#ff5f75]" : "text-[#263544]"}`}
                     title={`${round.round}R ${isEnemyRound ? roundWinLabel(type) : ""} ${round.result || round.ceremony || ""}`}
                   >
-                    {isEnemyRound ? <RoundResultIcon type={type} /> : <span className="text-[12px]">·</span>}
+                    {isEnemyRound ? <RoundResultIcon type={type} /> : <span className="text-lg font-black leading-none">·</span>}
                   </div>
                 );
               })}

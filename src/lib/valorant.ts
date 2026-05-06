@@ -325,7 +325,7 @@ export async function getRankByPuuid(
       getRankIconByTier(peakTierId),
     ]);
     const tierName = toString(
-      currentTierId > 0 ? (currentTier.name ?? current.currenttier_patched) : opGgRank?.tierName,
+      currentTierId > 0 ? (currentTier.name ?? current.currenttierpatched) : opGgRank?.tierName,
       "언랭크"
     );
     const rr = currentTierId > 0 ? toNumber(current.rr ?? current.ranking_in_tier) : null;

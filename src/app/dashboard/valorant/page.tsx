@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getRankByPuuid, getRecentMatches, MatchStats, ScoreboardPlayer } from "@/lib/valorant";
 import TrackerStats from "../TrackerStats";
+import MatchDetailScoreboard from "./MatchDetailScoreboard";
 
 export const dynamic = "force-dynamic";
 
@@ -176,6 +177,53 @@ function UserPlaceholderIcon() {
   );
 }
 
+function ScoreboardPortrait({
+  name,
+  agent,
+  cardIcon,
+  agentIcon,
+  level,
+  isPrivate,
+}: {
+  name: string;
+  agent: string;
+  cardIcon: string;
+  agentIcon: string;
+  level: number | null;
+  isPrivate: boolean;
+}) {
+  return (
+    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-[#2a3540] ring-1 ring-white/10">
+      {isPrivate ? (
+        <div className="flex h-full w-full items-center justify-center">
+          <UserPlaceholderIcon />
+        </div>
+      ) : cardIcon ? (
+        <>
+          <img
+            src={cardIcon}
+            alt={name || agent}
+            className="h-full w-full object-cover object-top"
+          />
+          <div className="absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/80 to-transparent" />
+        </>
+      ) : agentIcon ? (
+        <img src={agentIcon} alt={agent} className="h-full w-full object-cover" />
+      ) : null}
+      {!isPrivate && agentIcon && cardIcon && (
+        <span className="absolute right-0.5 top-0.5 rounded bg-black/55 p-[2px]">
+          <img src={agentIcon} alt={agent} className="h-3 w-3 rounded-sm object-cover" />
+        </span>
+      )}
+      {level !== null && (
+        <span className="absolute bottom-0 left-0 rounded-tr bg-black/80 px-1 text-[9px] font-bold text-white">
+          {level}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ScoreboardTable({ players, myPuuid, label, accent }: {
   players: ScoreboardPlayer[];
   myPuuid: string;
@@ -225,22 +273,14 @@ function ScoreboardTable({ players, myPuuid, label, accent }: {
               >
                 <td className="py-2 pl-3">
                   <div className="flex items-center gap-2">
-                    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-[#2a3540]">
-                      {p.isPrivate ? (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <UserPlaceholderIcon />
-                        </div>
-                      ) : p.cardIcon ? (
-                        <img src={p.cardIcon} alt={p.name || p.agent} className="h-full w-full object-cover" />
-                      ) : p.agentIcon ? (
-                        <img src={p.agentIcon} alt={p.agent} className="h-full w-full object-cover" />
-                      ) : null}
-                      {p.level !== null && (
-                        <span className="absolute bottom-0 left-0 rounded-tr bg-black/70 px-1 text-[9px] font-bold text-white">
-                          {p.level}
-                        </span>
-                      )}
-                    </div>
+                    <ScoreboardPortrait
+                      name={p.name}
+                      agent={p.agent}
+                      cardIcon={p.cardIcon}
+                      agentIcon={p.agentIcon}
+                      level={p.level}
+                      isPrivate={p.isPrivate}
+                    />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
                         <span className={`truncate text-sm font-black ${isMe ? "text-[#ff4655]" : "text-white"}`}>
@@ -398,110 +438,12 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                   <div className="font-bold text-white">{match.mode}</div>
                 </div>
               </div>
-              {match.scoreboard && (() => {
-                const sb = match.scoreboard;
-                const myTeamId = sb.players.find(p => p.puuid === puuid)?.teamId ?? "";
-                const myTeamPlayers = sb.players.filter(p => p.teamId === myTeamId);
-                const enemyTeamPlayers = sb.players.filter(p => p.teamId !== myTeamId);
-                const myTeam = sb.teams.find(t => t.teamId === myTeamId);
-                const enemyTeam = sb.teams.find(t => t.teamId !== myTeamId);
-                const myLabel = `Team A · ${myTeam?.roundsWon ?? 0}R`;
-                const enemyLabel = `Team B · ${enemyTeam?.roundsWon ?? 0}R`;
-                return (
-                  <div>
-                    <div className="bg-[#2a4054] px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
-                        <div>
-                          <div className="text-[11px] font-bold text-[#9fb0be]">Competitive</div>
-                          <div className="text-lg font-black text-white">{sb.map}</div>
-                        </div>
-                        <div className="flex items-end gap-3 text-lg font-black">
-                          <span className="text-[#58ffd8]">Team A</span>
-                          <span className="text-[#58ffd8]">{myTeam?.roundsWon ?? 0}</span>
-                          <span className="text-white">:</span>
-                          <span className="text-[#ff5f75]">{enemyTeam?.roundsWon ?? 0}</span>
-                          <span className="text-[#ff5f75]">Team B</span>
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-bold text-[#9fb0be]">{fmtMatchDate(sb.startedAt)}</div>
-                          <div className="text-lg font-black text-white">{fmtDuration(sb.gameLengthMs)}</div>
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-bold text-[#9fb0be]">Average Rank</div>
-                          <div className="text-lg font-black text-white">
-                            {myTeamPlayers.find((p) => p.tierId > 0)?.tierName ?? "Unrated"}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="border-b border-[#0e1821] bg-[#2a4054] text-sm font-bold text-white">
-                      <div className="inline-flex min-w-[140px] justify-center border-b-2 border-[#ff4655] py-3">
-                        Scoreboard
-                      </div>
-                    </div>
-                    {sb.rounds.length > 0 && (
-                      <div className="bg-[#07131e] px-3 py-4">
-                        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
-                          <div className="whitespace-nowrap text-right text-sm font-bold text-[#58ffd8]">Team A</div>
-                          <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
-                            {sb.rounds.map((round) => {
-                              const isMyRound = round.winningTeamId === myTeamId;
-                              const type = roundWinType(round.result, round.ceremony);
-                              return (
-                                <div
-                                  key={`${match.matchId}-team-a-${round.round}`}
-                                  className={`flex h-5 min-w-0 items-center justify-center rounded-sm leading-none ${
-                                    isMyRound ? "text-[#58ffd8]" : "text-[#263544]"
-                                  }`}
-                                  title={`${round.round}R ${isMyRound ? roundWinLabel(type) : ""} ${round.result || round.ceremony || ""}`}
-                                >
-                                  {isMyRound ? <RoundResultIcon type={type} /> : <span className="text-[12px]">·</span>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <div className="whitespace-nowrap text-right text-sm font-bold text-[#ff5f75]">Team B</div>
-                          <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
-                            {sb.rounds.map((round) => {
-                              const isEnemyRound = round.winningTeamId && round.winningTeamId !== myTeamId;
-                              const type = roundWinType(round.result, round.ceremony);
-                              return (
-                                <div
-                                  key={`${match.matchId}-team-b-${round.round}`}
-                                  className={`flex h-5 min-w-0 items-center justify-center rounded-sm leading-none ${
-                                    isEnemyRound ? "text-[#ff5f75]" : "text-[#263544]"
-                                  }`}
-                                  title={`${round.round}R ${isEnemyRound ? roundWinLabel(type) : ""} ${round.result || round.ceremony || ""}`}
-                                >
-                                  {isEnemyRound ? <RoundResultIcon type={type} /> : <span className="text-[12px]">·</span>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <div className="whitespace-nowrap" />
-                          <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
-                            {sb.rounds.map((round) => (
-                              <div key={`${match.matchId}-num-${round.round}`} className="flex h-4 min-w-0 items-center justify-center text-[9px] text-[#8da0ad]">
-                                {round.round}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 pl-[58px] text-[10px] text-[#6f8291]">
-                          {(["elimination", "spike", "defuse", "time"] as const).map((type) => (
-                            <span key={type} className="inline-flex items-center gap-1">
-                              <RoundResultIcon type={type} />
-                              {roundWinLabel(type)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <ScoreboardTable players={myTeamPlayers} myPuuid={puuid} label={myLabel} accent="green" />
-                    <ScoreboardTable players={enemyTeamPlayers} myPuuid={puuid} label={enemyLabel} accent="red" />
-                  </div>
-                );
-              })()}
+              <MatchDetailScoreboard
+                matchId={match.matchId}
+                myPuuid={puuid}
+                result={match.result}
+                initialScoreboard={match.scoreboard}
+              />
               <a
                 href={trackerUrl}
                 target="_blank"

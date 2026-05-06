@@ -48,6 +48,49 @@ function fmtDate(iso: string) {
   });
 }
 
+function PlayerPortrait({
+  player,
+}: {
+  player: PlayerRow;
+}) {
+  return (
+    <div className="relative h-9 w-9 flex-shrink-0 overflow-hidden rounded bg-[#2a3540] ring-1 ring-white/10">
+      {player.cardIcon ? (
+        <>
+          <img
+            src={player.cardIcon}
+            alt={player.name || player.agent}
+            className="h-full w-full object-cover object-top"
+          />
+          <div className="absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-black/80 to-transparent" />
+        </>
+      ) : player.agentIcon ? (
+        <img
+          src={player.agentIcon}
+          alt={player.agent}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="h-full w-full bg-[#2a3540]" />
+      )}
+      {player.agentIcon && player.cardIcon && (
+        <span className="absolute right-0.5 top-0.5 rounded bg-black/55 p-[2px]">
+          <img
+            src={player.agentIcon}
+            alt={player.agent}
+            className="h-3 w-3 rounded-sm object-cover"
+          />
+        </span>
+      )}
+      {player.level !== null && (
+        <span className="absolute bottom-0 left-0 rounded-tr bg-black/80 px-1 text-[8px] font-bold text-white">
+          {player.level}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function PlayerTable({
   players,
   myPuuid,
@@ -88,15 +131,7 @@ function PlayerTable({
                 {/* 플레이어 */}
                 <td className="py-2 pl-3">
                   <div className="flex items-center gap-2">
-                    {player.agentIcon ? (
-                      <img
-                        src={player.agentIcon}
-                        alt={player.agent}
-                        className="w-7 h-7 rounded flex-shrink-0 object-cover"
-                      />
-                    ) : (
-                      <div className="w-7 h-7 rounded bg-[#2a3540] flex-shrink-0" />
-                    )}
+                    <PlayerPortrait player={player} />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
                         <span className={`font-bold truncate ${isMe ? "text-[#ff4655]" : "text-white"}`}>
@@ -177,6 +212,8 @@ export default function MatchScoreboard({
 }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [detail, setDetail] = useState<MatchDetail | null>(null);
+  const [loading, setLoading] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
@@ -190,9 +227,32 @@ export default function MatchScoreboard({
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const data: MatchDetail | null = preloaded
+  useEffect(() => {
+    if (!open || detail) return;
+
+    let cancelled = false;
+    setLoading(true);
+
+    fetch(`/api/valorant/match/${encodeURIComponent(matchId)}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!cancelled && payload?.players) {
+          setDetail(payload);
+        }
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detail, matchId, open]);
+
+  const data: MatchDetail | null = detail ?? (preloaded
     ? { matchId, ...preloaded }
-    : null;
+    : null);
 
   const myTeamId = data?.players.find((p) => p.puuid === myPuuid)?.teamId;
   const teamA = data?.teams.find((t) => t.teamId === myTeamId);
@@ -256,6 +316,11 @@ export default function MatchScoreboard({
             <div className="overflow-y-auto flex-1">
               {!data && (
                 <div className="px-5 py-8 text-center text-[#7b8a96] text-sm">스코어보드 데이터가 없습니다.</div>
+              )}
+              {loading && data && (
+                <div className="border-b border-[#2a3540] px-5 py-2 text-center text-[11px] font-bold text-[#7b8a96]">
+                  최신 상세 데이터로 보정 중...
+                </div>
               )}
 
               {data && (

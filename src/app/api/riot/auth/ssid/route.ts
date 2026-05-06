@@ -47,11 +47,15 @@ export async function POST(req: NextRequest) {
   const body = await req.json() as { ssid?: string };
   const raw = (body.ssid ?? "").trim();
   if (!raw) {
-    return Response.json({ error: "ssid 값을 입력해 주세요." }, { status: 400 });
+    return Response.json({ error: "쿠키 값을 입력해 주세요." }, { status: 400 });
   }
 
-  // "ssid=값" 형태도 허용, 값만 입력해도 됨
-  const ssidCookie = raw.startsWith("ssid=") ? raw : `ssid=${raw}`;
+  // ssid가 포함된 전체 쿠키 문자열, 또는 ssid 값만 입력한 경우 모두 허용
+  const ssidCookie = raw.includes("ssid=") ? raw : `ssid=${raw}`;
+
+  if (!ssidCookie.includes("ssid=")) {
+    return Response.json({ error: "ssid 쿠키가 포함되어 있지 않습니다. Network 탭의 Cookie 헤더 전체를 복사해 주세요." }, { status: 400 });
+  }
 
   const user = await findUser(session.user.id, session.user.email);
   if (!user) {
@@ -62,8 +66,10 @@ export async function POST(req: NextRequest) {
     const authResult = await refreshTokens(ssidCookie);
 
     if (authResult.status !== "success") {
+      const detail = authResult.status === "error" ? authResult.message : "알 수 없는 오류";
+      console.error("[ssid route] refreshTokens 실패:", detail);
       return Response.json(
-        { error: "ssid 쿠키가 유효하지 않습니다. 다시 로그인 후 복사해 주세요." },
+        { error: `ssid 쿠키가 유효하지 않습니다. (${detail})` },
         { status: 401 }
       );
     }

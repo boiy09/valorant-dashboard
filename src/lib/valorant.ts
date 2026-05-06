@@ -1,5 +1,6 @@
 import axios from "axios";
 import { apiCache, TTL } from "@/lib/apiCache";
+import { getOpGgRankFallback } from "@/lib/opgg";
 
 const henrikClient = axios.create({
   baseURL: "https://api.henrikdev.xyz/valorant",
@@ -204,6 +205,22 @@ function firstString(...values: unknown[]) {
   return "";
 }
 
+function isPrivateLikeName(value: unknown) {
+  if (typeof value !== "string") return true;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return true;
+  return (
+    normalized === "private" ||
+    normalized === "hidden" ||
+    normalized === "anonymous" ||
+    normalized === "unknown" ||
+    normalized === "player" ||
+    normalized === "비공개" ||
+    normalized.includes("비공개") ||
+    normalized.includes("익명")
+  );
+}
+
 function normalizeTeamId(value: unknown) {
   return toString(value, "").trim().toLowerCase();
 }
@@ -224,7 +241,7 @@ function firstPlayerName(agentName: string, ...values: unknown[]) {
   for (const value of values) {
     if (typeof value !== "string") continue;
     const name = value.trim();
-    if (!name || isAgentName(name, agentName)) continue;
+    if (isPrivateLikeName(name) || isAgentName(name, agentName)) continue;
     return name;
   }
   return "";
@@ -236,14 +253,6 @@ function asArray<T>(value: unknown): T[] {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-}
-
-function decodeHtml(value: string) {
-  return value
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#x27;", "'")
-    .replaceAll("&amp;", "&")
-    .replaceAll("\\u0026", "&");
 }
 
 export function parseRiotId(input: string) {
@@ -336,15 +345,36 @@ function getPlayerCardIcon(player: Record<string, unknown>) {
 
 async function getAccountByPuuid(puuid: string) {
   if (!puuid) return null;
-  const key = `account:puuid:${puuid}`;
+  const key = `account:puuid:v2:${puuid}`;
   const { data } = await apiCache.getOrFetch(key, TTL.VERY_LONG, async () => {
-    const response = await henrikGet(`/v2/by-puuid/account/${puuid}`).catch(() =>
+    const henrikResponse = await henrikGet(`/v2/by-puuid/account/${puuid}`).catch(() =>
       henrikGet(`/v1/by-puuid/account/${puuid}`).catch(() => null)
     );
-    return response?.data?.data ?? null;
+    if (henrikResponse?.data?.data) return henrikResponse.data.data;
+
+    if (!process.env.RIOT_API_KEY) return null;
+    for (const routing of ["asia", "americas", "europe"] as const) {
+      const response = await fetch(`https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-puuid/${puuid}`, {
+        headers: { "X-Riot-Token": process.env.RIOT_API_KEY },
+        cache: "no-store",
+      }).catch(() => null);
+      if (!response?.ok) continue;
+      const account = await response.json();
+      if (account?.gameName) {
+        return {
+          name: account.gameName,
+          game_name: account.gameName,
+          tag: account.tagLine,
+          tagLine: account.tagLine,
+        };
+      }
+    }
+    return null;
   });
   return asRecord(data);
 }
+
+const RANK_REGION_CANDIDATES: ValorantRegion[] = ["kr", "ap", "na", "eu", "latam", "br"];
 
 async function getRankIconByTier(tierId: number) {
   if (tierId <= 0) return null;
@@ -368,12 +398,15 @@ async function getRankIconByTier(tierId: number) {
 
 async function getScoreboardRankByPuuid(puuid: string, region: ValorantRegion) {
   if (!puuid) return null;
-  const key = `scoreboard-rank:${region}:${puuid}`;
+  const key = `scoreboard-rank:v2:${region}:${puuid}`;
   const { data } = await apiCache.getOrFetch(key, TTL.VERY_LONG, async () => {
-    const response = await henrikGet(`/v3/by-puuid/mmr/${region}/pc/${puuid}`).catch(() =>
-      henrikGet(`/v2/by-puuid/mmr/${region}/${puuid}`).catch(() => null)
-    );
-    return response?.data?.data ?? null;
+    for (const candidate of [region, ...RANK_REGION_CANDIDATES.filter((item) => item !== region)]) {
+      const response = await henrikGet(`/v3/by-puuid/mmr/${candidate}/pc/${puuid}`).catch(() =>
+        henrikGet(`/v2/by-puuid/mmr/${candidate}/${puuid}`).catch(() => null)
+      );
+      if (response?.data?.data) return response.data.data;
+    }
+    return null;
   });
   const current = asRecord(data?.current ?? data?.current_data);
   const tier = asRecord(current.tier);
@@ -401,42 +434,6 @@ async function getAgentIconByName(agentName: string) {
   );
 
   return typeof agent?.displayIcon === "string" ? agent.displayIcon : "";
-}
-
-async function getOpGgRankFallback(gameName: string, tagLine: string) {
-  const slug = `${gameName}-${tagLine}`;
-  const url = `https://op.gg/ko/valorant/profile/${encodeURIComponent(slug)}`;
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0",
-      Accept: "text/html",
-    },
-    cache: "no-store",
-  });
-  if (!response.ok) return null;
-
-  const html = decodeHtml(await response.text());
-  const currentTierId = Number(html.match(/"competitiveTier":(\d+)/)?.[1] ?? 0);
-  const historyTierId = Number(html.match(/"tierHistories":\[\{"id":\d+,"seasonId":"[^"]+","tierId":(\d+)/)?.[1] ?? 0);
-  const tierId = currentTierId || historyTierId;
-  if (!tierId) return null;
-
-  const tierPattern = new RegExp(
-    `"id":${tierId},"name":"([^"]+)","localizedName":"([^"]+)","division":(\\d+)[^}]*"imageUrl":"([^"]+)"`,
-    "i"
-  );
-  const tierMatch = html.match(tierPattern);
-  if (!tierMatch) return null;
-
-  const [, name, localizedName, division, imageUrl] = tierMatch;
-  const tierName = division === "0" ? localizedName : `${localizedName} ${division}`;
-
-  return {
-    tierId,
-    tierName: tierName || name,
-    rankIcon: imageUrl,
-    isCurrent: currentTierId > 0,
-  };
 }
 
 export async function getPlayerByRiotId(
@@ -677,15 +674,18 @@ export async function getRecentMatches(
         riotId.tag
       );
       const localCardIcon = getPlayerCardIcon(p);
+      const rawName = firstString(p.game_name, p.gameName, p.name, p.player_name, p.playerName);
+      const rawNameIsAgent = isAgentName(rawName, pAgentName);
+      const rawNameIsUsable = !rawNameIsAgent && !isPrivateLikeName(rawName);
       const accountFallback =
-        !localName || !localTag || !localCardIcon ? await getAccountByPuuid(pPuuid).catch(() => null) : null;
+        !localName || !localTag || !localCardIcon || !rawNameIsUsable
+          ? await getAccountByPuuid(pPuuid).catch(() => null)
+          : null;
       const fallbackCard = asRecord(accountFallback?.card);
       const pName = localName || firstPlayerName(pAgentName, accountFallback?.game_name, accountFallback?.gameName, accountFallback?.name);
       const pTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
-      const agentLikeRawName = isAgentName(firstString(p.name, p.game_name, p.gameName), pAgentName);
-      const rawName = firstString(p.game_name, p.gameName, p.name, p.player_name, p.playerName);
-      const isPrivate = !pName && !rawName;
-      const displayName = pName || (agentLikeRawName ? pAgentName : rawName);
+      const isPrivate = !pName && !rawNameIsUsable;
+      const displayName = pName || rawName;
       const pCardIcon = localCardIcon || firstString(fallbackCard.small, fallbackCard.wide, fallbackCard.large);
       const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
@@ -699,7 +699,7 @@ export async function getRecentMatches(
         isPrivate,
         teamId: pTeamId,
         level: toNumber(p.level ?? p.account_level, -1) >= 0 ? toNumber(p.level ?? p.account_level) : null,
-        cardIcon: isPrivate ? "" : pCardIcon,
+        cardIcon: pCardIcon,
         agent: pAgentName,
         agentIcon: pIcon,
         tierName: finalTierName,

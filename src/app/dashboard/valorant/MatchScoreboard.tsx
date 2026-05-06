@@ -212,6 +212,8 @@ export default function MatchScoreboard({
 }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [detail, setDetail] = useState<MatchDetail | null>(null);
+  const [loading, setLoading] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
@@ -225,9 +227,32 @@ export default function MatchScoreboard({
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const data: MatchDetail | null = preloaded
+  useEffect(() => {
+    if (!open || detail) return;
+
+    let cancelled = false;
+    setLoading(true);
+
+    fetch(`/api/valorant/match/${encodeURIComponent(matchId)}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!cancelled && payload?.players) {
+          setDetail(payload);
+        }
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detail, matchId, open]);
+
+  const data: MatchDetail | null = detail ?? (preloaded
     ? { matchId, ...preloaded }
-    : null;
+    : null);
 
   const myTeamId = data?.players.find((p) => p.puuid === myPuuid)?.teamId;
   const teamA = data?.teams.find((t) => t.teamId === myTeamId);
@@ -291,6 +316,11 @@ export default function MatchScoreboard({
             <div className="overflow-y-auto flex-1">
               {!data && (
                 <div className="px-5 py-8 text-center text-[#7b8a96] text-sm">스코어보드 데이터가 없습니다.</div>
+              )}
+              {loading && data && (
+                <div className="border-b border-[#2a3540] px-5 py-2 text-center text-[11px] font-bold text-[#7b8a96]">
+                  최신 상세 데이터로 보정 중...
+                </div>
               )}
 
               {data && (

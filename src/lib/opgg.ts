@@ -24,7 +24,8 @@ function decodeHtml(value: string) {
     .replaceAll("&quot;", '"')
     .replaceAll("&#x27;", "'")
     .replaceAll("&amp;", "&")
-    .replaceAll("\\u0026", "&");
+    .replaceAll("\\u0026", "&")
+    .replaceAll('\\"', '"');
 }
 
 function getMetaContent(html: string, name: string) {
@@ -77,7 +78,7 @@ export async function fetchOpGgValorantProfile(
   gameName: string,
   tagLine: string
 ): Promise<OpGgProfileSnapshot | null> {
-  const cacheKey = `opgg:profile:${gameName.trim().toLowerCase()}#${tagLine.trim().toLowerCase()}`;
+  const cacheKey = `opgg:profile:v2:${gameName.trim().toLowerCase()}#${tagLine.trim().toLowerCase()}`;
   const { data } = await apiCache.getOrFetch(cacheKey, TTL.LONG, async () => {
     const urls = buildOpGgValorantProfileUrls(gameName, tagLine);
 

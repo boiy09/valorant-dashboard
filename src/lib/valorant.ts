@@ -7,6 +7,19 @@ const henrikClient = axios.create({
   timeout: 15000,
 });
 
+// Henrik free tier rate limit guard: max 3 concurrent requests
+const _hq = { n: 0, q: [] as Array<() => void> };
+async function henrikGet(path: string) {
+  if (_hq.n >= 3) await new Promise<void>(r => _hq.q.push(r));
+  _hq.n++;
+  try {
+    return await henrikClient.get(path);
+  } finally {
+    _hq.n--;
+    _hq.q.shift()?.();
+  }
+}
+
 export type ValorantRegion = "kr" | "ap" | "na" | "eu" | "latam" | "br";
 export type ValorantPlatform = "pc" | "console";
 export type MatchResult = "승리" | "패배" | "무효";
@@ -324,9 +337,9 @@ function getPlayerCardIcon(player: Record<string, unknown>) {
 async function getAccountByPuuid(puuid: string) {
   if (!puuid) return null;
   const key = `account:puuid:${puuid}`;
-  const { data } = await apiCache.getOrFetch(key, TTL.MEDIUM, async () => {
-    const response = await henrikClient.get(`/v2/by-puuid/account/${puuid}`).catch(() =>
-      henrikClient.get(`/v1/by-puuid/account/${puuid}`).catch(() => null)
+  const { data } = await apiCache.getOrFetch(key, TTL.VERY_LONG, async () => {
+    const response = await henrikGet(`/v2/by-puuid/account/${puuid}`).catch(() =>
+      henrikGet(`/v1/by-puuid/account/${puuid}`).catch(() => null)
     );
     return response?.data?.data ?? null;
   });
@@ -356,9 +369,9 @@ async function getRankIconByTier(tierId: number) {
 async function getScoreboardRankByPuuid(puuid: string, region: ValorantRegion) {
   if (!puuid) return null;
   const key = `scoreboard-rank:${region}:${puuid}`;
-  const { data } = await apiCache.getOrFetch(key, TTL.MEDIUM, async () => {
-    const response = await henrikClient.get(`/v3/by-puuid/mmr/${region}/pc/${puuid}`).catch(() =>
-      henrikClient.get(`/v2/by-puuid/mmr/${region}/${puuid}`).catch(() => null)
+  const { data } = await apiCache.getOrFetch(key, TTL.VERY_LONG, async () => {
+    const response = await henrikGet(`/v3/by-puuid/mmr/${region}/pc/${puuid}`).catch(() =>
+      henrikGet(`/v2/by-puuid/mmr/${region}/${puuid}`).catch(() => null)
     );
     return response?.data?.data ?? null;
   });

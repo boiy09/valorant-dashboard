@@ -408,7 +408,10 @@ export async function getRecentMatches(
     const agentName = toString(me?.agent?.name, "요원 정보 없음");
     const agentIcon = toString(agentAssets.small ?? agentNestedAssets.small ?? agent.small, "");
 
-    const totalRounds = teams.reduce((sum: number, t: any) => sum + toNumber(t.rounds_won), 0);
+    function teamRoundsWon(t: any): number {
+      return toNumber(t.rounds_won ?? asRecord(t.rounds).won ?? t.roundsWon);
+    }
+    const totalRounds = teams.reduce((sum: number, t: any) => sum + teamRoundsWon(t), 0);
 
     const scoreboardPlayers: ScoreboardPlayer[] = players.map((p: any) => {
       const ps = asRecord(p.stats ?? {});
@@ -423,13 +426,16 @@ export async function getRecentMatches(
       const pAssets = asRecord(asRecord(p.assets ?? {}).agent ?? {});
       const pAgent = asRecord(p.agent ?? {});
       const pAgentNested = asRecord(pAgent.assets ?? {});
-      const pIcon = toString(pAssets.small ?? pAgentNested.small ?? pAgent.small, "");
+      const pIcon = (pAssets.small ?? pAgentNested.small ?? pAgent.small ?? pAssets.bust ?? pAgentNested.bust) as string ?? "";
       const pTier = asRecord(p.tier ?? {});
+      const pName = (p.name ?? p.game_name ?? "") as string;
+      const pTag = (p.tag ?? p.game_tag ?? p.tagLine ?? "") as string;
+      const pTeamId = (p.team_id ?? p.teamId ?? "") as string;
       return {
         puuid: toString(p.puuid, ""),
-        name: toString(p.name, ""),
-        tag: toString(p.tag, ""),
-        teamId: toString(p.team_id, ""),
+        name: pName,
+        tag: pTag,
+        teamId: pTeamId,
         agent: toString(pAgent.name, "Unknown"),
         agentIcon: pIcon,
         tierName: toString(pTier.name, "Unranked"),
@@ -446,9 +452,9 @@ export async function getRecentMatches(
     });
 
     const scoreboardTeams: ScoreboardTeam[] = teams.map((t: any) => ({
-      teamId: toString(t.team_id, ""),
-      roundsWon: toNumber(t.rounds_won),
-      won: Boolean(t.won),
+      teamId: toString(t.team_id ?? t.teamId, ""),
+      roundsWon: teamRoundsWon(t),
+      won: Boolean(t.won ?? t.has_won),
     }));
 
     const scoreboard: MatchScoreboardData = {

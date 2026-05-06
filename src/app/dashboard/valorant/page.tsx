@@ -1,9 +1,8 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getRankByPuuid, getRecentMatches, MatchStats } from "@/lib/valorant";
+import { getRankByPuuid, getRecentMatches, MatchStats, ScoreboardPlayer } from "@/lib/valorant";
 import TrackerStats from "../TrackerStats";
-import MatchScoreboard from "./MatchScoreboard";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +74,89 @@ function buildSummary(matches: MatchStats[]) {
 
 function buildTrackerUrl(riotId: string) {
   return `https://tracker.gg/valorant/profile/riot/${encodeURIComponent(riotId)}/overview?platform=pc&playlist=competitive`;
+}
+
+function tierColor(tierId: number) {
+  if (tierId >= 24) return "text-[#ff4655]";
+  if (tierId >= 21) return "text-[#f0b429]";
+  if (tierId >= 18) return "text-[#a855f7]";
+  if (tierId >= 15) return "text-[#3b82f6]";
+  if (tierId >= 12) return "text-[#4ade80]";
+  if (tierId >= 9) return "text-orange-400";
+  if (tierId >= 6) return "text-amber-600";
+  if (tierId >= 3) return "text-zinc-400";
+  return "text-[#7b8a96]";
+}
+
+function ScoreboardTable({ players, myPuuid, label, color }: {
+  players: ScoreboardPlayer[];
+  myPuuid: string;
+  label: string;
+  color: string;
+}) {
+  const sorted = [...players].sort((a, b) => b.acs - a.acs);
+  return (
+    <div>
+      <div className={`text-[10px] font-bold tracking-widest uppercase mb-1 px-1 ${color}`}>{label}</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[#7b8a96] border-b border-[#2a3540]">
+              <th className="text-left py-1.5 pl-2 font-medium">플레이어</th>
+              <th className="text-right py-1.5 px-2 font-medium">ACS</th>
+              <th className="text-right py-1.5 px-2 font-medium">K</th>
+              <th className="text-right py-1.5 px-2 font-medium">D</th>
+              <th className="text-right py-1.5 px-2 font-medium">A</th>
+              <th className="text-right py-1.5 px-2 font-medium">+/-</th>
+              <th className="text-right py-1.5 px-2 font-medium">K/D</th>
+              <th className="text-right py-1.5 pr-2 font-medium">HS%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((p) => {
+              const isMe = p.puuid === myPuuid;
+              return (
+                <tr key={p.puuid || p.name} className={`border-b border-[#1a242d] last:border-0 ${isMe ? "bg-[#ff4655]/5" : ""}`}>
+                  <td className="py-1.5 pl-2">
+                    <div className="flex items-center gap-1.5">
+                      {p.agentIcon ? (
+                        <img src={p.agentIcon} alt={p.agent} className="w-6 h-6 rounded flex-shrink-0 object-cover" />
+                      ) : (
+                        <div className="w-6 h-6 rounded bg-[#2a3540] flex-shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1">
+                          <span className={`font-bold truncate text-[11px] ${isMe ? "text-[#ff4655]" : "text-white"}`}>
+                            {p.name || p.agent}
+                          </span>
+                          {p.tag && <span className="text-[#4a5a68] text-[10px]">#{p.tag}</span>}
+                          {isMe && <span className="text-[9px] text-[#ff4655] bg-[#ff4655]/10 px-1 rounded">나</span>}
+                        </div>
+                        <div className={`text-[10px] ${tierColor(p.tierId)}`}>{p.tierName}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="text-right py-1.5 px-2 font-bold text-white text-[11px]">{p.acs}</td>
+                  <td className="text-right py-1.5 px-2 font-bold text-white text-[11px]">{p.kills}</td>
+                  <td className="text-right py-1.5 px-2 font-bold text-[#ff4655] text-[11px]">{p.deaths}</td>
+                  <td className="text-right py-1.5 px-2 text-white text-[11px]">{p.assists}</td>
+                  <td className={`text-right py-1.5 px-2 font-bold text-[11px] ${p.plusMinus > 0 ? "text-green-400" : p.plusMinus < 0 ? "text-[#ff4655]" : "text-[#7b8a96]"}`}>
+                    {p.plusMinus > 0 ? `+${p.plusMinus}` : p.plusMinus}
+                  </td>
+                  <td className={`text-right py-1.5 px-2 font-bold text-[11px] ${p.kd >= 1 ? "text-green-400" : "text-[#ff4655]"}`}>
+                    {p.kd.toFixed(2)}
+                  </td>
+                  <td className={`text-right py-1.5 pr-2 text-[11px] ${p.hsPercent >= 25 ? "text-green-400" : "text-white"}`}>
+                    {p.hsPercent}%
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function EmptyRegionCard({ region }: { region: RiotRegion }) {
@@ -165,8 +247,8 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                 {match.playedAt.toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}
               </div>
             </summary>
-            <div className="border-t border-[#2a3540] px-5 py-3">
-              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div className="border-t border-[#2a3540] px-4 py-3">
+              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 mb-4">
                 <div>
                   <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">스코어</div>
                   <div className="font-bold text-white">
@@ -188,22 +270,33 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                   <div className="font-bold text-white">{match.mode}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <MatchScoreboard
-                  matchId={match.matchId}
-                  myPuuid={puuid}
-                  result={match.result}
-                  scoreboard={match.scoreboard}
-                />
-                <a
-                  href={trackerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex text-xs font-bold text-[#ff4655] hover:text-white"
-                >
-                  tracker.gg에서 상세 보기
-                </a>
-              </div>
+              {match.scoreboard && (() => {
+                const sb = match.scoreboard;
+                const myTeamId = sb.players.find(p => p.puuid === puuid)?.teamId ?? "";
+                const myTeamPlayers = sb.players.filter(p => p.teamId === myTeamId);
+                const enemyTeamPlayers = sb.players.filter(p => p.teamId !== myTeamId);
+                const myTeam = sb.teams.find(t => t.teamId === myTeamId);
+                const enemyTeam = sb.teams.find(t => t.teamId !== myTeamId);
+                const myLabel = result === "승리" ? `승리 팀 (내 팀) · ${myTeam?.roundsWon ?? 0}R` : result === "패배" ? `패배 팀 (내 팀) · ${myTeam?.roundsWon ?? 0}R` : `내 팀 · ${myTeam?.roundsWon ?? 0}R`;
+                const enemyLabel = result === "패배" ? `승리 팀 (상대) · ${enemyTeam?.roundsWon ?? 0}R` : result === "승리" ? `패배 팀 (상대) · ${enemyTeam?.roundsWon ?? 0}R` : `상대 팀 · ${enemyTeam?.roundsWon ?? 0}R`;
+                const myColor = result === "승리" ? "text-green-400" : result === "패배" ? "text-[#ff4655]" : "text-[#7b8a96]";
+                const enemyColor = result === "패배" ? "text-green-400" : result === "승리" ? "text-[#ff4655]" : "text-[#7b8a96]";
+                return (
+                  <div className="space-y-3">
+                    <ScoreboardTable players={myTeamPlayers} myPuuid={puuid} label={myLabel} color={myColor} />
+                    <div className="border-t border-[#2a3540]" />
+                    <ScoreboardTable players={enemyTeamPlayers} myPuuid={puuid} label={enemyLabel} color={enemyColor} />
+                  </div>
+                );
+              })()}
+              <a
+                href={trackerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex text-xs font-bold text-[#7b8a96] hover:text-[#ff4655] transition-colors"
+              >
+                tracker.gg에서 상세 보기
+              </a>
             </div>
           </details>
         );

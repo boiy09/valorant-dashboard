@@ -5,6 +5,11 @@ import { prisma } from "@/lib/prisma";
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const EXCLUDED_CHANNEL_KEYWORDS = ["잠수", "afk"];
 
+type ActivityInterval = {
+  start: number;
+  end: number;
+};
+
 function toKstDateKey(date: Date) {
   return new Date(date.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
 }
@@ -24,8 +29,8 @@ function isExcludedVoiceChannel(channelName: string) {
   return EXCLUDED_CHANNEL_KEYWORDS.some((keyword) => normalized.includes(keyword));
 }
 
-function addActivityByKstDay(
-  acc: Record<string, number>,
+function addActivityIntervalsByKstDay(
+  acc: Record<string, ActivityInterval[]>,
   joinedAt: Date,
   leftAt: Date | null,
   duration: number | null
@@ -41,10 +46,43 @@ function addActivityByKstDay(
     const key = toKstDateKey(cursor);
     const nextDayStart = addDays(kstDateKeyToUtcStart(key), 1);
     const segmentEnd = nextDayStart < end ? nextDayStart : end;
-    const seconds = Math.max(0, Math.floor((segmentEnd.getTime() - cursor.getTime()) / 1000));
-    acc[key] = (acc[key] ?? 0) + seconds;
+    acc[key] = acc[key] ?? [];
+    acc[key].push({ start: cursor.getTime(), end: segmentEnd.getTime() });
     cursor = segmentEnd;
   }
+}
+
+function getMergedIntervalSeconds(intervals: ActivityInterval[]) {
+  const sorted = intervals
+    .filter((interval) => interval.end > interval.start)
+    .sort((a, b) => a.start - b.start);
+
+  let total = 0;
+  let currentStart: number | null = null;
+  let currentEnd: number | null = null;
+
+  for (const interval of sorted) {
+    if (currentStart === null || currentEnd === null) {
+      currentStart = interval.start;
+      currentEnd = interval.end;
+      continue;
+    }
+
+    if (interval.start <= currentEnd) {
+      currentEnd = Math.max(currentEnd, interval.end);
+      continue;
+    }
+
+    total += Math.floor((currentEnd - currentStart) / 1000);
+    currentStart = interval.start;
+    currentEnd = interval.end;
+  }
+
+  if (currentStart !== null && currentEnd !== null) {
+    total += Math.floor((currentEnd - currentStart) / 1000);
+  }
+
+  return total;
 }
 
 export async function GET(req: NextRequest) {
@@ -75,11 +113,15 @@ export async function GET(req: NextRequest) {
     orderBy: { joinedAt: "asc" },
   });
 
-  const activitySecondsByDate: Record<string, number> = {};
+  const activityIntervalsByDate: Record<string, ActivityInterval[]> = {};
   for (const activity of allActivities) {
     if (isExcludedVoiceChannel(activity.channelName)) continue;
-    addActivityByKstDay(activitySecondsByDate, activity.joinedAt, activity.leftAt, activity.duration);
+    addActivityIntervalsByKstDay(activityIntervalsByDate, activity.joinedAt, activity.leftAt, activity.duration);
   }
+
+  const activitySecondsByDate = Object.fromEntries(
+    Object.entries(activityIntervalsByDate).map(([date, intervals]) => [date, getMergedIntervalSeconds(intervals)])
+  );
 
   const weeklyMap: Record<string, number> = {};
   for (let i = 6; i >= 0; i--) {

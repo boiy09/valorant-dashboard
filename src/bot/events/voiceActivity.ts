@@ -51,7 +51,7 @@ async function openSessionForMember(member: GuildMember, channel: VoiceBasedChan
 
   await ensureDailyAttendance(user.id, guild.id);
 
-  const existingOpen = await prisma.voiceActivity.findFirst({
+  const existingOpenActivities = await prisma.voiceActivity.findMany({
     where: {
       userId: user.id,
       guildId: guild.id,
@@ -59,8 +59,11 @@ async function openSessionForMember(member: GuildMember, channel: VoiceBasedChan
     },
     orderBy: { joinedAt: "desc" },
   });
+  const [existingOpen, ...duplicateOpenActivities] = existingOpenActivities;
 
   if (existingOpen) {
+    await Promise.all(duplicateOpenActivities.map((activity) => closeSession(activity.id)));
+
     if (existingOpen.channelId !== channel.id || existingOpen.channelName !== channel.name) {
       await prisma.voiceActivity.update({
         where: { id: existingOpen.id },
@@ -107,8 +110,15 @@ async function hydrateVoiceSessions(client: BotClient) {
     const guild = client.guilds.cache.get(activity.guild.discordId);
     const member = guild?.members.cache.get(activity.user.discordId ?? "");
     const currentChannelId = member?.voice.channelId ?? null;
+    const sessionKey =
+      activity.user.discordId && guild ? getSessionKey(activity.user.discordId, guild.id) : null;
 
     if (guild && member && currentChannelId === activity.channelId) {
+      if (sessionKey && activeSessions.has(sessionKey)) {
+        await closeSession(activity.id);
+        continue;
+      }
+
       activeSessions.set(getSessionKey(member.id, guild.id), activity.id);
       continue;
     }

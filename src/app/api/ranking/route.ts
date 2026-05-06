@@ -4,6 +4,11 @@ import { prisma } from "@/lib/prisma";
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const EXCLUDED_CHANNEL_KEYWORDS = ["잠수", "afk"];
 
+type ActivityInterval = {
+  start: number;
+  end: number;
+};
+
 function toKstDateKey(date: Date) {
   return new Date(date.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
 }
@@ -23,21 +28,54 @@ function isExcludedVoiceChannel(channelName: string) {
   return EXCLUDED_CHANNEL_KEYWORDS.some((keyword) => normalized.includes(keyword));
 }
 
-function getActivitySecondsInRange(
+function getActivityIntervalInRange(
   joinedAt: Date,
   leftAt: Date | null,
   duration: number | null,
   rangeStart: Date,
   rangeEnd: Date
 ) {
-  if (!duration || duration <= 0) return 0;
+  if (!duration || duration <= 0) return null;
 
   const activityEnd = leftAt ?? new Date(joinedAt.getTime() + duration * 1000);
   const start = joinedAt > rangeStart ? joinedAt : rangeStart;
   const end = activityEnd < rangeEnd ? activityEnd : rangeEnd;
-  if (end <= start) return 0;
+  if (end <= start) return null;
 
-  return Math.floor((end.getTime() - start.getTime()) / 1000);
+  return { start: start.getTime(), end: end.getTime() };
+}
+
+function getMergedIntervalSeconds(intervals: ActivityInterval[]) {
+  const sorted = intervals
+    .filter((interval) => interval.end > interval.start)
+    .sort((a, b) => a.start - b.start);
+
+  let total = 0;
+  let currentStart: number | null = null;
+  let currentEnd: number | null = null;
+
+  for (const interval of sorted) {
+    if (currentStart === null || currentEnd === null) {
+      currentStart = interval.start;
+      currentEnd = interval.end;
+      continue;
+    }
+
+    if (interval.start <= currentEnd) {
+      currentEnd = Math.max(currentEnd, interval.end);
+      continue;
+    }
+
+    total += Math.floor((currentEnd - currentStart) / 1000);
+    currentStart = interval.start;
+    currentEnd = interval.end;
+  }
+
+  if (currentStart !== null && currentEnd !== null) {
+    total += Math.floor((currentEnd - currentStart) / 1000);
+  }
+
+  return total;
 }
 
 export async function GET(req: NextRequest) {
@@ -80,12 +118,15 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  const userMap = new Map<string, { name: string; discordId: string | null; image: string | null; seconds: number }>();
+  const userMap = new Map<
+    string,
+    { name: string; discordId: string | null; image: string | null; intervals: ActivityInterval[] }
+  >();
   for (const a of activities) {
     if (isExcludedVoiceChannel(a.channelName)) continue;
 
-    const seconds = getActivitySecondsInRange(a.joinedAt, a.leftAt, a.duration, since, now);
-    if (seconds <= 0) continue;
+    const interval = getActivityIntervalInRange(a.joinedAt, a.leftAt, a.duration, since, now);
+    if (!interval) continue;
 
     const guildNickname =
       a.user.guilds.find((member) =>
@@ -95,19 +136,25 @@ export async function GET(req: NextRequest) {
 
     const existing = userMap.get(a.userId);
     if (existing) {
-      existing.seconds += seconds;
+      existing.intervals.push(interval);
     } else {
       userMap.set(a.userId, {
         name: displayName,
         discordId: a.user.discordId,
         image: a.user.image,
-        seconds,
+        intervals: [interval],
       });
     }
   }
 
   const ranking = Array.from(userMap.entries())
-    .map(([userId, data]) => ({ userId, ...data }))
+    .map(([userId, data]) => ({
+      userId,
+      name: data.name,
+      discordId: data.discordId,
+      image: data.image,
+      seconds: getMergedIntervalSeconds(data.intervals),
+    }))
     .sort((a, b) => b.seconds - a.seconds)
     .slice(0, 10)
     .map((item, index) => ({

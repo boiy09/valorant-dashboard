@@ -303,7 +303,7 @@ export async function getRankByPuuid(
 ): Promise<RankData | null> {
   try {
     const [henrikResult, opGgRank] = await Promise.all([
-      henrikClient.get(`/v3/by-puuid/${region}/pc/${puuid}`).catch(() => null),
+      henrikClient.get(`/v2/by-puuid/mmr/${region}/${puuid}`).catch(() => null),
       riotId ? getOpGgRankFallback(riotId.gameName, riotId.tagLine).catch(() => null) : Promise.resolve(null),
     ]);
 

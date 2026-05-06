@@ -207,10 +207,13 @@ export default function MatchScoreboard({
     if (!open || data || loading) return;
     setLoading(true);
     fetch(`/api/valorant/match/${matchId}`)
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.error) setError(json.error);
-        else setData(json);
+      .then(async (r) => {
+        const json = await r.json();
+        if (!r.ok || json.error) {
+          setError(json.error ?? "매치 정보를 불러오지 못했습니다.");
+        } else {
+          setData(json);
+        }
       })
       .catch(() => setError("매치 정보를 불러오지 못했습니다."))
       .finally(() => setLoading(false));

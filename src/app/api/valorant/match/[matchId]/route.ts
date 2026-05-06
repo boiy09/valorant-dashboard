@@ -103,6 +103,15 @@ export async function GET(
       teams: processedTeams,
     });
   } catch (error: unknown) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      if (status === 404) {
+        return Response.json({ error: "매치 데이터를 찾을 수 없습니다. (커스텀 게임이거나 오래된 매치일 수 있습니다)" }, { status: 404 });
+      }
+      if (status === 429) {
+        return Response.json({ error: "API 요청 한도 초과. 잠시 후 다시 시도해 주세요." }, { status: 429 });
+      }
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return Response.json({ error: message }, { status: 500 });
   }

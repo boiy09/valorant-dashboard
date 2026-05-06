@@ -61,12 +61,31 @@ function firstPlayerName(agentName: string, ...values: unknown[]) {
 
 async function getAccountByPuuid(puuid: string) {
   if (!puuid) return null;
-  const key = `match-account:puuid:${puuid}`;
+  const key = `match-account:puuid:v2:${puuid}`;
   const { data } = await apiCache.getOrFetch(key, MATCH_TTL, async () => {
-    const response = await henrikClient.get(`/v2/by-puuid/account/${puuid}`).catch(() =>
+    const henrikResponse = await henrikClient.get(`/v2/by-puuid/account/${puuid}`).catch(() =>
       henrikClient.get(`/v1/by-puuid/account/${puuid}`).catch(() => null)
     );
-    return response?.data?.data ?? null;
+    if (henrikResponse?.data?.data) return henrikResponse.data.data;
+
+    if (!process.env.RIOT_API_KEY) return null;
+    for (const routing of ["asia", "americas", "europe"] as const) {
+      const response = await fetch(`https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-puuid/${puuid}`, {
+        headers: { "X-Riot-Token": process.env.RIOT_API_KEY },
+        cache: "no-store",
+      }).catch(() => null);
+      if (!response?.ok) continue;
+      const account = await response.json();
+      if (account?.gameName) {
+        return {
+          name: account.gameName,
+          game_name: account.gameName,
+          tag: account.tagLine,
+          tagLine: account.tagLine,
+        };
+      }
+    }
+    return null;
   });
   return asRecord(data);
 }
@@ -93,9 +112,9 @@ async function getRankIconByTier(tierId: number) {
 
 async function getCurrentRankByPuuid(puuid: string) {
   if (!puuid) return null;
-  const key = `match-current-rank:${puuid}`;
+  const key = `match-current-rank:v2:${puuid}`;
   const { data } = await apiCache.getOrFetch(key, MATCH_TTL, async () => {
-    for (const region of ["kr", "ap"] as const) {
+    for (const region of ["kr", "ap", "na", "eu", "latam", "br"] as const) {
       const response = await henrikClient.get(`/v3/by-puuid/mmr/${region}/pc/${puuid}`).catch(() =>
         henrikClient.get(`/v2/by-puuid/mmr/${region}/${puuid}`).catch(() => null)
       );
@@ -121,7 +140,7 @@ export async function GET(
   { params }: { params: Promise<{ matchId: string }> }
 ) {
   const { matchId } = await params;
-  const cacheKey = `match:v3:${matchId}`;
+  const cacheKey = `match:v4:${matchId}`;
 
   const cached = apiCache.get<object>(cacheKey, MATCH_TTL);
   if (cached) return Response.json(cached);

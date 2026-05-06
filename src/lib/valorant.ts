@@ -345,15 +345,36 @@ function getPlayerCardIcon(player: Record<string, unknown>) {
 
 async function getAccountByPuuid(puuid: string) {
   if (!puuid) return null;
-  const key = `account:puuid:${puuid}`;
+  const key = `account:puuid:v2:${puuid}`;
   const { data } = await apiCache.getOrFetch(key, TTL.VERY_LONG, async () => {
-    const response = await henrikGet(`/v2/by-puuid/account/${puuid}`).catch(() =>
+    const henrikResponse = await henrikGet(`/v2/by-puuid/account/${puuid}`).catch(() =>
       henrikGet(`/v1/by-puuid/account/${puuid}`).catch(() => null)
     );
-    return response?.data?.data ?? null;
+    if (henrikResponse?.data?.data) return henrikResponse.data.data;
+
+    if (!process.env.RIOT_API_KEY) return null;
+    for (const routing of ["asia", "americas", "europe"] as const) {
+      const response = await fetch(`https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-puuid/${puuid}`, {
+        headers: { "X-Riot-Token": process.env.RIOT_API_KEY },
+        cache: "no-store",
+      }).catch(() => null);
+      if (!response?.ok) continue;
+      const account = await response.json();
+      if (account?.gameName) {
+        return {
+          name: account.gameName,
+          game_name: account.gameName,
+          tag: account.tagLine,
+          tagLine: account.tagLine,
+        };
+      }
+    }
+    return null;
   });
   return asRecord(data);
 }
+
+const RANK_REGION_CANDIDATES: ValorantRegion[] = ["kr", "ap", "na", "eu", "latam", "br"];
 
 async function getRankIconByTier(tierId: number) {
   if (tierId <= 0) return null;
@@ -377,12 +398,15 @@ async function getRankIconByTier(tierId: number) {
 
 async function getScoreboardRankByPuuid(puuid: string, region: ValorantRegion) {
   if (!puuid) return null;
-  const key = `scoreboard-rank:${region}:${puuid}`;
+  const key = `scoreboard-rank:v2:${region}:${puuid}`;
   const { data } = await apiCache.getOrFetch(key, TTL.VERY_LONG, async () => {
-    const response = await henrikGet(`/v3/by-puuid/mmr/${region}/pc/${puuid}`).catch(() =>
-      henrikGet(`/v2/by-puuid/mmr/${region}/${puuid}`).catch(() => null)
-    );
-    return response?.data?.data ?? null;
+    for (const candidate of [region, ...RANK_REGION_CANDIDATES.filter((item) => item !== region)]) {
+      const response = await henrikGet(`/v3/by-puuid/mmr/${candidate}/pc/${puuid}`).catch(() =>
+        henrikGet(`/v2/by-puuid/mmr/${candidate}/${puuid}`).catch(() => null)
+      );
+      if (response?.data?.data) return response.data.data;
+    }
+    return null;
   });
   const current = asRecord(data?.current ?? data?.current_data);
   const tier = asRecord(current.tier);

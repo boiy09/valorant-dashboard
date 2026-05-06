@@ -22,7 +22,9 @@ export interface PlayerProfile {
 export interface RankData {
   tier: string;
   tierName: string;
-  rr: number;
+  rr: number | null;
+  rrChange: number | null;
+  isCurrent: boolean;
   peakTier: string;
   peakTierName: string;
   wins: number;
@@ -42,6 +44,8 @@ export interface MatchStats {
   deaths: number;
   assists: number;
   score: number;
+  teamScore: number | null;
+  enemyScore: number | null;
   headshots: number;
   bodyshots: number;
   legshots: number;
@@ -136,6 +140,18 @@ function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function decodeHtml(value: string) {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#x27;", "'")
+    .replaceAll("&amp;", "&")
+    .replaceAll("\\u0026", "&");
+}
+
 export function parseRiotId(input: string) {
   const [gameName, tagLine] = input.split("#");
   if (!gameName || !tagLine) return null;
@@ -154,6 +170,109 @@ function getMatchResult(match: any, puuid: string): MatchResult {
   if (myTeam?.won === true || myTeam?.has_won === true) return "승리";
   if (otherTeam?.won === true || otherTeam?.has_won === true) return "패배";
   return "무효";
+}
+
+function getTeamScores(match: unknown, puuid: string) {
+  const source = asRecord(match);
+  const players = asArray<Record<string, unknown>>(source.players);
+  const me = players.find((player) => player?.puuid === puuid);
+  if (!me) return { teamScore: null, enemyScore: null };
+
+  const teams = asArray<Record<string, unknown>>(source.teams);
+  const myTeam = teams.find((team) => team?.team_id === me.team_id);
+  const otherTeam = teams.find((team) => team?.team_id !== me.team_id);
+  const myTeamRounds = asRecord(myTeam?.rounds);
+  const otherTeamRounds = asRecord(otherTeam?.rounds);
+  const teamScore = toNumber(myTeam?.rounds_won ?? myTeamRounds.won ?? myTeam?.roundsWon, -1);
+  const enemyScore = toNumber(otherTeam?.rounds_won ?? otherTeamRounds.won ?? otherTeam?.roundsWon, -1);
+
+  return {
+    teamScore: teamScore >= 0 ? teamScore : null,
+    enemyScore: enemyScore >= 0 ? enemyScore : null,
+  };
+}
+
+function getLatestSeasonWithGames(bySeason: unknown) {
+  if (Array.isArray(bySeason)) {
+    return bySeason.find((value) => toNumber(asRecord(value).games) > 0) ?? null;
+  }
+
+  return Object.entries(asRecord(bySeason))
+    .filter(([, value]) => toNumber(asRecord(value).number_of_games) > 0)
+    .sort(([a], [b]) => b.localeCompare(a))[0]?.[1] ?? null;
+}
+
+async function getRankIconByTier(tierId: number) {
+  if (tierId <= 0) return null;
+
+  const { data } = await apiCache.getOrFetch("competitive-tiers:ko-KR", TTL.VERY_LONG, async () => {
+    const response = await fetch("https://valorant-api.com/v1/competitivetiers?language=ko-KR");
+    const payload = await response.json();
+    return payload?.data ?? [];
+  });
+
+  const bundles = asArray<Record<string, unknown>>(data);
+  for (const bundle of bundles.slice().reverse()) {
+    const tiers = asArray<Record<string, unknown>>(bundle.tiers);
+    const tier = tiers.find((item) => toNumber(item.tier) === tierId);
+    if (typeof tier?.smallIcon === "string" && tier.smallIcon) return tier.smallIcon;
+    if (typeof tier?.largeIcon === "string" && tier.largeIcon) return tier.largeIcon;
+  }
+
+  return null;
+}
+
+async function getAgentIconByName(agentName: string) {
+  if (!agentName.trim()) return "";
+
+  const { data } = await apiCache.getOrFetch("agents:en-US", TTL.VERY_LONG, async () => {
+    const response = await fetch("https://valorant-api.com/v1/agents?isPlayableCharacter=true&language=en-US");
+    const payload = await response.json();
+    return payload?.data ?? [];
+  });
+
+  const keyword = agentName.trim().toLowerCase();
+  const agent = asArray<Record<string, unknown>>(data).find(
+    (item) => typeof item.displayName === "string" && item.displayName.toLowerCase() === keyword
+  );
+
+  return typeof agent?.displayIcon === "string" ? agent.displayIcon : "";
+}
+
+async function getOpGgRankFallback(gameName: string, tagLine: string) {
+  const slug = `${gameName}-${tagLine}`;
+  const url = `https://op.gg/ko/valorant/profile/${encodeURIComponent(slug)}`;
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      Accept: "text/html",
+    },
+    cache: "no-store",
+  });
+  if (!response.ok) return null;
+
+  const html = decodeHtml(await response.text());
+  const currentTierId = Number(html.match(/"competitiveTier":(\d+)/)?.[1] ?? 0);
+  const historyTierId = Number(html.match(/"tierHistories":\[\{"id":\d+,"seasonId":"[^"]+","tierId":(\d+)/)?.[1] ?? 0);
+  const tierId = currentTierId || historyTierId;
+  if (!tierId) return null;
+
+  const tierPattern = new RegExp(
+    `"id":${tierId},"name":"([^"]+)","localizedName":"([^"]+)","division":(\\d+)[^}]*"imageUrl":"([^"]+)"`,
+    "i"
+  );
+  const tierMatch = html.match(tierPattern);
+  if (!tierMatch) return null;
+
+  const [, name, localizedName, division, imageUrl] = tierMatch;
+  const tierName = division === "0" ? localizedName : `${localizedName} ${division}`;
+
+  return {
+    tierId,
+    tierName: tierName || name,
+    rankIcon: imageUrl,
+    isCurrent: currentTierId > 0,
+  };
 }
 
 export async function getPlayerByRiotId(
@@ -179,24 +298,51 @@ export async function getPlayerByRiotId(
 
 export async function getRankByPuuid(
   puuid: string,
-  region: ValorantRegion = "kr"
+  region: ValorantRegion = "kr",
+  riotId?: { gameName: string; tagLine: string }
 ): Promise<RankData | null> {
   try {
-    const response = await henrikClient.get(`/v2/by-puuid/mmr/${region}/${puuid}`);
-    const data = response.data?.data;
-    const current = data?.current_data ?? {};
-    const peak = data?.highest_rank ?? {};
+    const [henrikResult, opGgRank] = await Promise.all([
+      henrikClient.get(`/v2/by-puuid/mmr/${region}/${puuid}`).catch(() => null),
+      riotId ? getOpGgRankFallback(riotId.gameName, riotId.tagLine).catch(() => null) : Promise.resolve(null),
+    ]);
+
+    const data = henrikResult?.data?.data;
+    const current = asRecord(data?.current ?? data?.current_data);
+    const currentTier = asRecord(current.tier);
+    const peak = asRecord(data?.peak ?? data?.highest_rank);
+    const peakTier = asRecord(peak.tier);
+    const latestSeason = asRecord(getLatestSeasonWithGames(data?.seasonal ?? data?.by_season));
+    const wins = toNumber(latestSeason.wins ?? data?.wins);
+    const games = latestSeason.games || latestSeason.number_of_games
+      ? toNumber(latestSeason.games ?? latestSeason.number_of_games)
+      : toNumber(data?.wins) + toNumber(data?.losses);
+    const currentTierId = toNumber(currentTier.id ?? current.currenttier);
+    const tierId = currentTierId || toNumber(opGgRank?.tierId);
+    const peakTierId = toNumber(peakTier.id ?? peak.tier);
+    const [rankIcon, peakRankIcon] = await Promise.all([
+      opGgRank?.rankIcon ? Promise.resolve(opGgRank.rankIcon) : getRankIconByTier(tierId),
+      getRankIconByTier(peakTierId),
+    ]);
+    const tierName = toString(
+      currentTierId > 0 ? (currentTier.name ?? current.currenttierpatched) : opGgRank?.tierName,
+      "언랭크"
+    );
+    const rr = currentTierId > 0 ? toNumber(current.rr ?? current.ranking_in_tier) : null;
+    const rrChange = currentTierId > 0 ? toNumber(current.last_change ?? current.mmr_change_to_last_game) : null;
 
     return {
-      tier: toString(current?.currenttier_patched, "언랭크"),
-      tierName: toString(current?.currenttier_patched, "언랭크"),
-      rr: toNumber(current?.ranking_in_tier),
-      peakTier: toString(peak?.patched_tier, "기록 없음"),
-      peakTierName: toString(peak?.patched_tier, "기록 없음"),
-      wins: toNumber(data?.wins),
-      games: toNumber(data?.wins) + toNumber(data?.losses),
-      rankIcon: current?.images?.small ?? null,
-      peakRankIcon: peak?.images?.small ?? null,
+      tier: tierName,
+      tierName,
+      rr,
+      rrChange,
+      isCurrent: currentTierId > 0 || Boolean(opGgRank?.isCurrent),
+      peakTier: toString(peakTier.name ?? peak.patched_tier, "기록 없음"),
+      peakTierName: toString(peakTier.name ?? peak.patched_tier, "기록 없음"),
+      wins,
+      games: games > 0 ? games : toNumber(latestSeason.number_of_games),
+      rankIcon,
+      peakRankIcon,
     };
   } catch {
     return null;
@@ -214,28 +360,36 @@ export async function getRecentMatches(
   );
   const matches = asArray<any>(response.data?.data);
 
-  return matches.map((match) => {
+  return Promise.all(matches.map(async (match) => {
     const players = asArray<any>(match.players);
     const me = players.find((player) => player?.puuid === puuid) ?? {};
     const stats = me?.stats ?? {};
+    const { teamScore, enemyScore } = getTeamScores(match, puuid);
+    const agentAssets = asRecord(asRecord(me?.assets).agent);
+    const agent = asRecord(me?.agent);
+    const agentNestedAssets = asRecord(agent.assets);
+    const agentName = toString(me?.agent?.name, "요원 정보 없음");
+    const agentIcon = toString(agentAssets.small ?? agentNestedAssets.small ?? agent.small, "");
 
     return {
       matchId: toString(match?.metadata?.match_id, ""),
       map: toString(match?.metadata?.map?.name, "맵 정보 없음"),
       mode: toString(match?.metadata?.queue?.name, "모드 정보 없음"),
-      agent: toString(me?.agent?.name, "요원 정보 없음"),
-      agentIcon: me?.assets?.agent?.small ?? "",
+      agent: agentName,
+      agentIcon: agentIcon || (await getAgentIconByName(agentName)),
       result: getMatchResult(match, puuid),
       kills: toNumber(stats?.kills),
       deaths: toNumber(stats?.deaths),
       assists: toNumber(stats?.assists),
       score: toNumber(stats?.score),
+      teamScore,
+      enemyScore,
       headshots: toNumber(stats?.headshots),
       bodyshots: toNumber(stats?.bodyshots),
       legshots: toNumber(stats?.legshots),
       playedAt: new Date(match?.metadata?.started_at ?? Date.now()),
     };
-  });
+  }));
 }
 
 export async function getPlayerStats(

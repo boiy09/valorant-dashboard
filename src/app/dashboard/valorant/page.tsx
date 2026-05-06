@@ -680,7 +680,7 @@ export default async function ValorantPage() {
           gameName: account.gameName,
           tagLine: account.tagLine,
         }).catch(() => null),
-        getRecentMatches(account.puuid, 10, toQueryRegion(account.region as RiotRegion)).catch(() => []),
+        getRecentMatches(account.puuid, 10, toQueryRegion(account.region as RiotRegion), "pc", account.gameName, account.tagLine).catch(() => []),
       ]);
 
       return {

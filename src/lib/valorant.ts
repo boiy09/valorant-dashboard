@@ -517,8 +517,58 @@ export async function getRecentMatches(
   puuid: string,
   count = 5,
   region: ValorantRegion = "kr",
-  platform: ValorantPlatform = "pc"
+  platform: ValorantPlatform = "pc",
+  gameName?: string,
+  tagLine?: string
 ): Promise<MatchStats[]> {
+  // tracker.gg 내부 API 먼저 시도
+  if (gameName && tagLine) {
+    try {
+      const { getTrackerMatchHistory } = await import("@/lib/trackergg");
+      const tggMatches = await getTrackerMatchHistory(gameName, tagLine, count);
+      if (tggMatches && tggMatches.length > 0) {
+        return tggMatches.map((m) => ({
+          matchId: m.matchId,
+          map: m.map,
+          mode: m.mode,
+          agent: m.agent,
+          agentIcon: m.agentIcon,
+          result: m.result,
+          kills: m.kills,
+          deaths: m.deaths,
+          assists: m.assists,
+          score: 0,
+          teamScore: m.teamScore,
+          enemyScore: m.enemyScore,
+          headshots: 0,
+          bodyshots: 0,
+          legshots: 0,
+          playedAt: m.startedAt ? new Date(m.startedAt) : new Date(0),
+          scoreboard: m.players.length > 0 ? {
+            map: m.map,
+            mode: m.mode,
+            startedAt: m.startedAt,
+            gameLengthMs: m.gameLengthMs,
+            totalRounds: (m.teamScore ?? 0) + (m.enemyScore ?? 0),
+            players: m.players,
+            teams: (() => {
+              const myTeamId = m.players.find(p => p.name === gameName && p.tag === tagLine)?.teamId ?? "";
+              const teamIds = [...new Set(m.players.map(p => p.teamId))];
+              return teamIds.map(tid => ({
+                teamId: tid,
+                roundsWon: tid === myTeamId ? (m.teamScore ?? 0) : (m.enemyScore ?? 0),
+                won: tid === myTeamId ? m.result === "승리" : m.result === "패배",
+              }));
+            })(),
+            rounds: [],
+          } : null,
+        }));
+      }
+    } catch {
+      // tracker.gg 실패 시 Henrik으로 폴백
+    }
+  }
+
   const response = await henrikClient.get(
     `/v4/by-puuid/matches/${region}/${platform}/${puuid}?size=${count}`
   );

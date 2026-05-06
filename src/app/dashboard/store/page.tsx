@@ -100,28 +100,26 @@ interface QuickRefreshProps {
   onSuccess: () => void;
 }
 
+const RIOT_AUTH_URL =
+  "https://auth.riotgames.com/authorize?redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&client_id=play-valorant-web-prod&response_type=token+id_token&scope=account+openid&nonce=1";
+
 function QuickRefresh({ accountId, onSuccess }: QuickRefreshProps) {
-  const [url, setUrl] = useState("");
+  const [cookies, setCookies] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   async function handleRefresh() {
-    const val = url.trim();
+    const val = cookies.trim();
     if (!val) return;
     setLoading(true);
     setErr("");
 
-    // ssid 방식 (쿠키 문자열) 또는 URL 방식 자동 감지
-    const isCookie = val.includes("ssid=") || val.includes("sub=");
-    const endpoint = isCookie ? "/api/riot/auth/ssid" : "/api/riot/auth/token";
-    const body = isCookie ? { ssid: val } : { url: val };
-
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch("/api/riot/auth/ssid", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ssid: val }),
       });
       const data = await res.json() as { error?: string };
       if (!res.ok) {
@@ -138,33 +136,31 @@ function QuickRefresh({ accountId, onSuccess }: QuickRefreshProps) {
 
   return (
     <div className="bg-[#0d1821] border border-[#ff4655]/20 rounded-lg p-4 flex flex-col gap-3">
-      <div className="text-white text-xs font-bold tracking-widest uppercase">토큰 빠른 갱신</div>
-      <ol className="text-[#7b8a96] text-xs space-y-1 list-decimal list-inside">
+      <div className="text-white text-xs font-bold tracking-widest uppercase">토큰 갱신</div>
+      <ol className="text-[#7b8a96] text-xs space-y-2 list-decimal list-inside leading-relaxed">
+        <li>F12 열기 → Network 탭 → 필터에 <span className="text-white font-mono">auth.riotgames.com</span> 입력</li>
         <li>
-          <a
-            href="https://auth.riotgames.com/authorize?redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&client_id=play-valorant-web-prod&response_type=token+id_token&scope=account+openid&nonce=1"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#0ac8b9] underline"
-          >
+          <a href={RIOT_AUTH_URL} target="_blank" rel="noopener noreferrer" className="text-[#0ac8b9] underline">
             여기를 클릭
           </a>
-          {" "}→ 주소창이 playvalorant.com/opt_in#access_token=eyJ... 으로 바뀌면 URL 전체 복사
+          {" "}→ Riot 로그인 후 playvalorant.com으로 리다이렉트될 때까지 대기
         </li>
+        <li>Network 목록에서 <span className="text-white font-mono">authorize</span> 요청 클릭</li>
+        <li>Request Headers 탭 → <span className="text-white font-mono">Cookie:</span> 값 전체 복사</li>
         <li>아래에 붙여넣기 후 갱신</li>
       </ol>
       <textarea
         ref={inputRef}
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        placeholder="https://playvalorant.com/ko-kr/opt_in/#access_token=eyJ..."
-        rows={2}
+        value={cookies}
+        onChange={(e) => setCookies(e.target.value)}
+        placeholder="ssid=eyJ...; sub=afafa29f...; tdid=eyJ...; csid=..."
+        rows={3}
         className="bg-[#111c24] border border-[#2a3540] rounded text-[#cdd6f4] text-xs p-2 resize-none focus:outline-none focus:border-[#0ac8b9] font-mono"
       />
       {err && <div className="text-[#ff4655] text-xs">{err}</div>}
       <button
         onClick={handleRefresh}
-        disabled={loading || !url.trim()}
+        disabled={loading || !cookies.trim()}
         className="self-start bg-[#0ac8b9] text-[#0f1923] text-xs font-bold px-5 py-2 rounded disabled:opacity-50 hover:bg-[#0ac8b9]/80 transition-colors"
       >
         {loading ? "갱신 중..." : "토큰 갱신 후 상점 열기"}

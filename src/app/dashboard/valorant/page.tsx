@@ -106,6 +106,18 @@ function fmtMatchDate(date: string) {
   });
 }
 
+function roundWinMark(result: string, ceremony: string) {
+  const text = `${result} ${ceremony}`.toLowerCase();
+  if (text.includes("defus")) return { mark: "D", label: "해체 승리" };
+  if (text.includes("deton") || text.includes("explode") || text.includes("spike") || text.includes("bomb")) {
+    return { mark: "S", label: "스파이크 승리" };
+  }
+  if (text.includes("time") || text.includes("timeout")) return { mark: "T", label: "시간 승리" };
+  if (text.includes("surrender") || text.includes("forfeit")) return { mark: "F", label: "항복" };
+  if (text.includes("elim") || text.includes("kill")) return { mark: "X", label: "전멸 승리" };
+  return { mark: "X", label: result || ceremony || "라운드 승리" };
+}
+
 function ScoreboardTable({ players, myPuuid, label, accent }: {
   players: ScoreboardPlayer[];
   myPuuid: string;
@@ -366,50 +378,58 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                       </div>
                     </div>
                     {sb.rounds.length > 0 && (
-                      <div className="bg-[#07131e] px-4 py-4">
-                        <div className="grid grid-cols-[56px_1fr] gap-x-3 gap-y-1">
+                      <div className="bg-[#07131e] px-3 py-4">
+                        <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-1">
                           <div className="text-right text-sm font-bold text-[#58ffd8]">Team A</div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
                             {sb.rounds.map((round) => {
                               const isMyRound = round.winningTeamId === myTeamId;
+                              const win = roundWinMark(round.result, round.ceremony);
                               return (
                                 <div
                                   key={`${match.matchId}-team-a-${round.round}`}
-                                  className={`flex h-5 w-5 items-center justify-center text-base font-black ${
+                                  className={`flex h-5 min-w-0 items-center justify-center rounded-sm text-[12px] font-black leading-none ${
                                     isMyRound ? "text-[#58ffd8]" : "text-[#263544]"
                                   }`}
-                                  title={`${round.round}R ${round.result || round.ceremony || ""}`}
+                                  title={`${round.round}R ${isMyRound ? win.label : ""} ${round.result || round.ceremony || ""}`}
                                 >
-                                  {isMyRound ? "X" : "-"}
+                                  {isMyRound ? win.mark : "-"}
                                 </div>
                               );
                             })}
                           </div>
                           <div className="text-right text-sm font-bold text-[#ff5f75]">Team B</div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
                             {sb.rounds.map((round) => {
                               const isEnemyRound = round.winningTeamId && round.winningTeamId !== myTeamId;
+                              const win = roundWinMark(round.result, round.ceremony);
                               return (
                                 <div
                                   key={`${match.matchId}-team-b-${round.round}`}
-                                  className={`flex h-5 w-5 items-center justify-center text-base font-black ${
+                                  className={`flex h-5 min-w-0 items-center justify-center rounded-sm text-[12px] font-black leading-none ${
                                     isEnemyRound ? "text-[#ff5f75]" : "text-[#263544]"
                                   }`}
-                                  title={`${round.round}R ${round.result || round.ceremony || ""}`}
+                                  title={`${round.round}R ${isEnemyRound ? win.label : ""} ${round.result || round.ceremony || ""}`}
                                 >
-                                  {isEnemyRound ? "X" : "-"}
+                                  {isEnemyRound ? win.mark : "-"}
                                 </div>
                               );
                             })}
                           </div>
                           <div />
-                          <div className="flex flex-wrap gap-2">
+                          <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(sb.rounds.length, 1), 26)}, minmax(0, 1fr))` }}>
                             {sb.rounds.map((round) => (
-                              <div key={`${match.matchId}-num-${round.round}`} className="flex h-4 w-5 items-center justify-center text-[10px] text-[#8da0ad]">
+                              <div key={`${match.matchId}-num-${round.round}`} className="flex h-4 min-w-0 items-center justify-center text-[9px] text-[#8da0ad]">
                                 {round.round}
                               </div>
                             ))}
                           </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 pl-[58px] text-[10px] text-[#6f8291]">
+                          <span>X 전멸</span>
+                          <span>S 스파이크</span>
+                          <span>D 해체</span>
+                          <span>T 시간</span>
                         </div>
                       </div>
                     )}

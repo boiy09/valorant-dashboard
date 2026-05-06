@@ -142,14 +142,14 @@ function QuickRefresh({ accountId, onSuccess }: QuickRefreshProps) {
       <ol className="text-[#7b8a96] text-xs space-y-1 list-decimal list-inside">
         <li>
           <a
-            href="https://playvalorant.com/opt_in"
+            href="https://auth.riotgames.com/authorize?redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&client_id=play-valorant-web-prod&response_type=token+id_token&scope=account+openid&nonce=1"
             target="_blank"
             rel="noopener noreferrer"
             className="text-[#0ac8b9] underline"
           >
             여기를 클릭
           </a>
-          {" "}→ Riot 페이지가 열리면 주소창 URL 전체 복사
+          {" "}→ 주소창이 playvalorant.com/opt_in#access_token=eyJ... 으로 바뀌면 URL 전체 복사
         </li>
         <li>아래에 붙여넣기 후 갱신</li>
       </ol>

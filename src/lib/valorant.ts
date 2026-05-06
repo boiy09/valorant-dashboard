@@ -663,6 +663,7 @@ export async function getRecentMatches(
         pRiotId.tag,
         riotId.tag
       );
+      const pTag = localTag;
       const localCardIcon = getPlayerCardIcon(p);
       const agentLikeRawName = isAgentName(firstString(p.name, p.game_name, p.gameName), pAgentName);
       const rawName = firstString(p.game_name, p.gameName, p.name, p.player_name, p.playerName);

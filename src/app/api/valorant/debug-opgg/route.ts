@@ -16,7 +16,25 @@ export async function GET(req: NextRequest) {
   };
 
   const enc = encodeURIComponent;
-  const pageUrl = `https://op.gg/valorant/profile/${region}/${enc(gameName)}-${enc(tagLine)}`;
+  // 여러 URL 형식 시도
+  const candidates = [
+    `https://op.gg/valorant/profile/${region}/${enc(gameName)}-${enc(tagLine)}`,
+    `https://www.op.gg/valorant/profile/${region}/${enc(gameName)}-${enc(tagLine)}`,
+    `https://c-valorant-web-v2.op.gg/profile/${region}/${enc(gameName)}-${enc(tagLine)}`,
+    `https://valorant.op.gg/profile/${region}/${enc(gameName)}-${enc(tagLine)}`,
+    `https://op.gg/valorant/profile/${region}/${enc(gameName)}%23${enc(tagLine)}`,
+  ];
+  // 먼저 어떤 URL이 200을 반환하는지 빠르게 체크
+  const checks = await Promise.all(candidates.map(async url => {
+    try {
+      const ac = new AbortController(); setTimeout(() => ac.abort(), 5000);
+      const r = await fetch(url, { headers, cache: "no-store", signal: ac.signal });
+      return { url, status: r.status };
+    } catch { return { url, status: 0 }; }
+  }));
+
+  const working = checks.find(c => c.status === 200);
+  const pageUrl = working?.url ?? candidates[0];
 
   try {
     const ac = new AbortController();
@@ -28,6 +46,8 @@ export async function GET(req: NextRequest) {
     const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
     if (!match) {
       return Response.json({
+        urlChecks: checks,
+        usedUrl: pageUrl,
         status: res.status,
         hasNextData: false,
         snippet: html.slice(0, 500),

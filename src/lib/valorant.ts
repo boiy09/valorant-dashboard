@@ -22,8 +22,9 @@ export interface PlayerProfile {
 export interface RankData {
   tier: string;
   tierName: string;
-  rr: number;
-  rrChange: number;
+  rr: number | null;
+  rrChange: number | null;
+  isCurrent: boolean;
   peakTier: string;
   peakTierName: string;
   wins: number;
@@ -251,7 +252,9 @@ async function getOpGgRankFallback(gameName: string, tagLine: string) {
   if (!response.ok) return null;
 
   const html = decodeHtml(await response.text());
-  const tierId = Number(html.match(/"competitiveTier":(\d+)/)?.[1] ?? 0);
+  const currentTierId = Number(html.match(/"competitiveTier":(\d+)/)?.[1] ?? 0);
+  const historyTierId = Number(html.match(/"tierHistories":\[\{"id":\d+,"seasonId":"[^"]+","tierId":(\d+)/)?.[1] ?? 0);
+  const tierId = currentTierId || historyTierId;
   if (!tierId) return null;
 
   const tierPattern = new RegExp(
@@ -268,6 +271,7 @@ async function getOpGgRankFallback(gameName: string, tagLine: string) {
     tierId,
     tierName: tierName || name,
     rankIcon: imageUrl,
+    isCurrent: currentTierId > 0,
   };
 }
 
@@ -313,19 +317,26 @@ export async function getRankByPuuid(
     const games = latestSeason.games || latestSeason.number_of_games
       ? toNumber(latestSeason.games ?? latestSeason.number_of_games)
       : toNumber(data?.wins) + toNumber(data?.losses);
-    const tierId = toNumber(currentTier.id ?? current.currenttier ?? opGgRank?.tierId);
+    const currentTierId = toNumber(currentTier.id ?? current.currenttier);
+    const tierId = currentTierId || toNumber(opGgRank?.tierId);
     const peakTierId = toNumber(peakTier.id ?? peak.tier);
     const [rankIcon, peakRankIcon] = await Promise.all([
       opGgRank?.rankIcon ? Promise.resolve(opGgRank.rankIcon) : getRankIconByTier(tierId),
       getRankIconByTier(peakTierId),
     ]);
-    const tierName = toString(currentTier.name ?? current.currenttier_patched ?? opGgRank?.tierName, "언랭크");
+    const tierName = toString(
+      currentTierId > 0 ? (currentTier.name ?? current.currenttier_patched) : opGgRank?.tierName,
+      "언랭크"
+    );
+    const rr = currentTierId > 0 ? toNumber(current.rr ?? current.ranking_in_tier) : null;
+    const rrChange = currentTierId > 0 ? toNumber(current.last_change ?? current.mmr_change_to_last_game) : null;
 
     return {
       tier: tierName,
       tierName,
-      rr: toNumber(current.rr ?? current.ranking_in_tier),
-      rrChange: toNumber(current.last_change ?? current.mmr_change_to_last_game),
+      rr,
+      rrChange,
+      isCurrent: currentTierId > 0 || Boolean(opGgRank?.isCurrent),
       peakTier: toString(peakTier.name ?? peak.patched_tier, "기록 없음"),
       peakTierName: toString(peakTier.name ?? peak.patched_tier, "기록 없음"),
       wins,

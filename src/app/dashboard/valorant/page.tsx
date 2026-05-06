@@ -238,19 +238,27 @@ function RegionSection({ data }: { data: RegionStats }) {
               )}
               <div>
                 <div className="text-xl font-black text-white">{data.rank.tierName}</div>
-                <div className="text-[#ff4655] font-bold text-lg">{data.rank.rr} RR</div>
-                <div
-                  className={`text-xs font-bold ${
-                    data.rank.rrChange > 0
-                      ? "text-green-400"
-                      : data.rank.rrChange < 0
-                        ? "text-[#ff4655]"
-                        : "text-[#7b8a96]"
-                  }`}
-                >
-                  최근 변동 {data.rank.rrChange > 0 ? "+" : ""}
-                  {data.rank.rrChange} RR
+                <div className="text-[#ff4655] font-bold text-lg">
+                  {data.rank.rr !== null ? `${data.rank.rr} RR` : "RR 정보 없음"}
                 </div>
+                {data.rank.rrChange !== null ? (
+                  <div
+                    className={`text-xs font-bold ${
+                      data.rank.rrChange > 0
+                        ? "text-green-400"
+                        : data.rank.rrChange < 0
+                          ? "text-[#ff4655]"
+                          : "text-[#7b8a96]"
+                    }`}
+                  >
+                    최근 변동 {data.rank.rrChange > 0 ? "+" : ""}
+                    {data.rank.rrChange} RR
+                  </div>
+                ) : (
+                  <div className="text-[#7b8a96] text-xs font-bold">
+                    {data.rank.isCurrent ? "최근 변동 정보 없음" : "최근 티어 기록"}
+                  </div>
+                )}
                 <div className="text-[#7b8a96] text-xs mt-1">
                   {data.rank.wins}승 / {Math.max(data.rank.games - data.rank.wins, 0)}패
                 </div>

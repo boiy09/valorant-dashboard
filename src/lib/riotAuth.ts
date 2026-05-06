@@ -312,27 +312,26 @@ export async function getAuthTokens(
 
   // Step 6: region
   const geoResponse = await fetch(GEO_URL, {
-    method: "POST",
+    method: "PUT",
     headers: {
+      ...BASE_HEADERS,
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
+      "X-Riot-Entitlements-JWT": entitlementsToken,
     },
     body: JSON.stringify({ id_token: idToken }),
   });
 
   let region = fallbackRegion;
-  if (!geoResponse.ok && !region) {
-    throw new Error(`서버 지역 확인 실패: ${geoResponse.status}`);
-  }
-
   if (geoResponse.ok) {
     const geoData = await geoResponse.json() as { affinities?: { live?: string } };
     region = geoData.affinities?.live as "kr" | "ap" | undefined;
+  } else {
+    console.warn(`[riotAuth] GEO 확인 실패 ${geoResponse.status}, fallback: ${region ?? "kr"}`);
   }
 
-  if (!region) {
-    throw new Error("Riot 응답에서 서버 지역을 찾을 수 없습니다.");
-  }
+  // GEO 실패 시 KR 기본값 사용 (한국 사용자 대상 서비스)
+  if (!region) region = "kr";
 
   const ssid = extractSsid(cookies);
 

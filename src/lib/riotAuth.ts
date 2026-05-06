@@ -268,7 +268,8 @@ export async function submitMfa(cookies: string, code: string): Promise<AuthResu
 export async function getAuthTokens(
   accessToken: string,
   idToken: string,
-  cookies: string
+  cookies: string,
+  fallbackRegion?: "kr" | "ap"
 ): Promise<AuthTokens> {
   if (!idToken) {
     throw new Error("id_token이 없어 서버 지역을 확인할 수 없습니다. 주소창 URL 전체를 다시 복사해 주세요.");
@@ -319,12 +320,16 @@ export async function getAuthTokens(
     body: JSON.stringify({ id_token: idToken }),
   });
 
-  if (!geoResponse.ok) {
+  let region = fallbackRegion;
+  if (!geoResponse.ok && !region) {
     throw new Error(`서버 지역 확인 실패: ${geoResponse.status}`);
   }
 
-  const geoData = await geoResponse.json() as { affinities?: { live?: string } };
-  const region = geoData.affinities?.live;
+  if (geoResponse.ok) {
+    const geoData = await geoResponse.json() as { affinities?: { live?: string } };
+    region = geoData.affinities?.live as "kr" | "ap" | undefined;
+  }
+
   if (!region) {
     throw new Error("Riot 응답에서 서버 지역을 찾을 수 없습니다.");
   }

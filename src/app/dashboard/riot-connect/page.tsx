@@ -10,6 +10,7 @@ export default function RiotConnectPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [riotId, setRiotId] = useState("");
   const [region, setRegion] = useState<"KR" | "AP" | "">("");
+  const [selectedRegion, setSelectedRegion] = useState<"KR" | "AP">("KR");
 
   function regionLabel(value: "KR" | "AP" | "") {
     if (value === "KR") return "한국 서버";
@@ -26,7 +27,7 @@ export default function RiotConnectPage() {
       const res = await fetch("/api/riot/auth/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: url.trim(), region: selectedRegion }),
       });
       const data = await res.json() as { error?: string; account?: { riotId: string; region: "KR" | "AP" } };
 
@@ -163,6 +164,32 @@ export default function RiotConnectPage() {
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="text-white text-sm font-medium block mb-1.5">
+              연동할 서버
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["KR", "AP"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSelectedRegion(value)}
+                  disabled={state === "loading"}
+                  className={`rounded border px-3 py-2 text-xs font-bold transition-colors ${
+                    selectedRegion === value
+                      ? "border-[#ff4655] bg-[#ff4655]/10 text-white"
+                      : "border-[#2a3540] text-[#7b8a96] hover:border-[#ff4655]/60 hover:text-white"
+                  }`}
+                >
+                  {value} · {regionLabel(value)}
+                </button>
+              ))}
+            </div>
+            <div className="mt-1 text-[#7b8a96] text-[11px]">
+              자동 감지가 막히는 경우 선택한 서버로 저장됩니다.
+            </div>
+          </div>
+
+          <div>
+            <label className="text-white text-sm font-medium block mb-1.5">
               playvalorant.com URL
             </label>
             <textarea
@@ -185,7 +212,7 @@ export default function RiotConnectPage() {
               <div>
                 <div className="text-[#ff4655] text-sm font-medium">{errorMsg}</div>
                 <div className="text-[#ff4655]/70 text-xs mt-0.5">
-                  주소창의 URL 전체를 복사했는지 확인해 주세요. <strong>https://playvalorant.com</strong>으로 시작해야 합니다.
+                  주소창의 URL 전체를 복사했는지, 그리고 서버 선택이 맞는지 확인해 주세요.
                 </div>
               </div>
             </div>

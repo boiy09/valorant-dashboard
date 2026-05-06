@@ -65,10 +65,7 @@ function parseTokensFromUrl(input: string): { accessToken: string; idToken: stri
     // Case 3: raw JWT value directly, with &id_token= embedded (eyJ...value...&id_token=eyJ...)
     if (input.startsWith("eyJ") && input.includes("&id_token=")) {
       const idTokenIdx = input.indexOf("&id_token=");
-      const scopeIdx = input.indexOf("&scope=");
-      const issIdx = input.indexOf("&iss=");
-      const endIdx = scopeIdx !== -1 ? scopeIdx : issIdx !== -1 ? issIdx : idTokenIdx;
-      const accessToken = input.slice(0, endIdx);
+      const accessToken = input.slice(0, idTokenIdx);
       const afterIdToken = input.slice(idTokenIdx + "&id_token=".length);
       const idTokenEnd = afterIdToken.search(/&(?!amp;)/);
       const idToken = idTokenEnd !== -1 ? afterIdToken.slice(0, idTokenEnd) : afterIdToken;
@@ -87,7 +84,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
-  const body = await req.json() as { url?: string; accessToken?: string; idToken?: string };
+  const body = await req.json() as {
+    url?: string;
+    accessToken?: string;
+    idToken?: string;
+    region?: "KR" | "AP";
+  };
 
   let accessToken: string;
   let idToken: string;
@@ -115,7 +117,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const tokens = await getAuthTokens(accessToken, idToken, "");
+    const fallbackRegion = body.region ? normalizeRegion(body.region).toLowerCase() as "kr" | "ap" : undefined;
+    const tokens = await getAuthTokens(accessToken, idToken, "", fallbackRegion);
 
     const region = normalizeRegion(tokens.region);
     const tokenExpiresAt = new Date(Date.now() + 55 * 60 * 1000);

@@ -25,14 +25,14 @@ async function getValidTokens(accountId: string, userId: string): Promise<RiotAc
   if (!account || !account.accessToken || !account.entitlementsToken) return null;
   if (!account.isVerified) return null;
 
+  // ssid 없으면 URL 방식 토큰 → PVP API 미지원이므로 갱신 필요
+  if (!account.ssid) return null;
+
   // 5분 여유를 두고 만료 확인
   const expiresAt = account.tokenExpiresAt;
   const needsRefresh = !expiresAt || expiresAt.getTime() < Date.now() + 5 * 60 * 1000;
 
   if (!needsRefresh) return account;
-
-  // 갱신 시도
-  if (!account.ssid) return null;
 
   const refreshResult = await refreshTokens(account.ssid);
   if (refreshResult.status !== "success") return null;

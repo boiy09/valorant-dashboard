@@ -32,7 +32,10 @@ async function syncLegacyRiotFields(userId: string) {
 }
 
 function normalizeRegion(raw: string): "KR" | "AP" {
-  return raw.toLowerCase() === "ap" ? "AP" : "KR";
+  const normalized = raw.toLowerCase();
+  if (normalized === "kr") return "KR";
+  if (normalized === "ap") return "AP";
+  throw new Error(`지원하지 않는 서버 지역입니다: ${raw}`);
 }
 
 function regionLabel(region: "KR" | "AP") {
@@ -48,7 +51,7 @@ function parseTokensFromUrl(input: string): { accessToken: string; idToken: stri
       const params = new URLSearchParams(input.slice(hashIdx + 1));
       const accessToken = params.get("access_token");
       const idToken = params.get("id_token");
-      if (accessToken) return { accessToken, idToken: idToken ?? "" };
+      if (accessToken && idToken) return { accessToken, idToken };
     }
 
     // Case 2: raw fragment string with access_token= key (access_token=eyJ...&id_token=eyJ...)
@@ -56,7 +59,7 @@ function parseTokensFromUrl(input: string): { accessToken: string; idToken: stri
       const params = new URLSearchParams(input);
       const accessToken = params.get("access_token");
       const idToken = params.get("id_token");
-      if (accessToken) return { accessToken, idToken: idToken ?? "" };
+      if (accessToken && idToken) return { accessToken, idToken };
     }
 
     // Case 3: raw JWT value directly, with &id_token= embedded (eyJ...value...&id_token=eyJ...)
@@ -69,7 +72,7 @@ function parseTokensFromUrl(input: string): { accessToken: string; idToken: stri
       const afterIdToken = input.slice(idTokenIdx + "&id_token=".length);
       const idTokenEnd = afterIdToken.search(/&(?!amp;)/);
       const idToken = idTokenEnd !== -1 ? afterIdToken.slice(0, idTokenEnd) : afterIdToken;
-      if (accessToken) return { accessToken, idToken };
+      if (accessToken && idToken) return { accessToken, idToken };
     }
 
     return null;

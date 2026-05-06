@@ -270,6 +270,10 @@ export async function getAuthTokens(
   idToken: string,
   cookies: string
 ): Promise<AuthTokens> {
+  if (!idToken) {
+    throw new Error("id_token이 없어 서버 지역을 확인할 수 없습니다. 주소창 URL 전체를 다시 복사해 주세요.");
+  }
+
   // Step 4: entitlements token
   const entResponse = await fetch(ENTITLEMENTS_URL, {
     method: "POST",
@@ -315,10 +319,14 @@ export async function getAuthTokens(
     body: JSON.stringify({ id_token: idToken }),
   });
 
-  let region = "kr";
-  if (geoResponse.ok) {
-    const geoData = await geoResponse.json() as { affinities?: { live?: string } };
-    region = geoData.affinities?.live ?? "kr";
+  if (!geoResponse.ok) {
+    throw new Error(`서버 지역 확인 실패: ${geoResponse.status}`);
+  }
+
+  const geoData = await geoResponse.json() as { affinities?: { live?: string } };
+  const region = geoData.affinities?.live;
+  if (!region) {
+    throw new Error("Riot 응답에서 서버 지역을 찾을 수 없습니다.");
   }
 
   const ssid = extractSsid(cookies);

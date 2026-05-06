@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 
 const activeSessions = new Map<string, string>();
 const EXCLUDED_CHANNEL_KEYWORDS = ["잠수", "afk"];
+const MAX_CONTINUOUS_ACTIVITY_SECONDS = 18 * 60 * 60;
 
 function isExcludedVoiceChannel(channelName: string) {
   const normalized = channelName.toLowerCase().replace(/\s/g, "");
@@ -93,10 +94,24 @@ async function closeSession(sessionId: string) {
   const activity = await prisma.voiceActivity.findUnique({ where: { id: sessionId } });
   if (!activity || activity.leftAt) return;
 
-  const duration = Math.floor((now.getTime() - activity.joinedAt.getTime()) / 1000);
+  const duration = Math.min(
+    Math.floor((now.getTime() - activity.joinedAt.getTime()) / 1000),
+    MAX_CONTINUOUS_ACTIVITY_SECONDS
+  );
+  const leftAt = new Date(activity.joinedAt.getTime() + duration * 1000);
   await prisma.voiceActivity.update({
     where: { id: sessionId },
-    data: { leftAt: now, duration },
+    data: { leftAt, duration },
+  });
+}
+
+async function closeUncertainSession(sessionId: string) {
+  const activity = await prisma.voiceActivity.findUnique({ where: { id: sessionId } });
+  if (!activity || activity.leftAt) return;
+
+  await prisma.voiceActivity.update({
+    where: { id: sessionId },
+    data: { leftAt: activity.joinedAt, duration: 0 },
   });
 }
 
@@ -115,7 +130,7 @@ async function hydrateVoiceSessions(client: BotClient) {
 
     if (guild && member && currentChannelId === activity.channelId) {
       if (sessionKey && activeSessions.has(sessionKey)) {
-        await closeSession(activity.id);
+        await closeUncertainSession(activity.id);
         continue;
       }
 
@@ -123,7 +138,7 @@ async function hydrateVoiceSessions(client: BotClient) {
       continue;
     }
 
-    await closeSession(activity.id);
+    await closeUncertainSession(activity.id);
   }
 
   for (const [, guild] of client.guilds.cache) {

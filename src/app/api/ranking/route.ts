@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const EXCLUDED_CHANNEL_KEYWORDS = ["잠수", "afk"];
+const MAX_CONTINUOUS_ACTIVITY_SECONDS = 18 * 60 * 60;
 
 type ActivityInterval = {
   start: number;
@@ -37,7 +38,10 @@ function getActivityIntervalInRange(
 ) {
   if (!duration || duration <= 0) return null;
 
-  const activityEnd = leftAt ?? new Date(joinedAt.getTime() + duration * 1000);
+  const cappedDuration = Math.min(duration, MAX_CONTINUOUS_ACTIVITY_SECONDS);
+  const recordedEnd = leftAt ?? new Date(joinedAt.getTime() + duration * 1000);
+  const cappedEnd = new Date(joinedAt.getTime() + cappedDuration * 1000);
+  const activityEnd = recordedEnd < cappedEnd ? recordedEnd : cappedEnd;
   const start = joinedAt > rangeStart ? joinedAt : rangeStart;
   const end = activityEnd < rangeEnd ? activityEnd : rangeEnd;
   if (end <= start) return null;

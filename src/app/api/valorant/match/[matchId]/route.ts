@@ -1,5 +1,8 @@
 import { NextRequest } from "next/server";
 import axios from "axios";
+import { apiCache } from "@/lib/apiCache";
+
+const MATCH_TTL = 7 * 24 * 60 * 60 * 1000; // 7일 (매치는 불변)
 
 const henrikClient = axios.create({
   baseURL: "https://api.henrikdev.xyz/valorant",
@@ -24,6 +27,10 @@ export async function GET(
   { params }: { params: Promise<{ matchId: string }> }
 ) {
   const { matchId } = await params;
+  const cacheKey = `match:${matchId}`;
+
+  const cached = apiCache.get<object>(cacheKey, MATCH_TTL);
+  if (cached) return Response.json(cached);
 
   try {
     const res = await henrikClient.get(`/v4/match/${matchId}`);
@@ -92,7 +99,7 @@ export async function GET(
     const mapInfo = asRecord(data?.metadata?.map ?? metadata.map);
     const queueInfo = asRecord(data?.metadata?.queue ?? metadata.queue);
 
-    return Response.json({
+    const result = {
       matchId,
       map: (mapInfo.name as string) ?? "Unknown",
       mode: (queueInfo.name as string) ?? "Unknown",
@@ -101,7 +108,9 @@ export async function GET(
       totalRounds,
       players: processedPlayers,
       teams: processedTeams,
-    });
+    };
+    apiCache.set(cacheKey, result);
+    return Response.json(result);
   } catch (error: unknown) {
     if (axios.isAxiosError(error)) {
       const status = error.response?.status;

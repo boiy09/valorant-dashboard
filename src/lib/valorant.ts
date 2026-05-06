@@ -664,21 +664,15 @@ export async function getRecentMatches(
         riotId.tag
       );
       const localCardIcon = getPlayerCardIcon(p);
-      const accountFallback =
-        !localName || !localTag || !localCardIcon ? await getAccountByPuuid(pPuuid).catch(() => null) : null;
-      const fallbackCard = asRecord(accountFallback?.card);
-      const pName = localName || firstPlayerName(pAgentName, accountFallback?.game_name, accountFallback?.gameName, accountFallback?.name);
-      const pTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
       const agentLikeRawName = isAgentName(firstString(p.name, p.game_name, p.gameName), pAgentName);
       const rawName = firstString(p.game_name, p.gameName, p.name, p.player_name, p.playerName);
-      const isPrivate = !pName && !rawName;
-      const displayName = pName || (agentLikeRawName ? pAgentName : rawName);
-      const pCardIcon = localCardIcon || firstString(fallbackCard.small, fallbackCard.wide, fallbackCard.large);
+      const isPrivate = !localName && !rawName;
+      const displayName = localName || (agentLikeRawName ? pAgentName : rawName);
+      const pCardIcon = localCardIcon;
       const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
-      const fallbackRank = pTierId > 0 ? null : await getScoreboardRankByPuuid(pPuuid, region).catch(() => null);
-      const finalTierId = pTierId || fallbackRank?.tierId || 0;
-      const finalTierName = pTierId > 0 ? toString(pTier.name, "Unranked") : fallbackRank?.tierName ?? "Unranked";
+      const finalTierId = pTierId;
+      const finalTierName = toString(pTier.name, "Unranked");
       return {
         puuid: pPuuid,
         name: isPrivate ? "비공개" : displayName,
@@ -691,7 +685,7 @@ export async function getRecentMatches(
         agentIcon: pIcon,
         tierName: finalTierName,
         tierId: finalTierId,
-        tierIcon: fallbackRank?.tierIcon ?? (await getRankIconByTier(finalTierId)),
+        tierIcon: await getRankIconByTier(finalTierId),
         acs: totalRounds > 0 ? Math.round(pScore / totalRounds) : 0,
         kills: pk,
         deaths: pd,

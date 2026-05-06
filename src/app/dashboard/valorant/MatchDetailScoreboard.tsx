@@ -120,11 +120,6 @@ function ScoreboardPortrait({ player }: { player: ScoreboardPlayer }) {
           <UserPlaceholderIcon />
         </div>
       )}
-      {player.agentIcon && player.cardIcon && (
-        <span className="absolute right-0.5 top-0.5 rounded bg-black/55 p-[2px]">
-          <img src={player.agentIcon} alt={player.agent} className="h-3 w-3 rounded-sm object-cover" />
-        </span>
-      )}
       {player.level !== null && (
         <span className="absolute bottom-0 left-0 rounded-tr bg-black/80 px-1 text-[9px] font-bold text-white">
           {player.level}
@@ -199,7 +194,7 @@ function ScoreboardTable({
                       </div>
                       <div className="flex items-center gap-1 text-[10px]">
                         {player.agentIcon && <img src={player.agentIcon} alt={player.agent} className="h-3 w-3 rounded object-cover" />}
-                        <span className="truncate text-[#8da0ad]">{player.isPrivate ? "이름 비공개" : player.agent}</span>
+                        <span className="truncate text-[#8da0ad]">{player.agent}</span>
                       </div>
                     </div>
                   </div>

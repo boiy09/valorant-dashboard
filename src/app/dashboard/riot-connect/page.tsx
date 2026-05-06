@@ -25,8 +25,9 @@ const BROWSER_STEPS: Record<Browser, { label: string; steps: { title: string; de
         hint: "탭이 보이지 않으면 탭 오른쪽 끝의 '>>' 버튼을 눌러 더 보기에서 찾으세요.",
       },
       {
-        title: "Cookies → auth.riotgames.com 클릭",
-        desc: "왼쪽 사이드바에서 'Storage' 섹션 아래 'Cookies'를 펼치고, 'https://auth.riotgames.com' 을 클릭하세요.",
+        title: "Cookies 펼치기 → auth.riotgames.com 클릭",
+        desc: "왼쪽 사이드바 'Storage' 섹션에서 'Cookies' 왼쪽의 ▶ 화살표를 클릭해 펼치면 'https://auth.riotgames.com' 이 나타납니다. 그것을 클릭하세요.",
+        hint: "Cookies를 클릭하면 아무것도 안 나와요. 반드시 왼쪽 ▶ 화살표를 눌러야 합니다.",
       },
       {
         title: "ssid 쿠키 값 복사",
@@ -53,8 +54,9 @@ const BROWSER_STEPS: Record<Browser, { label: string; steps: { title: string; de
         hint: "탭이 보이지 않으면 '>>' 버튼을 눌러 더 보기에서 찾으세요.",
       },
       {
-        title: "Cookies → auth.riotgames.com 클릭",
-        desc: "왼쪽 사이드바에서 'Cookies' 를 펼치고 'https://auth.riotgames.com' 을 클릭하세요.",
+        title: "Cookies 펼치기 → auth.riotgames.com 클릭",
+        desc: "왼쪽 사이드바 'Cookies' 왼쪽의 ▶ 화살표를 클릭해 펼치면 'https://auth.riotgames.com' 이 나타납니다. 그것을 클릭하세요.",
+        hint: "Cookies를 클릭하면 아무것도 안 나와요. 반드시 왼쪽 ▶ 화살표를 눌러야 합니다.",
       },
       {
         title: "ssid 쿠키 값 복사",
@@ -81,8 +83,9 @@ const BROWSER_STEPS: Record<Browser, { label: string; steps: { title: string; de
         hint: "영문 Firefox는 'Storage' 탭입니다.",
       },
       {
-        title: "쿠키 → https://auth.riotgames.com 클릭",
-        desc: "왼쪽 사이드바에서 '쿠키 (Cookies)' 를 펼치고 'https://auth.riotgames.com' 을 클릭하세요.",
+        title: "쿠키 펼치기 → https://auth.riotgames.com 클릭",
+        desc: "왼쪽 사이드바에서 '쿠키 (Cookies)' 왼쪽의 ▶ 화살표를 클릭해 펼치면 'https://auth.riotgames.com' 이 나타납니다. 그것을 클릭하세요.",
+        hint: "쿠키를 클릭하면 아무것도 안 나와요. 반드시 왼쪽 ▶ 화살표를 눌러야 합니다.",
       },
       {
         title: "ssid 쿠키 값 복사",
@@ -266,16 +269,21 @@ export default function RiotConnectPage() {
                   </div>
                 )}
 
-                {/* Step 4 전용: 사이드바 시각화 */}
+                {/* Step 4 전용: 사이드바 시각화 (실제 Chrome DevTools 구조) */}
                 {i === 3 && (
-                  <div className="mt-2 bg-[#0f1923] border border-[#2a3540] rounded p-3 text-xs font-mono w-64">
-                    <div className="text-[#7b8a96]">▾ Storage</div>
-                    <div className="ml-3 text-[#7b8a96]">▾ Cookies</div>
-                    <div className="ml-6 bg-[#ff4655]/10 border border-[#ff4655]/40 rounded px-2 py-0.5 text-[#ff4655]">
-                      https://auth.riotgames.com ◀
+                  <div className="mt-2 bg-[#242424] border border-[#3a3a3a] rounded p-3 text-xs font-mono w-72 text-[#d4d4d4]">
+                    <div className="text-[#9cdcfe] mb-1">Storage</div>
+                    <div className="ml-2 text-[#9cdcfe]">▸ Local storage</div>
+                    <div className="ml-2 text-[#9cdcfe]">▸ Session storage</div>
+                    <div className="ml-2 text-[#9cdcfe]">▸ IndexedDB</div>
+                    <div className="ml-2 flex items-center gap-1 text-[#9cdcfe] font-bold">
+                      <span>▾ Cookies</span>
+                      <span className="text-[#ff4655] text-[10px] ml-1">← 화살표 클릭</span>
                     </div>
-                    <div className="ml-3 text-[#2a3540]">▸ Local Storage</div>
-                    <div className="ml-3 text-[#2a3540]">▸ Session Storage</div>
+                    <div className="ml-5 bg-[#ff4655]/20 border border-[#ff4655]/50 rounded px-2 py-0.5 text-[#ff4655] font-bold">
+                      https://auth.riotgames.com ◀ 클릭!
+                    </div>
+                    <div className="ml-2 text-[#9cdcfe] mt-1">▸ Private state tokens</div>
                   </div>
                 )}
 

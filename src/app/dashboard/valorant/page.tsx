@@ -88,82 +88,130 @@ function tierColor(tierId: number) {
   return "text-[#7b8a96]";
 }
 
-function ScoreboardTable({ players, myPuuid, label, color }: {
+function fmtDuration(ms: number) {
+  if (!ms) return "--";
+  const totalSec = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = totalSec % 60;
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+}
+
+function fmtMatchDate(date: string) {
+  if (!date) return "--";
+  return new Date(date).toLocaleString("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function ScoreboardTable({ players, myPuuid, label, accent }: {
   players: ScoreboardPlayer[];
   myPuuid: string;
   label: string;
-  color: string;
+  accent: "green" | "red";
 }) {
   const sorted = [...players].sort((a, b) => b.acs - a.acs);
+  const headerClass = accent === "green" ? "bg-[#0f5b50] text-[#58ffd8]" : "bg-[#5a1f32] text-[#ff5f75]";
   return (
-    <div>
-      <div className={`text-[10px] font-bold tracking-widest uppercase mb-1 px-1 ${color}`}>{label}</div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-[#7b8a96] border-b border-[#2a3540]">
-              <th className="text-left py-1.5 pl-2 font-medium">플레이어</th>
-              <th className="text-right py-1.5 px-2 font-medium">ACS</th>
-              <th className="text-right py-1.5 px-2 font-medium">K</th>
-              <th className="text-right py-1.5 px-2 font-medium">D</th>
-              <th className="text-right py-1.5 px-2 font-medium">A</th>
-              <th className="text-right py-1.5 px-2 font-medium">+/-</th>
-              <th className="text-right py-1.5 px-2 font-medium">K/D</th>
-              <th className="text-right py-1.5 pr-2 font-medium">HS%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((p) => {
-              const isMe = p.puuid === myPuuid;
-              return (
-                <tr key={p.puuid || p.name} className={`border-b border-[#1a242d] last:border-0 ${isMe ? "bg-[#ff4655]/5" : ""}`}>
-                  <td className="py-1.5 pl-2">
-                    <div className="flex items-center gap-1.5">
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[760px] table-fixed text-xs">
+        <colgroup>
+          <col className="w-[190px]" />
+          <col className="w-[120px]" />
+          <col className="w-[70px]" />
+          <col className="w-[58px]" />
+          <col className="w-[58px]" />
+          <col className="w-[58px]" />
+          <col className="w-[70px]" />
+          <col className="w-[70px]" />
+          <col className="w-[70px]" />
+          <col className="w-[70px]" />
+        </colgroup>
+        <thead>
+          <tr className={`${headerClass}`}>
+            <th className="py-2 pl-3 text-left font-bold">{label}</th>
+            <th className="px-2 py-2 text-left font-medium">Match Rank</th>
+            <th className="px-2 py-2 text-right font-medium">ACS</th>
+            <th className="px-2 py-2 text-right font-medium">K</th>
+            <th className="px-2 py-2 text-right font-medium">D</th>
+            <th className="px-2 py-2 text-right font-medium">A</th>
+            <th className="px-2 py-2 text-right font-medium">+/-</th>
+            <th className="px-2 py-2 text-right font-medium">K/D</th>
+            <th className="px-2 py-2 text-right font-medium">HS%</th>
+            <th className="py-2 pr-3 text-right font-medium">ADR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((p, index) => {
+            const isMe = p.puuid === myPuuid;
+            return (
+              <tr
+                key={p.puuid || p.name}
+                className={`border-b border-[#0e1821] ${
+                  index % 2 === 0 ? "bg-[#101c26]" : "bg-[#192633]"
+                } ${isMe ? "outline outline-1 outline-[#ff4655]/40" : ""}`}
+              >
+                <td className="py-2 pl-3">
+                  <div className="flex items-center gap-2">
+                    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-[#2a3540]">
                       {p.cardIcon ? (
-                        <img src={p.cardIcon} alt={p.name || p.agent} className="w-8 h-8 rounded flex-shrink-0 object-cover" />
+                        <img src={p.cardIcon} alt={p.name || p.agent} className="h-full w-full object-cover" />
                       ) : p.agentIcon ? (
-                        <img src={p.agentIcon} alt={p.agent} className="w-8 h-8 rounded flex-shrink-0 object-cover" />
-                      ) : (
-                        <div className="w-8 h-8 rounded bg-[#2a3540] flex-shrink-0" />
+                        <img src={p.agentIcon} alt={p.agent} className="h-full w-full object-cover" />
+                      ) : null}
+                      {p.level !== null && (
+                        <span className="absolute bottom-0 left-0 rounded-tr bg-black/70 px-1 text-[9px] font-bold text-white">
+                          {p.level}
+                        </span>
                       )}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1">
-                          <span className={`font-bold truncate text-[11px] ${isMe ? "text-[#ff4655]" : "text-white"}`}>
-                            {p.name || p.agent}
-                          </span>
-                          {p.tag && <span className="text-[#4a5a68] text-[10px]">#{p.tag}</span>}
-                          {isMe && <span className="text-[9px] text-[#ff4655] bg-[#ff4655]/10 px-1 rounded">나</span>}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {p.level !== null && <span className="text-[9px] text-[#7b8a96]">Lv.{p.level}</span>}
-                          {p.tierIcon && <img src={p.tierIcon} alt={p.tierName} className="h-3 w-3 object-contain" />}
-                          <span className={`text-[10px] ${tierColor(p.tierId)}`}>{p.tierName}</span>
-                        </div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className={`truncate text-sm font-black ${isMe ? "text-[#ff4655]" : "text-white"}`}>
+                          {p.name || p.agent}
+                        </span>
+                        {p.tag && <span className="rounded bg-[#263544] px-1 text-[10px] text-[#b8c6d1]">#{p.tag}</span>}
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px]">
+                        {p.agentIcon && <img src={p.agentIcon} alt={p.agent} className="h-3 w-3 rounded object-cover" />}
+                        <span className="truncate text-[#8da0ad]">{p.agent}</span>
                       </div>
                     </div>
-                  </td>
-                  <td className="text-right py-1.5 px-2 font-bold text-white text-[11px]">{p.acs}</td>
-                  <td className="text-right py-1.5 px-2 font-bold text-white text-[11px]">{p.kills}</td>
-                  <td className="text-right py-1.5 px-2 font-bold text-[#ff4655] text-[11px]">{p.deaths}</td>
-                  <td className="text-right py-1.5 px-2 text-white text-[11px]">{p.assists}</td>
-                  <td className={`text-right py-1.5 px-2 font-bold text-[11px] ${p.plusMinus > 0 ? "text-green-400" : p.plusMinus < 0 ? "text-[#ff4655]" : "text-[#7b8a96]"}`}>
-                    {p.plusMinus > 0 ? `+${p.plusMinus}` : p.plusMinus}
-                  </td>
-                  <td className={`text-right py-1.5 px-2 font-bold text-[11px] ${p.kd >= 1 ? "text-green-400" : "text-[#ff4655]"}`}>
-                    {p.kd.toFixed(2)}
-                  </td>
-                  <td className={`text-right py-1.5 pr-2 text-[11px] ${p.hsPercent >= 25 ? "text-green-400" : "text-white"}`}>
-                    {p.hsPercent}%
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  </div>
+                </td>
+                <td className="px-2 py-2">
+                  <div className="flex items-center gap-1.5">
+                    {p.tierIcon ? (
+                      <img src={p.tierIcon} alt={p.tierName} className="h-6 w-6 object-contain" />
+                    ) : (
+                      <div className="h-6 w-6 rounded-full bg-[#2a3540]" />
+                    )}
+                    <span className={`truncate text-[11px] font-bold ${tierColor(p.tierId)}`}>{p.tierName}</span>
+                  </div>
+                </td>
+                <td className="bg-[#24384a] px-2 py-2 text-right text-base font-black text-white">{p.acs}</td>
+                <td className="px-2 py-2 text-right text-base font-bold text-white">{p.kills}</td>
+                <td className="px-2 py-2 text-right text-base font-bold text-[#ff4655]">{p.deaths}</td>
+                <td className="px-2 py-2 text-right text-base font-bold text-white">{p.assists}</td>
+                <td className={`px-2 py-2 text-right text-base font-black ${p.plusMinus > 0 ? "text-green-400" : p.plusMinus < 0 ? "text-[#ff4655]" : "text-[#8da0ad]"}`}>
+                  {p.plusMinus > 0 ? `+${p.plusMinus}` : p.plusMinus}
+                </td>
+                <td className={`px-2 py-2 text-right text-base font-black ${p.kd >= 1 ? "text-green-400" : "text-[#ff4655]"}`}>
+                  {p.kd.toFixed(1)}
+                </td>
+                <td className="px-2 py-2 text-right font-bold text-white">{p.hsPercent}%</td>
+                <td className="py-2 pr-3 text-right font-bold text-white">{p.adr ?? "--"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
+
 
 function EmptyRegionCard({ region }: { region: RiotRegion }) {
   return (
@@ -253,10 +301,10 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                 {match.playedAt.toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}
               </div>
             </summary>
-            <div className="border-t border-[#2a3540] px-4 py-3">
-              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 mb-4">
+            <div className="border-t border-[#2a3540] bg-[#07131e]">
+              <div className="grid grid-cols-2 gap-3 px-4 py-3 text-sm sm:grid-cols-4">
                 <div>
-                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">스코어</div>
+                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">Score</div>
                   <div className="font-bold text-white">
                     {match.teamScore !== null && match.enemyScore !== null
                       ? `${match.teamScore} : ${match.enemyScore}`
@@ -268,11 +316,11 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                   <div className="font-bold text-white">{match.score}</div>
                 </div>
                 <div>
-                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">헤드샷</div>
+                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">Headshot</div>
                   <div className="font-bold text-white">{hs}%</div>
                 </div>
                 <div>
-                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">모드</div>
+                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">Mode</div>
                   <div className="font-bold text-white">{match.mode}</div>
                 </div>
               </div>
@@ -284,43 +332,92 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                 const enemyTeamPlayers = sb.players.filter(p => p.teamId !== myTeamId);
                 const myTeam = sb.teams.find(t => t.teamId === myTeamId);
                 const enemyTeam = sb.teams.find(t => t.teamId !== myTeamId);
-                const myLabel = result === "승리" ? `승리 팀 (내 팀) · ${myTeam?.roundsWon ?? 0}R` : result === "패배" ? `패배 팀 (내 팀) · ${myTeam?.roundsWon ?? 0}R` : `내 팀 · ${myTeam?.roundsWon ?? 0}R`;
-                const enemyLabel = result === "패배" ? `승리 팀 (상대) · ${enemyTeam?.roundsWon ?? 0}R` : result === "승리" ? `패배 팀 (상대) · ${enemyTeam?.roundsWon ?? 0}R` : `상대 팀 · ${enemyTeam?.roundsWon ?? 0}R`;
-                const myColor = result === "승리" ? "text-green-400" : result === "패배" ? "text-[#ff4655]" : "text-[#7b8a96]";
-                const enemyColor = result === "패배" ? "text-green-400" : result === "승리" ? "text-[#ff4655]" : "text-[#7b8a96]";
+                const myLabel = `Team A · ${myTeam?.roundsWon ?? 0}R`;
+                const enemyLabel = `Team B · ${enemyTeam?.roundsWon ?? 0}R`;
                 return (
-                  <div className="space-y-3">
-                    {sb.rounds.length > 0 && (
-                      <div>
-                        <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#7b8a96]">
-                          라운드 흐름
+                  <div>
+                    <div className="bg-[#2a4054] px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
+                        <div>
+                          <div className="text-[11px] font-bold text-[#9fb0be]">Competitive</div>
+                          <div className="text-lg font-black text-white">{sb.map}</div>
                         </div>
-                        <div className="flex flex-wrap gap-1">
-                          {sb.rounds.map((round) => {
-                            const isMyRound = round.winningTeamId === myTeamId;
-                            const isEnemyRound = round.winningTeamId && round.winningTeamId !== myTeamId;
-                            return (
-                              <div
-                                key={`${match.matchId}-round-${round.round}`}
-                                className={`flex h-7 w-7 items-center justify-center rounded text-[10px] font-black ${
-                                  isMyRound
-                                    ? "bg-green-400/15 text-green-400"
-                                    : isEnemyRound
-                                      ? "bg-[#ff4655]/15 text-[#ff4655]"
-                                      : "bg-[#111c24] text-[#7b8a96]"
-                                }`}
-                                title={`${round.round}R ${round.result || round.ceremony || ""}`}
-                              >
+                        <div className="flex items-end gap-3 text-lg font-black">
+                          <span className="text-[#58ffd8]">Team A</span>
+                          <span className="text-[#58ffd8]">{myTeam?.roundsWon ?? 0}</span>
+                          <span className="text-white">:</span>
+                          <span className="text-[#ff5f75]">{enemyTeam?.roundsWon ?? 0}</span>
+                          <span className="text-[#ff5f75]">Team B</span>
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-bold text-[#9fb0be]">{fmtMatchDate(sb.startedAt)}</div>
+                          <div className="text-lg font-black text-white">{fmtDuration(sb.gameLengthMs)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-bold text-[#9fb0be]">Average Rank</div>
+                          <div className="text-lg font-black text-white">
+                            {myTeamPlayers.find((p) => p.tierId > 0)?.tierName ?? "Unrated"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-5 border-b border-[#0e1821] bg-[#2a4054] text-center text-sm font-bold text-white">
+                      {["Scoreboard", "Performance", "Economy", "Rounds", "Duels"].map((tab, tabIndex) => (
+                        <div key={tab} className={`py-3 ${tabIndex === 0 ? "border-b-2 border-[#ff4655]" : ""}`}>
+                          {tab}
+                        </div>
+                      ))}
+                    </div>
+                    {sb.rounds.length > 0 && (
+                      <div className="bg-[#07131e] px-4 py-4">
+                        <div className="grid grid-cols-[56px_1fr] gap-x-3 gap-y-1">
+                          <div className="text-right text-sm font-bold text-[#58ffd8]">Team A</div>
+                          <div className="flex flex-wrap gap-2">
+                            {sb.rounds.map((round) => {
+                              const isMyRound = round.winningTeamId === myTeamId;
+                              return (
+                                <div
+                                  key={`${match.matchId}-team-a-${round.round}`}
+                                  className={`flex h-5 w-5 items-center justify-center text-base font-black ${
+                                    isMyRound ? "text-[#58ffd8]" : "text-[#263544]"
+                                  }`}
+                                  title={`${round.round}R ${round.result || round.ceremony || ""}`}
+                                >
+                                  {isMyRound ? "⚔" : "·"}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="text-right text-sm font-bold text-[#ff5f75]">Team B</div>
+                          <div className="flex flex-wrap gap-2">
+                            {sb.rounds.map((round) => {
+                              const isEnemyRound = round.winningTeamId && round.winningTeamId !== myTeamId;
+                              return (
+                                <div
+                                  key={`${match.matchId}-team-b-${round.round}`}
+                                  className={`flex h-5 w-5 items-center justify-center text-base font-black ${
+                                    isEnemyRound ? "text-[#ff5f75]" : "text-[#263544]"
+                                  }`}
+                                  title={`${round.round}R ${round.result || round.ceremony || ""}`}
+                                >
+                                  {isEnemyRound ? "⚔" : "·"}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div />
+                          <div className="flex flex-wrap gap-2">
+                            {sb.rounds.map((round) => (
+                              <div key={`${match.matchId}-num-${round.round}`} className="flex h-4 w-5 items-center justify-center text-[10px] text-[#8da0ad]">
                                 {round.round}
                               </div>
-                            );
-                          })}
+                            ))}
+                          </div>
                         </div>
                       </div>
                     )}
-                    <ScoreboardTable players={myTeamPlayers} myPuuid={puuid} label={myLabel} color={myColor} />
-                    <div className="border-t border-[#2a3540]" />
-                    <ScoreboardTable players={enemyTeamPlayers} myPuuid={puuid} label={enemyLabel} color={enemyColor} />
+                    <ScoreboardTable players={myTeamPlayers} myPuuid={puuid} label={myLabel} accent="green" />
+                    <ScoreboardTable players={enemyTeamPlayers} myPuuid={puuid} label={enemyLabel} accent="red" />
                   </div>
                 );
               })()}

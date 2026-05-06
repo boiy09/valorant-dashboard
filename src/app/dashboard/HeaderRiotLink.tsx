@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type RiotRegion = "KR" | "AP";
@@ -288,6 +289,17 @@ export default function HeaderRiotLink() {
                     {isLoading ? "로그인 중..." : "연동하기"}
                   </button>
                 </form>
+                <div className="mt-2 pt-2 border-t border-[#2a3540]">
+                  <Link
+                    href="/dashboard/riot-connect"
+                    className="flex items-center justify-center gap-1.5 text-[#7b8a96] hover:text-[#ff4655] text-[10px] transition-colors"
+                    onClick={() => setOpen(false)}
+                  >
+                    <span>🔑</span>
+                    <span>비밀번호 없이 쿠키로 연동하기</span>
+                    <span>→</span>
+                  </Link>
+                </div>
               </>
             )}
           </div>

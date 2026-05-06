@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getRankByPuuid, getRecentMatches, MatchStats } from "@/lib/valorant";
 import TrackerStats from "../TrackerStats";
+import MatchScoreboard from "./MatchScoreboard";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +95,7 @@ function EmptyRegionCard({ region }: { region: RiotRegion }) {
   );
 }
 
-function RegionMatchList({ matches, trackerUrl }: { matches: MatchStats[]; trackerUrl: string }) {
+function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]; trackerUrl: string; puuid: string }) {
   if (matches.length === 0) {
     return <div className="val-card p-4 text-[#7b8a96] text-sm">최근 매치 데이터가 아직 없습니다.</div>;
   }
@@ -186,14 +187,21 @@ function RegionMatchList({ matches, trackerUrl }: { matches: MatchStats[]; track
                   <div className="font-bold text-white">{match.mode}</div>
                 </div>
               </div>
-              <a
-                href={trackerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-flex text-xs font-bold text-[#ff4655] hover:text-white"
-              >
-                tracker.gg에서 상세 보기
-              </a>
+              <div className="flex items-center gap-3 flex-wrap">
+                <MatchScoreboard
+                  matchId={match.matchId}
+                  myPuuid={puuid}
+                  result={match.result}
+                />
+                <a
+                  href={trackerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex text-xs font-bold text-[#ff4655] hover:text-white"
+                >
+                  tracker.gg에서 상세 보기
+                </a>
+              </div>
             </div>
           </details>
         );
@@ -208,7 +216,7 @@ function RegionSection({ data }: { data: RegionStats }) {
   const trackerUrl = buildTrackerUrl(data.riotId);
 
   return (
-    <section className="mb-8">
+    <section>
       <div className="flex items-center justify-between mb-3">
         <div>
           <div className="text-[#ff4655] text-[10px] tracking-[0.2em] uppercase mb-0.5">
@@ -326,7 +334,7 @@ function RegionSection({ data }: { data: RegionStats }) {
 
       <div className="mb-6">
         <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">최근 매치</div>
-        <RegionMatchList matches={data.recentMatches} trackerUrl={trackerUrl} />
+        <RegionMatchList matches={data.recentMatches} trackerUrl={trackerUrl} puuid={data.puuid} />
       </div>
 
       <div>
@@ -397,17 +405,20 @@ export default async function ValorantPage() {
         </div>
       )}
 
-      {sortedStats.length > 0 &&
-        (["KR", "AP"] as RiotRegion[]).map((region) => {
-          const section = sortedStats.find((item) => item.region === region);
-          return section ? (
-            <RegionSection key={region} data={section} />
-          ) : (
-            <div key={region} className="mb-8">
-              <EmptyRegionCard region={region} />
-            </div>
-          );
-        })}
+      {sortedStats.length > 0 && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {(["KR", "AP"] as RiotRegion[]).map((region) => {
+            const section = sortedStats.find((item) => item.region === region);
+            return section ? (
+              <RegionSection key={region} data={section} />
+            ) : (
+              <div key={region}>
+                <EmptyRegionCard region={region} />
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -62,8 +62,10 @@ export async function POST(req: NextRequest) {
     const authResult = await refreshTokens(ssidCookie);
 
     if (authResult.status !== "success") {
+      const detail = authResult.status === "error" ? authResult.message : "알 수 없는 오류";
+      console.error("[ssid route] refreshTokens 실패:", detail);
       return Response.json(
-        { error: "ssid 쿠키가 유효하지 않습니다. 다시 로그인 후 복사해 주세요." },
+        { error: `ssid 쿠키가 유효하지 않습니다. (${detail})` },
         { status: 401 }
       );
     }

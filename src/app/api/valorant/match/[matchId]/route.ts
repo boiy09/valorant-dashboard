@@ -38,6 +38,7 @@ export async function GET(
     const metadata = asRecord(data?.metadata);
     const players = asArray<Record<string, unknown>>(data?.players);
     const teams = asArray<Record<string, unknown>>(data?.teams);
+    const rounds = asArray<Record<string, unknown>>(data?.rounds);
 
     const totalRounds = teams.reduce(
       (sum, team) => sum + toNumber(team.rounds_won),
@@ -68,16 +69,27 @@ export async function GET(
 
       const tier = asRecord(player.tier);
       const economy = asRecord(player.economy);
+      const assets = asRecord(player.assets);
+      const card = asRecord(player.card ?? player.player_card ?? assets.card);
 
       return {
         puuid: player.puuid,
         name: player.name,
         tag: player.tag,
         teamId: player.team_id,
+        level: toNumber(player.level ?? player.account_level, -1) >= 0 ? toNumber(player.level ?? player.account_level) : null,
+        cardIcon:
+          (card.small as string) ??
+          (card.wide as string) ??
+          (card.large as string) ??
+          (card.displayIcon as string) ??
+          (assets.card_small as string) ??
+          "",
         agent: (agent.name as string) ?? "Unknown",
         agentIcon,
         tierName: (tier.name as string) ?? "Unranked",
         tierId: toNumber(tier.id),
+        tierIcon: "",
         acs: totalRounds > 0 ? Math.round(score / totalRounds) : 0,
         kills,
         deaths,
@@ -96,6 +108,33 @@ export async function GET(
       won: Boolean(team.won),
     }));
 
+    const processedRounds = rounds.map((round, index) => {
+      const winningTeam = asRecord(round.winning_team ?? round.winningTeam);
+      const resultInfo = asRecord(round.result);
+      const ceremony = asRecord(round.ceremony);
+
+      return {
+        round: toNumber(round.round ?? round.round_number ?? round.roundNumber, index + 1),
+        winningTeamId:
+          (round.winning_team_id as string) ??
+          (round.winningTeamId as string) ??
+          (winningTeam.team_id as string) ??
+          (winningTeam.teamId as string) ??
+          "",
+        result:
+          (resultInfo.code as string) ??
+          (resultInfo.name as string) ??
+          (round.result_code as string) ??
+          (round.result as string) ??
+          "",
+        ceremony:
+          (ceremony.code as string) ??
+          (ceremony.name as string) ??
+          (round.ceremony as string) ??
+          "",
+      };
+    });
+
     const mapInfo = asRecord(data?.metadata?.map ?? metadata.map);
     const queueInfo = asRecord(data?.metadata?.queue ?? metadata.queue);
 
@@ -108,6 +147,7 @@ export async function GET(
       totalRounds,
       players: processedPlayers,
       teams: processedTeams,
+      rounds: processedRounds,
     };
     apiCache.set(cacheKey, result);
     return Response.json(result);

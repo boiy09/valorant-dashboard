@@ -119,10 +119,12 @@ function ScoreboardTable({ players, myPuuid, label, color }: {
                 <tr key={p.puuid || p.name} className={`border-b border-[#1a242d] last:border-0 ${isMe ? "bg-[#ff4655]/5" : ""}`}>
                   <td className="py-1.5 pl-2">
                     <div className="flex items-center gap-1.5">
-                      {p.agentIcon ? (
-                        <img src={p.agentIcon} alt={p.agent} className="w-6 h-6 rounded flex-shrink-0 object-cover" />
+                      {p.cardIcon ? (
+                        <img src={p.cardIcon} alt={p.name || p.agent} className="w-8 h-8 rounded flex-shrink-0 object-cover" />
+                      ) : p.agentIcon ? (
+                        <img src={p.agentIcon} alt={p.agent} className="w-8 h-8 rounded flex-shrink-0 object-cover" />
                       ) : (
-                        <div className="w-6 h-6 rounded bg-[#2a3540] flex-shrink-0" />
+                        <div className="w-8 h-8 rounded bg-[#2a3540] flex-shrink-0" />
                       )}
                       <div className="min-w-0">
                         <div className="flex items-center gap-1">
@@ -132,7 +134,11 @@ function ScoreboardTable({ players, myPuuid, label, color }: {
                           {p.tag && <span className="text-[#4a5a68] text-[10px]">#{p.tag}</span>}
                           {isMe && <span className="text-[9px] text-[#ff4655] bg-[#ff4655]/10 px-1 rounded">나</span>}
                         </div>
-                        <div className={`text-[10px] ${tierColor(p.tierId)}`}>{p.tierName}</div>
+                        <div className="flex items-center gap-1">
+                          {p.level !== null && <span className="text-[9px] text-[#7b8a96]">Lv.{p.level}</span>}
+                          {p.tierIcon && <img src={p.tierIcon} alt={p.tierName} className="h-3 w-3 object-contain" />}
+                          <span className={`text-[10px] ${tierColor(p.tierId)}`}>{p.tierName}</span>
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -284,6 +290,34 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
                 const enemyColor = result === "패배" ? "text-green-400" : result === "승리" ? "text-[#ff4655]" : "text-[#7b8a96]";
                 return (
                   <div className="space-y-3">
+                    {sb.rounds.length > 0 && (
+                      <div>
+                        <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#7b8a96]">
+                          라운드 흐름
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {sb.rounds.map((round) => {
+                            const isMyRound = round.winningTeamId === myTeamId;
+                            const isEnemyRound = round.winningTeamId && round.winningTeamId !== myTeamId;
+                            return (
+                              <div
+                                key={`${match.matchId}-round-${round.round}`}
+                                className={`flex h-7 w-7 items-center justify-center rounded text-[10px] font-black ${
+                                  isMyRound
+                                    ? "bg-green-400/15 text-green-400"
+                                    : isEnemyRound
+                                      ? "bg-[#ff4655]/15 text-[#ff4655]"
+                                      : "bg-[#111c24] text-[#7b8a96]"
+                                }`}
+                                title={`${round.round}R ${round.result || round.ceremony || ""}`}
+                              >
+                                {round.round}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     <ScoreboardTable players={myTeamPlayers} myPuuid={puuid} label={myLabel} color={myColor} />
                     <div className="border-t border-[#2a3540]" />
                     <ScoreboardTable players={enemyTeamPlayers} myPuuid={puuid} label={enemyLabel} color={enemyColor} />

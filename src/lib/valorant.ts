@@ -38,10 +38,13 @@ export interface ScoreboardPlayer {
   name: string;
   tag: string;
   teamId: string;
+  level: number | null;
+  cardIcon: string;
   agent: string;
   agentIcon: string;
   tierName: string;
   tierId: number;
+  tierIcon: string | null;
   acs: number;
   kills: number;
   deaths: number;
@@ -58,6 +61,13 @@ export interface ScoreboardTeam {
   won: boolean;
 }
 
+export interface MatchRoundSummary {
+  round: number;
+  winningTeamId: string;
+  result: string;
+  ceremony: string;
+}
+
 export interface MatchScoreboardData {
   map: string;
   mode: string;
@@ -66,6 +76,7 @@ export interface MatchScoreboardData {
   totalRounds: number;
   players: ScoreboardPlayer[];
   teams: ScoreboardTeam[];
+  rounds: MatchRoundSummary[];
 }
 
 export interface MatchStats {
@@ -236,6 +247,21 @@ function getLatestSeasonWithGames(bySeason: unknown) {
   return Object.entries(asRecord(bySeason))
     .filter(([, value]) => toNumber(asRecord(value).number_of_games) > 0)
     .sort(([a], [b]) => b.localeCompare(a))[0]?.[1] ?? null;
+}
+
+function getPlayerCardIcon(player: Record<string, unknown>) {
+  const assets = asRecord(player.assets);
+  const card = asRecord(player.card ?? player.player_card ?? assets.card);
+  return toString(
+    card.small ??
+      card.wide ??
+      card.large ??
+      card.displayIcon ??
+      card.smallArt ??
+      assets.card_small ??
+      assets.player_card_small,
+    ""
+  );
 }
 
 async function getRankIconByTier(tierId: number) {
@@ -412,8 +438,28 @@ export async function getRecentMatches(
       return toNumber(t.rounds_won ?? asRecord(t.rounds).won ?? t.roundsWon);
     }
     const totalRounds = teams.reduce((sum: number, t: any) => sum + teamRoundsWon(t), 0);
+    const rawRounds = asArray<Record<string, unknown>>(match.rounds);
+    const scoreboardRounds = rawRounds.map((round, index) => {
+      const winningTeam = asRecord(round.winning_team ?? round.winningTeam);
+      const result = asRecord(round.result);
+      const ceremony = asRecord(round.ceremony);
 
-    const scoreboardPlayers: ScoreboardPlayer[] = players.map((p: any) => {
+      return {
+        round: toNumber(round.round ?? round.round_number ?? round.roundNumber, index + 1),
+        winningTeamId: toString(
+          round.winning_team_id ??
+            round.winningTeamId ??
+            winningTeam.team_id ??
+            winningTeam.teamId ??
+            winningTeam.id,
+          ""
+        ),
+        result: toString(result.code ?? result.name ?? round.result_code ?? round.result, ""),
+        ceremony: toString(ceremony.code ?? ceremony.name ?? round.ceremony, ""),
+      };
+    });
+
+    const scoreboardPlayers: ScoreboardPlayer[] = await Promise.all(players.map(async (p: any) => {
       const ps = asRecord(p.stats ?? {});
       const pk = toNumber(ps.kills);
       const pd = toNumber(ps.deaths);
@@ -431,15 +477,19 @@ export async function getRecentMatches(
       const pName = (p.name ?? p.game_name ?? "") as string;
       const pTag = (p.tag ?? p.game_tag ?? p.tagLine ?? "") as string;
       const pTeamId = (p.team_id ?? p.teamId ?? "") as string;
+      const pTierId = toNumber(pTier.id);
       return {
         puuid: toString(p.puuid, ""),
         name: pName,
         tag: pTag,
         teamId: pTeamId,
+        level: toNumber(p.level ?? p.account_level, -1) >= 0 ? toNumber(p.level ?? p.account_level) : null,
+        cardIcon: getPlayerCardIcon(p),
         agent: toString(pAgent.name, "Unknown"),
         agentIcon: pIcon,
         tierName: toString(pTier.name, "Unranked"),
-        tierId: toNumber(pTier.id),
+        tierId: pTierId,
+        tierIcon: await getRankIconByTier(pTierId),
         acs: totalRounds > 0 ? Math.round(pScore / totalRounds) : 0,
         kills: pk,
         deaths: pd,
@@ -449,7 +499,7 @@ export async function getRecentMatches(
         hsPercent: totalShots > 0 ? Math.round((phs / totalShots) * 100) : 0,
         adr: null,
       };
-    });
+    }));
 
     const scoreboardTeams: ScoreboardTeam[] = teams.map((t: any) => ({
       teamId: toString(t.team_id ?? t.teamId, ""),
@@ -465,6 +515,7 @@ export async function getRecentMatches(
       totalRounds,
       players: scoreboardPlayers,
       teams: scoreboardTeams,
+      rounds: scoreboardRounds,
     };
 
     return {

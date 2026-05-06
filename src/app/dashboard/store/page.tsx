@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { StoreData, WalletData } from "@/lib/riotPrivateApi";
 
@@ -228,8 +229,16 @@ export default function StorePage() {
 
       {/* 오류 */}
       {error && (
-        <div className="bg-[#ff4655]/10 border border-[#ff4655]/30 rounded-lg p-4 text-[#ff4655] text-sm">
-          {error}
+        <div className="bg-[#ff4655]/10 border border-[#ff4655]/30 rounded-lg p-4 text-[#ff4655] text-sm flex flex-col gap-2">
+          <div>{error}</div>
+          {(error.includes("인증") || error.includes("만료") || error.includes("연동")) && (
+            <Link
+              href="/dashboard/riot-connect"
+              className="self-start bg-[#ff4655] text-white text-xs font-bold px-4 py-1.5 rounded hover:bg-[#cc3644] transition-colors"
+            >
+              다시 연동하기 →
+            </Link>
+          )}
         </div>
       )}
 

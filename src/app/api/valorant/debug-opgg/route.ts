@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 
-// op.gg Valorant 내부 API 후보 엔드포인트 테스트
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return Response.json({ error: "로그인 필요" }, { status: 401 });
@@ -12,46 +11,48 @@ export async function GET(req: NextRequest) {
 
   const headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "ko-KR,ko;q=0.9",
-    "Referer": "https://www.op.gg/valorant",
-    "Origin": "https://www.op.gg",
   };
 
-  async function tryUrl(url: string) {
-    try {
-      const ac = new AbortController();
-      setTimeout(() => ac.abort(), 8000);
-      const res = await fetch(url, { headers, cache: "no-store", signal: ac.signal });
-      const text = await res.text();
-      const isJson = text.trim().startsWith("{") || text.trim().startsWith("[");
-      return {
-        url,
-        status: res.status,
-        ok: res.ok,
-        blocked: res.status === 403 || res.status === 429 || text.includes("Cloudflare") || text.includes("Been Blocked"),
-        isJson,
-        snippet: text.slice(0, 300),
-      };
-    } catch (e) {
-      return { url, status: 0, ok: false, blocked: false, isJson: false, snippet: String(e) };
-    }
-  }
-
   const enc = encodeURIComponent;
-  const slug = `${enc(gameName)}-${enc(tagLine)}`;
-  const results = await Promise.all([
-    // 프로필 조회
-    tryUrl(`https://www.op.gg/valorant/api/v1/summoners/${region}?gameName=${enc(gameName)}&tagLine=${enc(tagLine)}`),
-    tryUrl(`https://www.op.gg/valorant/api/v1/summoners/${region}/${slug}`),
-    tryUrl(`https://www.op.gg/api/v1/valorant/summoners/${region}?gameName=${enc(gameName)}&tagLine=${enc(tagLine)}`),
-    // 매치 목록
-    tryUrl(`https://www.op.gg/valorant/api/v1/summoners/${region}/${slug}/matches`),
-    tryUrl(`https://www.op.gg/api/v1/valorant/summoners/${region}/${slug}/matches?limit=5`),
-    // Next.js 내부 API
-    tryUrl(`https://op.gg/_next/data/valorant/profile/${region}/${slug}.json`),
-    tryUrl(`https://www.op.gg/valorant/profile/${region}/${slug}/matches`),
-  ]);
+  const pageUrl = `https://op.gg/valorant/profile/${region}/${enc(gameName)}-${enc(tagLine)}`;
 
-  return Response.json(results);
+  try {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 10000);
+    const res = await fetch(pageUrl, { headers, cache: "no-store", signal: ac.signal });
+    const html = await res.text();
+
+    // __NEXT_DATA__ 추출
+    const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+    if (!match) {
+      return Response.json({
+        status: res.status,
+        hasNextData: false,
+        snippet: html.slice(0, 500),
+      });
+    }
+
+    const nextData = JSON.parse(match[1]) as Record<string, unknown>;
+    const props = nextData.props as Record<string, unknown> | undefined;
+    const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+
+    // 매치 관련 키 찾기
+    const keys = pageProps ? Object.keys(pageProps) : [];
+    const matchKey = keys.find(k => k.toLowerCase().includes("match"));
+    const matchData = matchKey ? pageProps![matchKey] : null;
+    const firstMatch = Array.isArray(matchData) ? matchData[0] : matchData;
+
+    return Response.json({
+      status: res.status,
+      hasNextData: true,
+      pagePropsKeys: keys,
+      matchKey,
+      firstMatch,
+      // 전체 데이터는 너무 크므로 첫 match만
+    });
+  } catch (e) {
+    return Response.json({ error: String(e), pageUrl });
+  }
 }

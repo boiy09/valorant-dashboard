@@ -230,6 +230,59 @@ function ScoreboardTable({
   );
 }
 
+function hasUsefulName(player?: ScoreboardPlayer) {
+  if (!player) return false;
+  const name = player.name.trim().toLowerCase();
+  return Boolean(name) && name !== "비공개" && name !== "private" && name !== "unknown";
+}
+
+function hasUsefulTier(player?: ScoreboardPlayer) {
+  if (!player) return false;
+  return player.tierId > 0 && player.tierName.trim().toLowerCase() !== "unranked";
+}
+
+function mergePlayerIdentity(fresh: ScoreboardPlayer, previous?: ScoreboardPlayer): ScoreboardPlayer {
+  if (!previous) return fresh;
+
+  const usePreviousName = !hasUsefulName(fresh) && hasUsefulName(previous);
+  const usePreviousTier = !hasUsefulTier(fresh) && hasUsefulTier(previous);
+
+  return {
+    ...fresh,
+    name: usePreviousName ? previous.name : fresh.name,
+    tag: fresh.tag || previous.tag,
+    isPrivate: usePreviousName ? false : fresh.isPrivate,
+    cardIcon: fresh.cardIcon || previous.cardIcon,
+    agent: fresh.agent && fresh.agent !== "Unknown" ? fresh.agent : previous.agent,
+    agentIcon: fresh.agentIcon || previous.agentIcon,
+    level: fresh.level ?? previous.level,
+    tierId: usePreviousTier ? previous.tierId : fresh.tierId,
+    tierName: usePreviousTier ? previous.tierName : fresh.tierName,
+    tierIcon: fresh.tierIcon || previous.tierIcon,
+  };
+}
+
+function mergeScoreboardDetails(
+  previous: MatchScoreboardData | null,
+  fresh: MatchDetailPayload
+): MatchScoreboardData {
+  if (!previous) return fresh;
+
+  const previousByPuuid = new Map(previous.players.map((player) => [player.puuid, player]));
+  const previousByTeamAgent = new Map(
+    previous.players.map((player) => [`${player.teamId}:${player.agent}:${player.kills}:${player.deaths}`, player])
+  );
+
+  return {
+    ...fresh,
+    players: fresh.players.map((player) => {
+      const fallbackKey = `${player.teamId}:${player.agent}:${player.kills}:${player.deaths}`;
+      const previousPlayer = previousByPuuid.get(player.puuid) ?? previousByTeamAgent.get(fallbackKey);
+      return mergePlayerIdentity(player, previousPlayer);
+    }),
+  };
+}
+
 export default function MatchDetailScoreboard({
   matchId,
   myPuuid,
@@ -262,7 +315,7 @@ export default function MatchDetailScoreboard({
         if (!response.ok) throw new Error("상세 매치 API 실패");
         const payload = (await response.json()) as MatchDetailPayload;
         if (!cancelled && Array.isArray(payload.players)) {
-          setScoreboard(payload);
+          setScoreboard((previous) => mergeScoreboardDetails(previous, payload));
           setLoaded(true);
         }
       } catch {

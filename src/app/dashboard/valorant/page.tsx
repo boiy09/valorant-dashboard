@@ -349,7 +349,10 @@ export default async function ValorantPage() {
   const accountStats = await Promise.all(
     accounts.map(async (account) => {
       const [rank, recentMatches] = await Promise.all([
-        getRankByPuuid(account.puuid, toQueryRegion(account.region as RiotRegion)).catch(() => null),
+        getRankByPuuid(account.puuid, toQueryRegion(account.region as RiotRegion), {
+          gameName: account.gameName,
+          tagLine: account.tagLine,
+        }).catch(() => null),
         getRecentMatches(account.puuid, 10, toQueryRegion(account.region as RiotRegion)).catch(() => []),
       ]);
 

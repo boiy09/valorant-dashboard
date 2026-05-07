@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getRankByPuuid, getRankIconByTier, type ValorantRegion } from "@/lib/valorant";
+import { getRankIconByTier } from "@/lib/valorant";
+import { ensureValidTokens, fetchRank } from "@/lib/rankFetcher";
 
 const REGION_LABELS = {
   KR: "한섭",
@@ -64,10 +65,6 @@ const TIER_META = Object.fromEntries([
   ["RADIANT", { label: "레디언트", color: "#f8fafc" }],
 ]) as Record<DetailTier, { label: string; color: string }>;
 
-function toValorantRegion(region: string): ValorantRegion {
-  return region.toUpperCase() === "AP" ? "ap" : "kr";
-}
-
 const TIER_ID_TO_KEY = Object.fromEntries(
   Object.entries(TIER_IDS).map(([key, id]) => [id, key as DetailTier])
 ) as Record<number, DetailTier>;
@@ -116,13 +113,17 @@ export async function GET(req: NextRequest) {
       gameName: true,
       tagLine: true,
       region: true,
+      accessToken: true,
+      entitlementsToken: true,
+      ssid: true,
+      tokenExpiresAt: true,
       cachedTierId: true,
       rankCachedAt: true,
     },
     orderBy: [{ region: "asc" }, { gameName: "asc" }],
   });
 
-  const rankedAccounts = await settleInBatches(accounts, 3, async (account) => {
+  const rankedAccounts = await settleInBatches(accounts, 5, async (account) => {
     const region = account.region.toUpperCase() === "AP" ? "AP" : "KR";
     const cacheAge = account.rankCachedAt ? now - account.rankCachedAt.getTime() : Infinity;
     const isFresh = cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null;
@@ -131,15 +132,20 @@ export async function GET(req: NextRequest) {
       return { region, tier: tierIdToDetailTier(account.cachedTierId!) };
     }
 
-    const rank = await getRankByPuuid(account.puuid, toValorantRegion(region), {
-      gameName: account.gameName,
-      tagLine: account.tagLine,
-    }).catch(() => null);
+    const tokens = await ensureValidTokens(
+      account.puuid,
+      account.accessToken,
+      account.entitlementsToken,
+      account.ssid,
+      account.tokenExpiresAt
+    );
 
-    const tierId = rank?.tierId ?? 0;
+    const rank = await fetchRank(account.puuid, account.region, account.gameName, account.tagLine, tokens);
+    const tierId = rank.tierId;
+
     prisma.riotAccount.update({
       where: { puuid: account.puuid },
-      data: { cachedTierId: tierId, cachedTierName: rank?.tierName ?? "언랭크", rankCachedAt: new Date() },
+      data: { cachedTierId: tierId, cachedTierName: rank.tierName, rankCachedAt: new Date() },
     }).catch(() => {});
 
     return { region, tier: tierIdToDetailTier(tierId) };

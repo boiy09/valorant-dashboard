@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getPlayerByRiotId, getRankByPuuid, getRankIconByTier, type ValorantRegion } from "@/lib/valorant";
+import { getRankIconByTier } from "@/lib/valorant";
+import { ensureValidTokens, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 
-function toValorantRegion(region: string): ValorantRegion {
-  return region.toUpperCase() === "AP" ? "ap" : "kr";
+function toRegionLabel(region: string) {
+  return region.toUpperCase() === "AP" ? "AP" : "KR";
 }
 
 async function settleInBatches<T, R>(items: T[], size: number, task: (item: T) => Promise<R>) {
@@ -45,6 +46,10 @@ export async function GET(req: NextRequest) {
               gameName: true,
               tagLine: true,
               region: true,
+              accessToken: true,
+              entitlementsToken: true,
+              ssid: true,
+              tokenExpiresAt: true,
               cachedTierId: true,
               cachedTierName: true,
               cachedLevel: true,
@@ -68,17 +73,20 @@ export async function GET(req: NextRequest) {
     rankIcon: string | null;
   }>();
 
-  const RANK_CACHE_TTL = 2 * 60 * 60 * 1000; // 2시간
+  const RANK_CACHE_TTL = 2 * 60 * 60 * 1000;
   const now = Date.now();
 
-  const allAccounts = members.flatMap((member) => member.user.riotAccounts);
-  await settleInBatches(allAccounts, 3, async (account) => {
-    const region = account.region.toUpperCase() === "AP" ? "AP" : "KR";
+  const allAccounts = members.flatMap((m) => m.user.riotAccounts);
+
+  await settleInBatches(allAccounts, 5, async (account) => {
+    const region = toRegionLabel(account.region);
     const cacheAge = account.rankCachedAt ? now - account.rankCachedAt.getTime() : Infinity;
     const isFresh = cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null;
 
     if (isFresh) {
-      const rankIcon = account.cachedTierId ? await getRankIconByTier(account.cachedTierId).catch(() => null) : null;
+      const rankIcon = account.cachedTierId
+        ? await getRankIconByTier(account.cachedTierId).catch(() => null)
+        : null;
       accountDetails.set(account.puuid, {
         region,
         riotId: `${account.gameName}#${account.tagLine}`,
@@ -90,25 +98,29 @@ export async function GET(req: NextRequest) {
       return;
     }
 
-    const [profile, rank] = await Promise.all([
-      getPlayerByRiotId(account.gameName, account.tagLine).catch(() => null),
-      getRankByPuuid(account.puuid, toValorantRegion(region), {
-        gameName: account.gameName,
-        tagLine: account.tagLine,
-      }).catch(() => null),
+    // 토큰 확인/갱신
+    const tokens = await ensureValidTokens(
+      account.puuid,
+      account.accessToken,
+      account.entitlementsToken,
+      account.ssid,
+      account.tokenExpiresAt
+    );
+
+    // 랭크 + 프로필 병렬 조회 (Private API → tracker.gg → Henrik)
+    const [rank, profile] = await Promise.all([
+      fetchRank(account.puuid, account.region, account.gameName, account.tagLine, tokens),
+      fetchProfile(account.puuid, account.region, account.gameName, account.tagLine, tokens),
     ]);
 
-    const level = profile && profile.accountLevel >= 0 ? profile.accountLevel : null;
-    const card = profile?.card ?? null;
-    const tierId = rank?.tierId ?? 0;
-
+    // DB 캐시 비동기 업데이트
     prisma.riotAccount.update({
       where: { puuid: account.puuid },
       data: {
-        cachedTierId: tierId,
-        cachedTierName: rank?.tierName ?? "언랭크",
-        cachedLevel: level,
-        cachedCard: card,
+        cachedTierId: rank.tierId,
+        cachedTierName: rank.tierName,
+        cachedLevel: profile.level,
+        cachedCard: profile.card,
         rankCachedAt: new Date(),
       },
     }).catch(() => {});
@@ -116,10 +128,10 @@ export async function GET(req: NextRequest) {
     accountDetails.set(account.puuid, {
       region,
       riotId: `${account.gameName}#${account.tagLine}`,
-      level,
-      card,
-      tier: rank?.tierName ?? "언랭크",
-      rankIcon: rank?.rankIcon ?? null,
+      level: profile.level,
+      card: profile.card,
+      tier: rank.tierName,
+      rankIcon: rank.rankIcon,
     });
   });
 
@@ -135,7 +147,7 @@ export async function GET(req: NextRequest) {
         ? `${member.user.riotGameName}#${member.user.riotTagLine}`
         : null,
       riotAccounts: member.user.riotAccounts.map((account) => accountDetails.get(account.puuid) ?? {
-        region: account.region.toUpperCase() === "AP" ? "AP" : "KR",
+        region: toRegionLabel(account.region),
         riotId: `${account.gameName}#${account.tagLine}`,
         level: null,
         card: null,

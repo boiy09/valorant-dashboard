@@ -154,6 +154,45 @@ export async function getTrackerProfile(
   };
 }
 
+export interface TggCurrentRank {
+  tierId: number;
+  tierName: string;
+  rankIcon: string | null;
+}
+
+export async function getTrackerCurrentRank(
+  gameName: string,
+  tagLine: string
+): Promise<TggCurrentRank | null> {
+  if (!process.env.TRACKER_GG_API_KEY) return null;
+  try {
+    const encoded = `${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
+    const url = `${BASE_URL}/profile/riot/${encoded}`;
+    const res = await fetch(url, { headers: getHeaders(), cache: "no-store" });
+    if (!res.ok) return null;
+
+    const json = (await res.json()) as { data?: { segments?: unknown[] } };
+    const segments: unknown[] = json?.data?.segments ?? [];
+    const overview = segments.find(
+      (s): s is Record<string, unknown> =>
+        typeof s === "object" && s !== null && (s as Record<string, unknown>).type === "overview"
+    );
+    if (!overview) return null;
+
+    const stats = (overview as Record<string, unknown>).stats as Record<string, unknown> | undefined;
+    const rankStat = stats?.rank;
+    const tierId = Math.round(statVal(rankStat));
+    if (tierId <= 0) return null;
+
+    const tierName = statMeta(rankStat, "tierName") || null;
+    const rankIcon = statMeta(rankStat, "iconUrl") || null;
+
+    return { tierId, tierName: tierName ?? "언랭크", rankIcon: rankIcon || null };
+  } catch {
+    return null;
+  }
+}
+
 export async function getTrackerAgents(
   gameName: string,
   tagLine: string

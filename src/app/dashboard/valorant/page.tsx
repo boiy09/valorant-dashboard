@@ -2,7 +2,6 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getRankByPuuid, getRecentMatches, MatchStats, ScoreboardPlayer } from "@/lib/valorant";
-import TrackerStats from "../TrackerStats";
 import MatchDetailScoreboard from "./MatchDetailScoreboard";
 
 export const dynamic = "force-dynamic";
@@ -87,6 +86,49 @@ function tierColor(tierId: number) {
   if (tierId >= 6) return "text-amber-600";
   if (tierId >= 3) return "text-zinc-400";
   return "text-[#7b8a96]";
+}
+
+function RankSummaryCard({
+  title,
+  rankName,
+  icon,
+  season,
+  wins,
+  games,
+  rr,
+}: {
+  title: string;
+  rankName: string | null | undefined;
+  icon?: string | null;
+  season?: string | null;
+  wins?: number | null;
+  games?: number | null;
+  rr?: number | null;
+}) {
+  const safeGames = games ?? 0;
+  const safeWins = wins ?? 0;
+  const losses = Math.max(safeGames - safeWins, 0);
+
+  return (
+    <div className="val-card p-4">
+      <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">{title}</div>
+      <div className="flex items-center gap-3">
+        {icon ? (
+          <img src={icon} alt={rankName ?? title} className="h-12 w-12 object-contain drop-shadow-lg" />
+        ) : (
+          <div className="h-12 w-12 rounded bg-[#111c24] ring-1 ring-[#2a3540]" />
+        )}
+        <div className="min-w-0">
+          <div className="truncate text-lg font-black text-white">{rankName || "정보 없음"}</div>
+          <div className="text-xs font-bold text-[#8da0ad]">{season || "시즌 정보 없음"}</div>
+          <div className="mt-1 text-xs text-[#7b8a96]">
+            {safeGames > 0 ? `${safeWins}승 ${losses}패` : "승패 정보 없음"}
+            {typeof rr === "number" ? <span className="ml-2 text-[#ff4655]">{rr} RR</span> : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function fmtDuration(ms: number) {
@@ -462,7 +504,6 @@ function RegionMatchList({ matches, trackerUrl, puuid }: { matches: MatchStats[]
 
 function RegionSection({ data }: { data: RegionStats }) {
   const summary = buildSummary(data.recentMatches);
-  const [gameName, tagLine] = data.riotId.split("#");
   const trackerUrl = buildTrackerUrl(data.riotId);
 
   return (
@@ -487,8 +528,36 @@ function RegionSection({ data }: { data: RegionStats }) {
         </a>
       </div>
 
+      <div className="mb-5 grid grid-cols-1 gap-3 xl:grid-cols-3">
+        <RankSummaryCard
+          title="현재 티어"
+          rankName={data.rank?.tierName}
+          icon={data.rank?.rankIcon}
+          season={data.rank?.currentSeason?.label}
+          wins={data.rank?.currentSeason?.wins ?? data.rank?.wins}
+          games={data.rank?.currentSeason?.games ?? data.rank?.games}
+          rr={data.rank?.rr}
+        />
+        <RankSummaryCard
+          title="전 티어"
+          rankName={data.rank?.previousSeason?.tierName}
+          icon={data.rank?.previousSeason?.rankIcon}
+          season={data.rank?.previousSeason?.label}
+          wins={data.rank?.previousSeason?.wins}
+          games={data.rank?.previousSeason?.games}
+        />
+        <RankSummaryCard
+          title="최고 티어"
+          rankName={data.rank?.peakTierName ?? data.rank?.peakSeason?.tierName}
+          icon={data.rank?.peakRankIcon ?? data.rank?.peakSeason?.rankIcon}
+          season={data.rank?.peakSeason?.label}
+          wins={data.rank?.peakSeason?.wins}
+          games={data.rank?.peakSeason?.games}
+        />
+      </div>
+
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className="val-card p-5 col-span-2">
+        <div className="hidden">
           <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">현재 랭크</div>
           {data.rank ? (
             <div className="flex items-center gap-4">
@@ -591,18 +660,12 @@ function RegionSection({ data }: { data: RegionStats }) {
       </div>
 
       <div>
-        <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3 flex items-center gap-2">
+        <div className="hidden">
           <span>상세 전적 통계</span>
           <span className="text-[#ff4655] text-[10px] bg-[#ff4655]/10 px-1.5 py-0.5 rounded">
             최근 20경기
           </span>
         </div>
-        <TrackerStats
-          key={`${data.region}-${data.riotId}`}
-          gameName={gameName}
-          tagLine={tagLine}
-          region={data.region}
-        />
       </div>
     </section>
   );

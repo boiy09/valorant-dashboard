@@ -45,6 +45,19 @@ export interface RankData {
   games: number;
   rankIcon?: string | null;
   peakRankIcon?: string | null;
+  currentSeason: RankSeasonSummary | null;
+  previousSeason: RankSeasonSummary | null;
+  peakSeason: RankSeasonSummary | null;
+}
+
+export interface RankSeasonSummary {
+  season: string;
+  label: string;
+  tierId: number;
+  tierName: string;
+  wins: number;
+  games: number;
+  rankIcon?: string | null;
 }
 
 export interface ScoreboardPlayer {
@@ -295,14 +308,70 @@ function getTeamScores(match: unknown, puuid: string) {
   };
 }
 
-function getLatestSeasonWithGames(bySeason: unknown) {
+function seasonLabel(season: string) {
+  const match = season.match(/e(\d+)a(\d+)/i);
+  return match ? `에피소드 ${match[1]} 액트 ${match[2]}` : season || "시즌 정보 없음";
+}
+
+function getSeasonGames(record: Record<string, unknown>) {
+  return toNumber(record.games ?? record.number_of_games ?? record.numberOfGames);
+}
+
+function getSeasonWins(record: Record<string, unknown>) {
+  return toNumber(record.wins ?? record.number_of_wins ?? record.numberOfWins);
+}
+
+function getSeasonTierId(record: Record<string, unknown>) {
+  return toNumber(record.final_rank ?? record.finalRank ?? record.tier ?? record.rank);
+}
+
+function getSeasonTierName(record: Record<string, unknown>, tierId: number) {
+  return toString(
+    record.final_rank_patched ??
+      record.finalRankPatched ??
+      record.rank_patched ??
+      record.rankName ??
+      record.patched_tier,
+    tierId > 0 ? "랭크 정보" : "언랭크"
+  );
+}
+
+function getSeasonEntries(bySeason: unknown) {
   if (Array.isArray(bySeason)) {
-    return bySeason.find((value) => toNumber(asRecord(value).games) > 0) ?? null;
+    return bySeason
+      .map((value, index) => {
+        const record = asRecord(value);
+        const season = firstString(record.season, record.season_id, record.seasonId) || `season-${index}`;
+        return { season, record };
+      })
+      .filter(({ record }) => getSeasonGames(record) > 0)
+      .sort((a, b) => b.season.localeCompare(a.season));
   }
 
   return Object.entries(asRecord(bySeason))
-    .filter(([, value]) => toNumber(asRecord(value).number_of_games) > 0)
-    .sort(([a], [b]) => b.localeCompare(a))[0]?.[1] ?? null;
+    .map(([season, value]) => ({ season, record: asRecord(value) }))
+    .filter(({ record }) => getSeasonGames(record) > 0)
+    .sort((a, b) => b.season.localeCompare(a.season));
+}
+
+function getLatestSeasonWithGames(bySeason: unknown) {
+  return getSeasonEntries(bySeason)[0]?.record ?? null;
+}
+
+async function buildSeasonSummary(season: string, record: Record<string, unknown>): Promise<RankSeasonSummary | null> {
+  const games = getSeasonGames(record);
+  if (games <= 0) return null;
+
+  const tierId = getSeasonTierId(record);
+  return {
+    season,
+    label: seasonLabel(season),
+    tierId,
+    tierName: getSeasonTierName(record, tierId),
+    wins: getSeasonWins(record),
+    games,
+    rankIcon: await getRankIconByTier(tierId),
+  };
 }
 
 function getPlayerCardIcon(player: Record<string, unknown>) {
@@ -377,7 +446,7 @@ async function getAccountByPuuid(puuid: string) {
 
 const RANK_REGION_CANDIDATES: ValorantRegion[] = ["kr", "ap", "na", "eu", "latam", "br"];
 
-async function getRankIconByTier(tierId: number) {
+export async function getRankIconByTier(tierId: number) {
   if (tierId <= 0) return null;
 
   const { data } = await apiCache.getOrFetch("competitive-tiers:ko-KR", TTL.VERY_LONG, async () => {
@@ -485,7 +554,13 @@ export async function getRankByPuuid(
     const currentTier = asRecord(current.tier);
     const peak = asRecord(data?.peak ?? data?.highest_rank);
     const peakTier = asRecord(peak.tier);
-    const latestSeason = asRecord(getLatestSeasonWithGames(data?.seasonal ?? data?.by_season));
+    const seasonalSource = data?.seasonal ?? data?.by_season;
+    const latestSeason = asRecord(getLatestSeasonWithGames(seasonalSource));
+    const seasonSummaries = (
+      await Promise.all(getSeasonEntries(seasonalSource).map(({ season, record }) => buildSeasonSummary(season, record)))
+    ).filter((item): item is RankSeasonSummary => Boolean(item));
+    const currentSeason = seasonSummaries[0] ?? null;
+    const previousSeason = seasonSummaries[1] ?? null;
     const wins = toNumber(latestSeason.wins ?? data?.wins);
     const games = latestSeason.games || latestSeason.number_of_games
       ? toNumber(latestSeason.games ?? latestSeason.number_of_games)
@@ -503,6 +578,10 @@ export async function getRankByPuuid(
     );
     const rr = currentTierId > 0 ? toNumber(current.rr ?? current.ranking_in_tier) : null;
     const rrChange = currentTierId > 0 ? toNumber(current.last_change ?? current.mmr_change_to_last_game) : null;
+    const peakSeason = seasonSummaries.reduce<RankSeasonSummary | null>(
+      (best, item) => (!best || item.tierId > best.tierId ? item : best),
+      null
+    );
 
     return {
       tier: tierName,
@@ -516,6 +595,9 @@ export async function getRankByPuuid(
       games: games > 0 ? games : toNumber(latestSeason.number_of_games),
       rankIcon,
       peakRankIcon,
+      currentSeason,
+      previousSeason,
+      peakSeason,
     };
   } catch {
     return null;

@@ -34,6 +34,7 @@ interface TierDistributionItem {
   color: string;
   count: number;
   percent: number;
+  icon: string | null;
 }
 
 interface TierDistributionRegion {
@@ -161,7 +162,10 @@ function TierDistributionChart({
           {visibleTiers.map((tier) => (
             <div key={tier.key}>
               <div className="mb-1 flex items-center justify-between text-xs">
-                <span className="font-bold text-white">{tier.label}</span>
+                <span className="flex items-center gap-1.5 font-bold text-white">
+                  {tier.icon ? <img src={tier.icon} alt={tier.label} className="h-5 w-5 object-contain" /> : null}
+                  {tier.label}
+                </span>
                 <span className="text-[#8da0ad]">
                   {tier.count}명 · {tier.percent}%
                 </span>
@@ -186,7 +190,11 @@ function TierDistributionChart({
           <div className="space-y-2">
             {visibleTiers.map((tier) => (
               <div key={tier.key} className="flex items-center gap-2 text-xs">
-                <span className="h-2.5 w-2.5" style={{ backgroundColor: tier.color }} />
+                {tier.icon ? (
+                  <img src={tier.icon} alt={tier.label} className="h-5 w-5 object-contain" />
+                ) : (
+                  <span className="h-2.5 w-2.5" style={{ backgroundColor: tier.color }} />
+                )}
                 <span className="flex-1 font-bold text-white">{tier.label}</span>
                 <span className="text-[#8da0ad]">
                   {tier.count}명 · {tier.percent}%

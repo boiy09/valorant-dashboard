@@ -1,55 +1,93 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getRankByPuuid, type ValorantRegion } from "@/lib/valorant";
+import { getRankByPuuid, getRankIconByTier, type ValorantRegion } from "@/lib/valorant";
 
 const REGION_LABELS = {
   KR: "한섭",
   AP: "아섭",
 } as const;
 
-const TIER_ORDER = [
+const MAJOR_TIERS = [
+  ["IRON", "아이언", "#6b7280"],
+  ["BRONZE", "브론즈", "#b16a3a"],
+  ["SILVER", "실버", "#a8b3c7"],
+  ["GOLD", "골드", "#f3b33d"],
+  ["PLATINUM", "플래티넘", "#24c6b8"],
+  ["DIAMOND", "다이아몬드", "#b66dff"],
+  ["ASCENDANT", "초월자", "#22c55e"],
+  ["IMMORTAL", "불멸", "#e11d48"],
+] as const;
+
+const DETAIL_TIERS = [
   "UNRANKED",
-  "IRON",
-  "BRONZE",
-  "SILVER",
-  "GOLD",
-  "PLATINUM",
-  "DIAMOND",
-  "ASCENDANT",
-  "IMMORTAL",
+  ...MAJOR_TIERS.flatMap(([key]) => [`${key}_1`, `${key}_2`, `${key}_3`]),
   "RADIANT",
 ] as const;
 
-const TIER_META: Record<(typeof TIER_ORDER)[number], { label: string; color: string }> = {
-  UNRANKED: { label: "언랭크", color: "#64748b" },
-  IRON: { label: "아이언", color: "#6b7280" },
-  BRONZE: { label: "브론즈", color: "#b16a3a" },
-  SILVER: { label: "실버", color: "#a8b3c7" },
-  GOLD: { label: "골드", color: "#f3b33d" },
-  PLATINUM: { label: "플래티넘", color: "#24c6b8" },
-  DIAMOND: { label: "다이아몬드", color: "#b66dff" },
-  ASCENDANT: { label: "초월자", color: "#22c55e" },
-  IMMORTAL: { label: "불멸", color: "#e11d48" },
-  RADIANT: { label: "레디언트", color: "#f8fafc" },
+type DetailTier = (typeof DETAIL_TIERS)[number];
+
+const TIER_IDS: Record<DetailTier, number> = {
+  UNRANKED: 0,
+  IRON_1: 3,
+  IRON_2: 4,
+  IRON_3: 5,
+  BRONZE_1: 6,
+  BRONZE_2: 7,
+  BRONZE_3: 8,
+  SILVER_1: 9,
+  SILVER_2: 10,
+  SILVER_3: 11,
+  GOLD_1: 12,
+  GOLD_2: 13,
+  GOLD_3: 14,
+  PLATINUM_1: 15,
+  PLATINUM_2: 16,
+  PLATINUM_3: 17,
+  DIAMOND_1: 18,
+  DIAMOND_2: 19,
+  DIAMOND_3: 20,
+  ASCENDANT_1: 21,
+  ASCENDANT_2: 22,
+  ASCENDANT_3: 23,
+  IMMORTAL_1: 24,
+  IMMORTAL_2: 25,
+  IMMORTAL_3: 26,
+  RADIANT: 27,
 };
+
+const TIER_META = Object.fromEntries([
+  ["UNRANKED", { label: "언랭크", color: "#64748b" }],
+  ...MAJOR_TIERS.flatMap(([key, label, color]) =>
+    [1, 2, 3].map((division) => [`${key}_${division}`, { label: `${label} ${division}`, color }])
+  ),
+  ["RADIANT", { label: "레디언트", color: "#f8fafc" }],
+]) as Record<DetailTier, { label: string; color: string }>;
 
 function toValorantRegion(region: string): ValorantRegion {
   return region.toUpperCase() === "AP" ? "ap" : "kr";
 }
 
-function normalizeTier(tierName: string | null | undefined): (typeof TIER_ORDER)[number] {
-  const normalized = String(tierName ?? "").toLowerCase();
+function divisionFromName(value: string) {
+  const match = value.match(/(?:^|\s)([123])(?:$|\s)/);
+  return match?.[1] ?? "1";
+}
 
-  if (normalized.includes("radiant") || normalized.includes("레디언트")) return "RADIANT";
-  if (normalized.includes("immortal") || normalized.includes("불멸")) return "IMMORTAL";
-  if (normalized.includes("ascendant") || normalized.includes("초월")) return "ASCENDANT";
-  if (normalized.includes("diamond") || normalized.includes("다이아")) return "DIAMOND";
-  if (normalized.includes("platinum") || normalized.includes("플래")) return "PLATINUM";
-  if (normalized.includes("gold") || normalized.includes("골드")) return "GOLD";
-  if (normalized.includes("silver") || normalized.includes("실버")) return "SILVER";
-  if (normalized.includes("bronze") || normalized.includes("브론즈")) return "BRONZE";
-  if (normalized.includes("iron") || normalized.includes("아이언")) return "IRON";
+function normalizeTier(tierName: string | null | undefined): DetailTier {
+  const raw = String(tierName ?? "").trim();
+  const normalized = raw.toLowerCase();
+  const division = divisionFromName(normalized);
+
+  if (!raw || normalized.includes("unrank") || raw.includes("언랭")) return "UNRANKED";
+  if (normalized.includes("radiant") || raw.includes("레디언트")) return "RADIANT";
+  if (normalized.includes("immortal") || raw.includes("불멸")) return `IMMORTAL_${division}` as DetailTier;
+  if (normalized.includes("ascendant") || raw.includes("초월")) return `ASCENDANT_${division}` as DetailTier;
+  if (normalized.includes("diamond") || raw.includes("다이아")) return `DIAMOND_${division}` as DetailTier;
+  if (normalized.includes("platinum") || raw.includes("플래")) return `PLATINUM_${division}` as DetailTier;
+  if (normalized.includes("gold") || raw.includes("골드")) return `GOLD_${division}` as DetailTier;
+  if (normalized.includes("silver") || raw.includes("실버")) return `SILVER_${division}` as DetailTier;
+  if (normalized.includes("bronze") || raw.includes("브론즈")) return `BRONZE_${division}` as DetailTier;
+  if (normalized.includes("iron") || raw.includes("아이언")) return `IRON_${division}` as DetailTier;
   return "UNRANKED";
 }
 
@@ -75,7 +113,7 @@ export async function GET(req: NextRequest) {
 
   if (!guild) {
     return Response.json({
-      regions: buildEmptyRegions(),
+      regions: await buildEmptyRegions(),
       generatedAt: new Date().toISOString(),
     });
   }
@@ -104,46 +142,60 @@ export async function GET(req: NextRequest) {
     return {
       region,
       tier: normalizeTier(rank?.tierName),
+      icon: rank?.rankIcon ?? null,
     };
   });
 
   const countsByRegion = {
-    KR: Object.fromEntries(TIER_ORDER.map((tier) => [tier, 0])) as Record<(typeof TIER_ORDER)[number], number>,
-    AP: Object.fromEntries(TIER_ORDER.map((tier) => [tier, 0])) as Record<(typeof TIER_ORDER)[number], number>,
+    KR: Object.fromEntries(DETAIL_TIERS.map((tier) => [tier, 0])) as Record<DetailTier, number>,
+    AP: Object.fromEntries(DETAIL_TIERS.map((tier) => [tier, 0])) as Record<DetailTier, number>,
   };
+  const iconByTier: Partial<Record<DetailTier, string | null>> = {};
 
   for (const account of rankedAccounts) {
-    countsByRegion[account.region as "KR" | "AP"][account.tier] += 1;
+    const region = account.region as "KR" | "AP";
+    countsByRegion[region][account.tier] += 1;
+    if (account.icon) iconByTier[account.tier] = account.icon;
   }
 
   return Response.json({
     regions: {
-      KR: buildRegion("KR", countsByRegion.KR),
-      AP: buildRegion("AP", countsByRegion.AP),
+      KR: await buildRegion("KR", countsByRegion.KR, iconByTier),
+      AP: await buildRegion("AP", countsByRegion.AP, iconByTier),
     },
     generatedAt: new Date().toISOString(),
   });
 }
 
-function buildEmptyRegions() {
+async function buildEmptyRegions() {
+  const empty = Object.fromEntries(DETAIL_TIERS.map((tier) => [tier, 0])) as Record<DetailTier, number>;
   return {
-    KR: buildRegion("KR", Object.fromEntries(TIER_ORDER.map((tier) => [tier, 0])) as Record<(typeof TIER_ORDER)[number], number>),
-    AP: buildRegion("AP", Object.fromEntries(TIER_ORDER.map((tier) => [tier, 0])) as Record<(typeof TIER_ORDER)[number], number>),
+    KR: await buildRegion("KR", empty, {}),
+    AP: await buildRegion("AP", empty, {}),
   };
 }
 
-function buildRegion(region: "KR" | "AP", counts: Record<(typeof TIER_ORDER)[number], number>) {
-  const total = TIER_ORDER.reduce((sum, tier) => sum + counts[tier], 0);
-  return {
-    region,
-    label: REGION_LABELS[region],
-    total,
-    tiers: TIER_ORDER.map((tier) => ({
+async function buildRegion(
+  region: "KR" | "AP",
+  counts: Record<DetailTier, number>,
+  iconByTier: Partial<Record<DetailTier, string | null>>
+) {
+  const total = DETAIL_TIERS.reduce((sum, tier) => sum + counts[tier], 0);
+  const tiers = await Promise.all(
+    DETAIL_TIERS.map(async (tier) => ({
       key: tier,
       label: TIER_META[tier].label,
       color: TIER_META[tier].color,
       count: counts[tier],
       percent: total > 0 ? Math.round((counts[tier] / total) * 1000) / 10 : 0,
-    })),
+      icon: iconByTier[tier] ?? (await getRankIconByTier(TIER_IDS[tier])),
+    }))
+  );
+
+  return {
+    region,
+    label: REGION_LABELS[region],
+    total,
+    tiers,
   };
 }

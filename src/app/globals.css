@@ -74,10 +74,18 @@ body {
 .val-btn {
   clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
   transition: all 0.15s ease;
+  cursor: pointer;
 }
 
 .val-btn:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(255, 70, 85, 0.35);
+}
+
+.val-btn:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
 }
 
 .val-input {
@@ -383,13 +391,19 @@ body {
   font-size: 12px;
   font-weight: 700;
   clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  cursor: pointer;
 }
 
 .val-mini-button:hover {
   color: white;
   border-color: rgba(255, 70, 85, 0.65);
   background: rgba(255, 70, 85, 0.12);
+  transform: translateY(-1px);
+}
+
+.val-mini-button:active {
+  transform: scale(0.96);
 }
 
 .val-loader {
@@ -402,9 +416,118 @@ body {
   animation: spin 0.9s linear infinite;
 }
 
+/* Full-page loading splash */
+.val-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background:
+    radial-gradient(circle at 18% -12%, rgba(255, 70, 85, 0.22), transparent 30%),
+    radial-gradient(circle at 88% 8%, rgba(15, 255, 208, 0.1), transparent 28%),
+    linear-gradient(180deg, #06101a 0%, #0f1923 50%, #09131c 100%);
+}
+
+.val-splash-logo {
+  width: 120px;
+  height: auto;
+  opacity: 0;
+  animation: splashLogoIn 0.5s ease 0.1s forwards;
+  filter: drop-shadow(0 0 24px rgba(255, 70, 85, 0.45));
+}
+
+.val-splash-ring {
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  border: 1.5px solid rgba(255, 255, 255, 0.07);
+  border-top-color: var(--val-red);
+  border-right-color: var(--val-teal);
+  border-radius: 50%;
+  animation: spin 1.4s linear infinite;
+  box-shadow: 0 0 18px rgba(255, 70, 85, 0.18), inset 0 0 14px rgba(15, 255, 208, 0.06);
+}
+
+.val-splash-ring-inner {
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom-color: var(--val-red);
+  border-left-color: var(--val-teal);
+  border-radius: 50%;
+  animation: spin 2s linear infinite reverse;
+}
+
+.val-splash-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--val-muted);
+  animation: splashLabelPulse 1.6s ease-in-out infinite;
+  opacity: 0;
+  animation: splashLogoIn 0.4s ease 0.35s forwards, splashLabelPulse 1.6s ease-in-out 0.75s infinite;
+}
+
+.val-splash-bar {
+  width: 120px;
+  height: 2px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 4px 100%, 0 calc(100% - 4px));
+}
+
+.val-splash-bar-fill {
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, var(--val-red), var(--val-teal));
+  animation: splashBar 1.4s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--val-red);
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+@keyframes splashLogoIn {
+  from { opacity: 0; transform: scale(0.88); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes splashLabelPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes splashBar {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(160%); }
+  100% { transform: translateX(160%); }
+}
+
+/* Tab navigation loading overlay */
+.val-nav-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 17, 25, 0.72);
+  backdrop-filter: blur(4px);
+  animation: fadeInFast 0.12s ease forwards;
+}
+
+@keyframes fadeInFast {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 
 @media (max-width: 900px) {
   .val-dashboard-frame {

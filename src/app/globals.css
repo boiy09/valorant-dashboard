@@ -164,7 +164,7 @@ body {
   pointer-events: none;
   top: 176px;
   bottom: 0;
-  width: clamp(170px, 16vw, 300px);
+  width: clamp(230px, 18vw, 360px);
   overflow: visible;
 }
 
@@ -178,9 +178,9 @@ body {
 
 .val-agent-pawn {
   position: absolute;
-  bottom: calc(var(--slot) * 11vh);
-  width: clamp(190px, 18vw, 340px);
-  height: clamp(330px, 42vh, 640px);
+  bottom: calc(var(--slot) * 13vh);
+  width: clamp(130px, 12vw, 220px);
+  height: clamp(230px, 29vh, 380px);
   background-image:
     linear-gradient(180deg, rgba(9, 19, 28, 0), rgba(9, 19, 28, 0.48)),
     var(--agent-art);
@@ -192,27 +192,27 @@ body {
 }
 
 .val-agent-squad-left .val-agent-pawn {
-  left: calc(var(--lane) * 18px - 92px);
+  left: calc(var(--lane) * 34px - 50px);
   transform: scaleX(-1);
   transform-origin: bottom center;
 }
 
 .val-agent-squad-right .val-agent-pawn {
-  right: calc(var(--lane) * 18px - 92px);
+  right: calc(var(--lane) * 34px - 50px);
 }
 
 .agent-reyna {
   --slot: 0;
   --lane: 0;
-  --agent-opacity: 0.72;
+  --agent-opacity: 0.66;
   --agent-glow: rgba(255, 70, 85, 0.28);
   --agent-art: url("https://media.valorant-api.com/agents/a3bfb853-43b2-7238-a4f1-ad90e9e46bcc/fullportrait.png");
 }
 
 .agent-raze {
   --slot: 1;
-  --lane: 2;
-  --agent-opacity: 0.54;
+  --lane: 3;
+  --agent-opacity: 0.5;
   --agent-glow: rgba(255, 70, 85, 0.2);
   --agent-art: url("https://media.valorant-api.com/agents/f94c3b30-42be-e959-889c-5aa313dba261/fullportrait.png");
 }
@@ -220,23 +220,23 @@ body {
 .agent-phoenix {
   --slot: 2;
   --lane: 1;
-  --agent-opacity: 0.44;
+  --agent-opacity: 0.42;
   --agent-glow: rgba(255, 70, 85, 0.18);
   --agent-art: url("https://media.valorant-api.com/agents/eb93336a-449b-9c1b-0a54-a891f7921d69/fullportrait.png");
 }
 
 .agent-omen {
   --slot: 3;
-  --lane: 3;
-  --agent-opacity: 0.36;
+  --lane: 4;
+  --agent-opacity: 0.34;
   --agent-glow: rgba(255, 70, 85, 0.14);
   --agent-art: url("https://media.valorant-api.com/agents/8e253930-4c05-31dd-1b6c-968525494517/fullportrait.png");
 }
 
 .agent-viper {
   --slot: 4;
-  --lane: 1;
-  --agent-opacity: 0.3;
+  --lane: 2;
+  --agent-opacity: 0.28;
   --agent-glow: rgba(255, 70, 85, 0.12);
   --agent-art: url("https://media.valorant-api.com/agents/707eab51-4836-f488-046a-cda6bf494859/fullportrait.png");
 }
@@ -244,15 +244,15 @@ body {
 .agent-jett {
   --slot: 0;
   --lane: 0;
-  --agent-opacity: 0.74;
+  --agent-opacity: 0.68;
   --agent-glow: rgba(15, 255, 208, 0.24);
   --agent-art: url("https://media.valorant-api.com/agents/add6443a-41bd-e414-f6ad-e58d267f4e95/fullportrait.png");
 }
 
 .agent-sage {
   --slot: 1;
-  --lane: 2;
-  --agent-opacity: 0.54;
+  --lane: 3;
+  --agent-opacity: 0.5;
   --agent-glow: rgba(15, 255, 208, 0.18);
   --agent-art: url("https://media.valorant-api.com/agents/569fdd95-4d10-43ab-ca70-79becc718b46/fullportrait.png");
 }
@@ -260,23 +260,23 @@ body {
 .agent-killjoy {
   --slot: 2;
   --lane: 1;
-  --agent-opacity: 0.44;
+  --agent-opacity: 0.42;
   --agent-glow: rgba(15, 255, 208, 0.16);
   --agent-art: url("https://media.valorant-api.com/agents/1e58de9c-4950-5125-93e9-a0aee9f98746/fullportrait.png");
 }
 
 .agent-sova {
   --slot: 3;
-  --lane: 3;
-  --agent-opacity: 0.36;
+  --lane: 4;
+  --agent-opacity: 0.34;
   --agent-glow: rgba(15, 255, 208, 0.14);
   --agent-art: url("https://media.valorant-api.com/agents/320b2a48-4d9b-a075-30f1-1f93a9b638fa/fullportrait.png");
 }
 
 .agent-chamber {
   --slot: 4;
-  --lane: 1;
-  --agent-opacity: 0.3;
+  --lane: 2;
+  --agent-opacity: 0.28;
   --agent-glow: rgba(15, 255, 208, 0.12);
   --agent-art: url("https://media.valorant-api.com/agents/22697a3d-45bf-8dd7-4fec-84a9e28c69d7/fullportrait.png");
 }

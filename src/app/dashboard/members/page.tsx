@@ -22,21 +22,24 @@ interface Member {
   joinedAt: string;
 }
 
-const ADMIN_ROLE_NAME = "관리자";
-const VALONEKKI_ROLE_NAME = "발로네끼";
+const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
+const VALONEKKI_ROLE_KEYWORDS = ["발로네끼", "발로세끼", "valonekki", "valosegi"];
 
 function normalizeText(value: string) {
-  return value.trim().toLowerCase();
+  return value.replace(/[^\p{L}\p{N}]+/gu, "").trim().toLowerCase();
 }
 
-function hasExactRole(values: string[], roleName: string) {
-  const normalizedRoleName = normalizeText(roleName);
-  return values.some((value) => normalizeText(value) === normalizedRoleName);
+function hasRoleKeyword(values: string[], keywords: string[]) {
+  const normalizedKeywords = keywords.map(normalizeText);
+  return values.some((value) => {
+    const normalizedValue = normalizeText(value);
+    return normalizedKeywords.some((keyword) => normalizedValue.includes(keyword));
+  });
 }
 
 function getRoleGroup(roles: string[]) {
-  if (hasExactRole(roles, ADMIN_ROLE_NAME)) return "admin";
-  if (hasExactRole(roles, VALONEKKI_ROLE_NAME)) return "valonekki";
+  if (hasRoleKeyword(roles, ADMIN_ROLE_KEYWORDS)) return "admin";
+  if (hasRoleKeyword(roles, VALONEKKI_ROLE_KEYWORDS)) return "valonekki";
   return "member";
 }
 
@@ -150,11 +153,37 @@ export default function MembersPage() {
             </div>
           </div>
 
-          <MemberSection title="⭐ 관리자" members={admins} highlight />
-          <MemberSection title="⚜️ 발로네끼" members={valonekkis} highlight />
+          <div className="mb-6 grid gap-4 xl:grid-cols-2">
+            <PinnedRoleSection title="⭐ 관리자" members={admins} emptyText="관리자 역할 멤버가 없습니다." />
+            <PinnedRoleSection title="⚜️ 발로네끼" members={valonekkis} emptyText="발로네끼 역할 멤버가 없습니다." />
+          </div>
           <MemberSection title="멤버" members={rest} />
         </>
       )}
+    </div>
+  );
+}
+
+function PinnedRoleSection({ title, members, emptyText }: { title: string; members: Member[]; emptyText: string }) {
+  return (
+    <div className="overflow-hidden rounded border border-[#2a3540] bg-[#111c24]">
+      <div className="flex items-center justify-between border-b border-[#2a3540] px-4 py-3">
+        <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">{title}</div>
+        <div className="text-xs text-[#7b8a96]">{members.length}명</div>
+      </div>
+      <div className="member-scroll max-h-72 overflow-y-auto p-3">
+        {members.length === 0 ? (
+          <div className="rounded border border-dashed border-[#2a3540] px-4 py-8 text-center text-sm text-[#7b8a96]">
+            {emptyText}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
+            {members.map((member) => (
+              <MemberCard key={member.id} member={member} highlight />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

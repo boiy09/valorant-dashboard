@@ -14,7 +14,6 @@ const BASE_TABS = [
   { href: "/dashboard/scrim", label: "내전", icon: "⚔" },
   { href: "/dashboard/schedule", label: "일정", icon: "▤" },
   { href: "/dashboard/announce", label: "공지", icon: "▰" },
-  { href: "/dashboard/market", label: "장터", icon: "▧" },
   { href: "/dashboard/highlight", label: "하이라이트", icon: "▸" },
   { href: "/dashboard/members", label: "멤버", icon: "●" },
 ];
@@ -26,6 +25,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const { data: session, status } = useSession();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [riotLinked, setRiotLinked] = useState<boolean | null>(null);
+  const [showRiotRequired, setShowRiotRequired] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
@@ -37,6 +38,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .then((data) => setIsAdmin(data.isAdmin ?? false))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    let cancelled = false;
+
+    async function refreshRiotLinked() {
+      try {
+        const response = await fetch("/api/user/riot", { cache: "no-store" });
+        const data = response.ok ? await response.json() : { linked: false };
+        if (!cancelled) setRiotLinked(Boolean(data.linked));
+      } catch {
+        if (!cancelled) setRiotLinked(false);
+      }
+    }
+
+    refreshRiotLinked();
+    window.addEventListener("riot-accounts-updated", refreshRiotLinked);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("riot-accounts-updated", refreshRiotLinked);
+    };
+  }, [status]);
+
+  useEffect(() => {
+    if (riotLinked !== false) return;
+    if (pathname === "/dashboard/riot-connect" || pathname.startsWith("/dashboard/riot-connect/")) return;
+
+    setShowRiotRequired(true);
+    router.replace("/dashboard/riot-connect");
+  }, [riotLinked, pathname, router]);
 
   if (status === "loading" || status === "unauthenticated") {
     return (
@@ -110,6 +143,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Link
                 key={tab.href}
                 href={tab.href}
+                onClick={(event) => {
+                  if (riotLinked === false && tab.href !== "/dashboard/riot-connect") {
+                    event.preventDefault();
+                    setShowRiotRequired(true);
+                    router.replace("/dashboard/riot-connect");
+                  }
+                }}
                 className={`val-nav-link ${isActive ? "is-active" : ""}`}
               >
                 <span className="val-nav-icon" aria-hidden="true">
@@ -126,6 +166,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 min-w-0">{children}</main>
         <MemberSidebar />
       </div>
+
+      {showRiotRequired && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4">
+          <div className="val-card max-w-md p-6 text-center shadow-2xl">
+            <div className="mb-3 text-4xl">⛓</div>
+            <h2 className="text-xl font-black text-white">라이엇 계정 연동이 필요합니다</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[#9aa8b3]">
+              전적, 내전, 멤버 정보 기능을 정상적으로 사용하려면 먼저 라이엇 계정을 1개 이상 연동해야 합니다.
+            </p>
+            <button
+              onClick={() => setShowRiotRequired(false)}
+              className="val-btn mt-5 bg-[#ff4655] px-6 py-2 text-sm font-bold text-white"
+            >
+              연동하러 가기
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

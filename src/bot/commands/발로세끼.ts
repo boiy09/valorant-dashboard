@@ -11,7 +11,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .setColor(0xff4655)
     .setTitle("발로세끼 대시보드")
     .setDescription(`[웹 대시보드 바로가기](${DASHBOARD_URL})`)
-    .setFooter({ text: "라이엇 연동, 전적, 일정, 장터, 하이라이트를 웹에서 확인할 수 있습니다." });
+    .setFooter({ text: "라이엇 연동, 전적, 일정, 하이라이트를 웹에서 확인할 수 있습니다." });
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()

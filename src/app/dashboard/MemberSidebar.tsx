@@ -15,8 +15,8 @@ interface Member {
 type RoleGroup = "admin" | "valonekki" | "member";
 type SectionKey = "admin" | "valonekki" | "online" | "offline";
 
-const ADMIN_ROLE_NAME = "관리자";
-const VALONEKKI_ROLE_NAME = "발로네끼";
+const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
+const VALONEKKI_ROLE_KEYWORDS = ["발로네끼", "발로세끼", "valonekki", "valosegi"];
 
 const SECTION_STYLES: Record<
   SectionKey,
@@ -53,17 +53,20 @@ const SECTION_STYLES: Record<
 };
 
 function normalizeRoleName(role: string) {
-  return role.trim().toLowerCase();
+  return role.replace(/[^\p{L}\p{N}]+/gu, "").trim().toLowerCase();
 }
 
-function hasExactRole(roles: string[], roleName: string) {
-  const normalizedRoleName = normalizeRoleName(roleName);
-  return roles.some((role) => normalizeRoleName(role) === normalizedRoleName);
+function hasRoleKeyword(roles: string[], keywords: string[]) {
+  const normalizedKeywords = keywords.map(normalizeRoleName);
+  return roles.some((role) => {
+    const normalizedRole = normalizeRoleName(role);
+    return normalizedKeywords.some((keyword) => normalizedRole.includes(keyword));
+  });
 }
 
 function getRoleGroup(roles: string[]): RoleGroup {
-  if (hasExactRole(roles, ADMIN_ROLE_NAME)) return "admin";
-  if (hasExactRole(roles, VALONEKKI_ROLE_NAME)) return "valonekki";
+  if (hasRoleKeyword(roles, ADMIN_ROLE_KEYWORDS)) return "admin";
+  if (hasRoleKeyword(roles, VALONEKKI_ROLE_KEYWORDS)) return "valonekki";
   return "member";
 }
 

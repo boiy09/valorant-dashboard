@@ -141,7 +141,7 @@ export default function RiotConnectPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
+    <div className="max-w-3xl mx-auto space-y-5">
       {/* 헤더 */}
       <div className="val-card p-5">
         <div className="flex items-center gap-3 mb-1">
@@ -149,8 +149,8 @@ export default function RiotConnectPage() {
           <div className="flex-1 h-px bg-[#2a3540]" />
         </div>
         <h1 className="text-white text-xl font-bold">비밀번호 없이 연동하기</h1>
-        <p className="text-[#7b8a96] text-sm mt-1">
-          연동 방식을 선택하세요. ssid 방식은 토큰 자동 갱신을 지원합니다.
+        <p className="text-[#9aa8b3] text-base mt-2 leading-relaxed">
+          Riot 로그인 후 보이는 404 페이지는 오류가 아닙니다. 주소창 URL을 복사해 붙여넣으면 연동됩니다.
         </p>
 
         {/* 방식 탭 */}
@@ -171,12 +171,15 @@ export default function RiotConnectPage() {
           </button>
           <button
             onClick={() => setMethod("ssid")}
-            className={`rounded border px-4 py-3 text-left transition-colors ${
+            className={`relative rounded border px-4 py-3 text-left opacity-55 grayscale transition-colors ${
               method === "ssid"
                 ? "border-[#0ac8b9] bg-[#0ac8b9]/10"
                 : "border-[#2a3540] hover:border-[#0ac8b9]/40"
             }`}
           >
+            <span className="absolute right-3 top-3 rounded bg-[#ffb84d]/15 px-2 py-0.5 text-[10px] font-black text-[#ffb84d]">
+              개발중
+            </span>
             <div className={`text-sm font-bold ${method === "ssid" ? "text-white" : "text-[#7b8a96]"}`}>
               ssid 방식
             </div>
@@ -190,7 +193,7 @@ export default function RiotConnectPage() {
       {method === "url" && (
         <>
           <div className="val-card p-5">
-            <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-4">단계별 안내</div>
+            <div className="text-[#ff4655] text-base font-black tracking-widest uppercase mb-5">단계별 안내</div>
             <div className="space-y-0">
               <div className="flex gap-4">
                 <div className="flex flex-col items-center flex-shrink-0">
@@ -198,11 +201,11 @@ export default function RiotConnectPage() {
                   <div className="w-px flex-1 bg-[#2a3540] my-1" style={{ minHeight: "24px" }} />
                 </div>
                 <div className="pb-6 flex-1">
-                  <div className="text-white font-semibold text-sm mb-1">아래 버튼을 클릭해 로그인</div>
-                  <div className="text-[#7b8a96] text-sm leading-relaxed">
+                  <div className="text-white font-semibold text-lg mb-2">아래 버튼을 클릭해 로그인</div>
+                  <div className="text-[#9aa8b3] text-base leading-relaxed">
                     버튼을 클릭하면 Riot 로그인 페이지가 열립니다. 연동할 서버의 Riot 계정으로 로그인하세요.
                   </div>
-                  <div className="mt-1.5 text-xs text-[#ff4655]/70 bg-[#ff4655]/5 border border-[#ff4655]/20 rounded px-2.5 py-1.5">
+                  <div className="mt-2 text-sm text-[#ff8a94] bg-[#ff4655]/5 border border-[#ff4655]/20 rounded px-3 py-2">
                     💡 이미 다른 Riot 계정으로 로그인되어 있으면 바로 404 페이지로 이동될 수 있습니다. 그 경우 Riot에서 로그아웃하거나 시크릿 창에서 다시 진행하세요.
                   </div>
                   <a
@@ -221,8 +224,8 @@ export default function RiotConnectPage() {
                   <div className="w-px flex-1 bg-[#2a3540] my-1" style={{ minHeight: "24px" }} />
                 </div>
                 <div className="pb-6 flex-1">
-                  <div className="text-white font-semibold text-sm mb-1">이동된 페이지 주소 전체 복사</div>
-                  <div className="text-[#7b8a96] text-sm leading-relaxed">
+                  <div className="text-white font-semibold text-lg mb-2">이동된 페이지 주소 전체 복사</div>
+                  <div className="text-[#9aa8b3] text-base leading-relaxed">
                     로그인 후 <span className="text-white font-medium">playvalorant.com</span> 페이지로 이동됩니다 (404 오류 화면이 뜨는 게 정상입니다). 브라우저 주소창의 URL 전체를 <span className="text-white font-medium">Ctrl+A → Ctrl+C</span> 로 복사하세요.
                   </div>
                   <div className="mt-3 bg-[#0f1923] border border-[#2a3540] rounded px-3 py-2 text-[11px] font-mono text-[#7b8a96] overflow-hidden">
@@ -237,18 +240,18 @@ export default function RiotConnectPage() {
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 border-[#2a3540] bg-[#0f1923] text-[#7b8a96]">3</div>
                 </div>
                 <div className="flex-1">
-                  <div className="text-white font-semibold text-sm mb-1">아래 입력창에 붙여넣기</div>
-                  <div className="text-[#7b8a96] text-sm">복사한 URL을 붙여넣고 연동하기 버튼을 클릭하세요.</div>
+                  <div className="text-white font-semibold text-lg mb-2">아래 입력창에 붙여넣기</div>
+                  <div className="text-[#9aa8b3] text-base">복사한 URL을 붙여넣고 연동하기 버튼을 클릭하세요.</div>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="val-card p-5">
-            <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">복사한 URL 붙여넣기</div>
+            <div className="text-[#ff4655] text-base font-black tracking-widest uppercase mb-4">복사한 URL 붙여넣기</div>
             <form onSubmit={handleUrlSubmit} className="space-y-3">
               <div>
-                <label className="text-white text-sm font-medium block mb-1.5">연동할 서버</label>
+                <label className="text-white text-base font-bold block mb-2">연동할 서버</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(["KR", "AP"] as const).map((value) => (
                     <button
@@ -269,13 +272,13 @@ export default function RiotConnectPage() {
                 <div className="mt-1 text-[#7b8a96] text-[11px]">자동 감지가 막히는 경우 선택한 서버로 저장됩니다.</div>
               </div>
               <div>
-                <label className="text-white text-sm font-medium block mb-1.5">playvalorant.com URL</label>
+                <label className="text-white text-base font-bold block mb-2">playvalorant.com URL</label>
                 <textarea
                   value={url}
                   onChange={(e) => { setUrl(e.target.value); setUrlState("idle"); }}
                   placeholder="https://playvalorant.com/ko-kr/opt_in/#access_token=eyJ... 를 여기에 붙여넣으세요"
                   rows={4}
-                  className="w-full px-3 py-2.5 text-xs text-white bg-[#0f1923] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655] resize-none font-mono placeholder:text-[#3a4a55]"
+                  className="w-full px-4 py-3 text-sm text-white bg-[#0f1923] border border-[#2a3540] rounded focus:outline-none focus:border-[#ff4655] resize-none font-mono placeholder:text-[#3a4a55]"
                   required
                   disabled={urlState === "loading"}
                 />
@@ -305,7 +308,10 @@ export default function RiotConnectPage() {
       {method === "ssid" && (
         <>
           <div className="val-card p-5">
-            <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-4">단계별 안내</div>
+            <div className="mb-4 rounded border border-[#ffb84d]/25 bg-[#ffb84d]/10 px-4 py-3 text-sm font-bold text-[#ffb84d]">
+              SSID 방식은 개발중입니다. 내부 테스트를 위해 입력 기능은 유지되어 있습니다.
+            </div>
+            <div className="text-[#7b8a96] text-sm tracking-widest uppercase mb-4">단계별 안내</div>
             <div className="space-y-0">
               <div className="flex gap-4">
                 <div className="flex flex-col items-center flex-shrink-0">
@@ -409,7 +415,7 @@ export default function RiotConnectPage() {
 
       {/* 자주 묻는 질문 */}
       <div className="val-card p-5">
-        <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">자주 묻는 질문</div>
+        <div className="text-[#ff4655] text-base font-black tracking-widest uppercase mb-4">자주 묻는 질문</div>
         <div className="space-y-3">
           {[
             {
@@ -434,8 +440,8 @@ export default function RiotConnectPage() {
             },
           ].map(({ q, a }) => (
             <div key={q} className="border-b border-[#2a3540] pb-3 last:border-0 last:pb-0">
-              <div className="text-white text-sm font-medium mb-1">Q. {q}</div>
-              <div className="text-[#7b8a96] text-sm">A. {a}</div>
+              <div className="text-white text-base font-bold mb-1.5">Q. {q}</div>
+              <div className="text-[#9aa8b3] text-base leading-relaxed">A. {a}</div>
             </div>
           ))}
         </div>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import HeaderRiotLink from "./HeaderRiotLink";
 import MemberSidebar from "./MemberSidebar";
 
@@ -27,10 +27,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isAdmin, setIsAdmin] = useState(false);
   const [riotLinked, setRiotLinked] = useState<boolean | null>(null);
   const [showRiotRequired, setShowRiotRequired] = useState(false);
+  const [navigating, setNavigating] = useState(false);
+  const prevPathname = useRef(pathname);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
   }, [status, router]);
+
+  useEffect(() => {
+    if (pathname !== prevPathname.current) {
+      prevPathname.current = pathname;
+      setNavigating(false);
+    }
+  }, [pathname]);
 
   useEffect(() => {
     fetch("/api/me/roles")
@@ -73,8 +82,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (status === "loading" || status === "unauthenticated") {
     return (
-      <div className="min-h-screen bg-[#0f1923] flex items-center justify-center">
-        <div className="val-loader" />
+      <div className="val-splash">
+        <div className="relative flex items-center justify-center" style={{ width: 160, height: 160 }}>
+          <div className="val-splash-ring-inner" />
+          <div className="val-splash-ring" />
+          <img src="/valosegi-logo.webp" alt="발로세끼" className="val-splash-logo" style={{ width: 90 }} />
+        </div>
+        <div className="val-splash-bar" style={{ marginTop: -4 }}>
+          <div className="val-splash-bar-fill" />
+        </div>
+        <span className="val-splash-label">LOADING</span>
       </div>
     );
   }
@@ -148,6 +165,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     event.preventDefault();
                     setShowRiotRequired(true);
                     router.replace("/dashboard/riot-connect");
+                    return;
+                  }
+                  if (tab.href !== activeHref) {
+                    setNavigating(true);
                   }
                 }}
                 className={`val-nav-link ${isActive ? "is-active" : ""}`}
@@ -166,6 +187,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 min-w-0">{children}</main>
         <MemberSidebar />
       </div>
+
+      {navigating && (
+        <div className="val-nav-loading">
+          <div className="relative flex items-center justify-center" style={{ width: 80, height: 80 }}>
+            <div className="val-splash-ring-inner" style={{ width: 80, height: 80 }} />
+            <div className="val-splash-ring" style={{ width: 80, height: 80 }} />
+            <img src="/valosegi-icon.png" alt="" style={{ width: 36, height: 36, objectFit: "contain", opacity: 0.9 }} />
+          </div>
+        </div>
+      )}
 
       {showRiotRequired && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4">

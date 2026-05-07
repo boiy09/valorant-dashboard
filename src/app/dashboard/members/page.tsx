@@ -220,7 +220,7 @@ function MemberSection({
       {members.length === 0 ? (
         <div className="val-card p-10 text-center text-sm text-[#7b8a96]">조건에 맞는 멤버가 없습니다.</div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {members.map((member) => (
             <MemberCard key={member.id} member={member} highlight={highlight} />
           ))}

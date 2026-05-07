@@ -28,9 +28,7 @@ jobs:
 
             npx prisma generate
 
-            export DATABASE_URL="${{ secrets.DATABASE_URL }}"
-            npm run build
-
-            pm2 restart valorant-dashboard || pm2 start npm --name "valorant-dashboard" -- start
+            pm2 delete valorant-dashboard 2>/dev/null || true
+            pm2 restart valorant-bot --update-env || pm2 start npm --name "valorant-bot" -- run bot
             pm2 save
             echo "✅ 배포 완료"

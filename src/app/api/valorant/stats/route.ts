@@ -87,6 +87,7 @@ export async function GET() {
         getRecentMatches(account.puuid, 10, qRegion, "pc", {
           puuidRankMap: puuidRankMapRaw,
           skipAccountFallback: true,
+          skipRankFallback: true,
         }).catch(() => []),
       ]);
 

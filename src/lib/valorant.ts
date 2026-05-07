@@ -609,6 +609,7 @@ export async function getRankByPuuid(
 export interface RecentMatchesOptions {
   puuidRankMap?: Map<string, { tierId: number; tierName: string; tierIcon?: string | null }>;
   skipAccountFallback?: boolean;
+  skipRankFallback?: boolean;
 }
 
 export async function getRecentMatches(
@@ -792,8 +793,7 @@ export async function getRecentMatches(
       const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
       const mappedRank = pTierId <= 0 ? (options?.puuidRankMap?.get(pPuuid) ?? null) : null;
-      // puuidRankMap에 없는 플레이어는 API 폴백으로 랭크 조회 (apiCache로 캐시됨)
-      const fallbackRank = pTierId <= 0 && !mappedRank
+      const fallbackRank = pTierId <= 0 && !mappedRank && !options?.skipRankFallback
         ? await getScoreboardRankByPuuid(pPuuid, region).catch(() => null)
         : null;
       const rankData = mappedRank ?? fallbackRank;

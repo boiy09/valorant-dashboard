@@ -22,22 +22,22 @@ interface Member {
   joinedAt: string;
 }
 
-const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
-const ASSIST_ROLE_KEYWORDS = ["어시스트", "assistant", "assist", "staff", "스태프", "매니저"];
+const ADMIN_ROLE_NAME = "관리자";
+const VALONEKKI_ROLE_NAME = "발로네끼";
 
 function normalizeText(value: string) {
   return value.trim().toLowerCase();
 }
 
-function hasKeywordMatch(values: string[], keywords: string[]) {
-  const normalizedValues = values.map(normalizeText);
-  return normalizedValues.some((value) => keywords.some((keyword) => value.includes(keyword.toLowerCase())));
+function hasExactRole(values: string[], roleName: string) {
+  const normalizedRoleName = normalizeText(roleName);
+  return values.some((value) => normalizeText(value) === normalizedRoleName);
 }
 
 function getRoleGroup(roles: string[]) {
-  if (hasKeywordMatch(roles, ADMIN_ROLE_KEYWORDS)) return "관리자";
-  if (hasKeywordMatch(roles, ASSIST_ROLE_KEYWORDS)) return "어시스트";
-  return "멤버";
+  if (hasExactRole(roles, ADMIN_ROLE_NAME)) return "admin";
+  if (hasExactRole(roles, VALONEKKI_ROLE_NAME)) return "valonekki";
+  return "member";
 }
 
 export default function MembersPage() {
@@ -93,9 +93,9 @@ export default function MembersPage() {
     });
   }, [members, search, selectedRole]);
 
-  const admins = filteredMembers.filter((member) => getRoleGroup(member.roles) === "관리자");
-  const assists = filteredMembers.filter((member) => getRoleGroup(member.roles) === "어시스트");
-  const rest = filteredMembers.filter((member) => getRoleGroup(member.roles) === "멤버");
+  const admins = filteredMembers.filter((member) => getRoleGroup(member.roles) === "admin");
+  const valonekkis = filteredMembers.filter((member) => getRoleGroup(member.roles) === "valonekki");
+  const rest = filteredMembers.filter((member) => getRoleGroup(member.roles) === "member");
 
   return (
     <div>
@@ -150,8 +150,8 @@ export default function MembersPage() {
             </div>
           </div>
 
-          <MemberSection title="관리자" members={admins} highlight />
-          <MemberSection title="어시스트" members={assists} highlight />
+          <MemberSection title="⭐ 관리자" members={admins} highlight />
+          <MemberSection title="⚜️ 발로네끼" members={valonekkis} highlight />
           <MemberSection title="멤버" members={rest} />
         </>
       )}
@@ -196,7 +196,7 @@ function MemberCard({ member, highlight }: { member: Member; highlight?: boolean
                 <span
                   key={role}
                   className={`rounded px-1.5 py-0.5 text-[10px] ${
-                    getRoleGroup(member.roles) !== "멤버"
+                    getRoleGroup(member.roles) !== "member"
                       ? "bg-[#ff4655]/10 text-[#ff4655]"
                       : "bg-[#1a242d] text-[#7b8a96]"
                   }`}

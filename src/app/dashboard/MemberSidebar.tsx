@@ -12,11 +12,11 @@ interface Member {
   isOnline: boolean;
 }
 
-type RoleGroup = "admin" | "valosegi" | "member";
-type SectionKey = "admin" | "valosegi" | "online" | "offline";
+type RoleGroup = "admin" | "valonekki" | "member";
+type SectionKey = "admin" | "valonekki" | "online" | "offline";
 
 const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
-const VALOSEGI_ROLE_KEYWORDS = ["발로세끼", "valosegi"];
+const VALONEKKI_ROLE_KEYWORDS = ["발로네끼", "valonekki"];
 
 const SECTION_STYLES: Record<
   SectionKey,
@@ -29,8 +29,8 @@ const SECTION_STYLES: Record<
     text: "text-[#ff4655]",
     ring: "ring-1 ring-[#ff4655]/60",
   },
-  valosegi: {
-    label: "발로세끼",
+  valonekki: {
+    label: "발로네끼",
     emoji: "⚜️",
     dot: "bg-orange-400",
     text: "text-orange-400",
@@ -66,7 +66,7 @@ function hasRoleKeyword(roles: string[], keywords: string[]) {
 
 function getRoleGroup(roles: string[]): RoleGroup {
   if (hasRoleKeyword(roles, ADMIN_ROLE_KEYWORDS)) return "admin";
-  if (hasRoleKeyword(roles, VALOSEGI_ROLE_KEYWORDS)) return "valosegi";
+  if (hasRoleKeyword(roles, VALONEKKI_ROLE_KEYWORDS)) return "valonekki";
   return "member";
 }
 
@@ -83,14 +83,14 @@ export default function MemberSidebar() {
   }, []);
 
   const admins = members.filter((member) => getRoleGroup(member.roles) === "admin");
-  const valosegis = members.filter((member) => getRoleGroup(member.roles) === "valosegi");
+  const valonekkis = members.filter((member) => getRoleGroup(member.roles) === "valonekki");
   const onlines = members.filter((member) => getRoleGroup(member.roles) === "member" && member.isOnline);
   const offlines = members.filter((member) => getRoleGroup(member.roles) === "member" && !member.isOnline);
   const onlineCount = members.filter((member) => member.isOnline).length;
 
   const sections = [
     { key: "admin", members: admins },
-    { key: "valosegi", members: valosegis },
+    { key: "valonekki", members: valonekkis },
     { key: "online", members: onlines },
     { key: "offline", members: offlines },
   ] as const satisfies ReadonlyArray<{ key: SectionKey; members: Member[] }>;

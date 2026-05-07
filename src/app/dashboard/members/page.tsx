@@ -23,6 +23,7 @@ interface Member {
 }
 
 const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
+const VALONEKKI_ROLE_KEYWORDS = ["발로네끼", "valonekki"];
 const VALOSEGI_ROLE_KEYWORDS = ["발로세끼", "valosegi"];
 
 function normalizeText(value: string) {
@@ -39,6 +40,7 @@ function hasRoleKeyword(values: string[], keywords: string[]) {
 
 function getRoleGroup(roles: string[]) {
   if (hasRoleKeyword(roles, ADMIN_ROLE_KEYWORDS)) return "admin";
+  if (hasRoleKeyword(roles, VALONEKKI_ROLE_KEYWORDS)) return "valonekki";
   if (hasRoleKeyword(roles, VALOSEGI_ROLE_KEYWORDS)) return "valosegi";
   return "member";
 }
@@ -97,6 +99,7 @@ export default function MembersPage() {
   }, [members, search, selectedRole]);
 
   const admins = filteredMembers.filter((member) => getRoleGroup(member.roles) === "admin");
+  const valonekkis = filteredMembers.filter((member) => getRoleGroup(member.roles) === "valonekki");
   const valosegis = filteredMembers.filter((member) => getRoleGroup(member.roles) === "valosegi");
   const rest = filteredMembers.filter((member) => getRoleGroup(member.roles) === "member");
 
@@ -153,8 +156,9 @@ export default function MembersPage() {
             </div>
           </div>
 
-          <div className="mb-6 grid gap-4 xl:grid-cols-2">
+          <div className="mb-6 grid gap-4 xl:grid-cols-3">
             <PinnedRoleSection title="⭐ 관리자" members={admins} emptyText="관리자 역할 멤버가 없습니다." />
+            <PinnedRoleSection title="⚜️ 발로네끼" members={valonekkis} emptyText="발로네끼 역할 멤버가 없습니다." />
             <PinnedRoleSection title="⚜️ 발로세끼" members={valosegis} emptyText="발로세끼 역할 멤버가 없습니다." />
           </div>
           <MemberSection title="멤버" members={rest} />

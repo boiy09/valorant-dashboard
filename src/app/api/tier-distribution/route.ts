@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getRankByPuuid, getRankIconByTier, type ValorantRegion } from "@/lib/valorant";
+import { getRankIconByTier } from "@/lib/valorant";
+import { ensureValidTokens, fetchRank } from "@/lib/rankFetcher";
 
 const REGION_LABELS = {
   KR: "한섭",
@@ -64,31 +65,12 @@ const TIER_META = Object.fromEntries([
   ["RADIANT", { label: "레디언트", color: "#f8fafc" }],
 ]) as Record<DetailTier, { label: string; color: string }>;
 
-function toValorantRegion(region: string): ValorantRegion {
-  return region.toUpperCase() === "AP" ? "ap" : "kr";
-}
+const TIER_ID_TO_KEY = Object.fromEntries(
+  Object.entries(TIER_IDS).map(([key, id]) => [id, key as DetailTier])
+) as Record<number, DetailTier>;
 
-function divisionFromName(value: string) {
-  const match = value.match(/(?:^|\s)([123])(?:$|\s)/);
-  return match?.[1] ?? "1";
-}
-
-function normalizeTier(tierName: string | null | undefined): DetailTier {
-  const raw = String(tierName ?? "").trim();
-  const normalized = raw.toLowerCase();
-  const division = divisionFromName(normalized);
-
-  if (!raw || normalized.includes("unrank") || raw.includes("언랭")) return "UNRANKED";
-  if (normalized.includes("radiant") || raw.includes("레디언트")) return "RADIANT";
-  if (normalized.includes("immortal") || raw.includes("불멸")) return `IMMORTAL_${division}` as DetailTier;
-  if (normalized.includes("ascendant") || raw.includes("초월")) return `ASCENDANT_${division}` as DetailTier;
-  if (normalized.includes("diamond") || raw.includes("다이아")) return `DIAMOND_${division}` as DetailTier;
-  if (normalized.includes("platinum") || raw.includes("플래")) return `PLATINUM_${division}` as DetailTier;
-  if (normalized.includes("gold") || raw.includes("골드")) return `GOLD_${division}` as DetailTier;
-  if (normalized.includes("silver") || raw.includes("실버")) return `SILVER_${division}` as DetailTier;
-  if (normalized.includes("bronze") || raw.includes("브론즈")) return `BRONZE_${division}` as DetailTier;
-  if (normalized.includes("iron") || raw.includes("아이언")) return `IRON_${division}` as DetailTier;
-  return "UNRANKED";
+function tierIdToDetailTier(tierId: number): DetailTier {
+  return TIER_ID_TO_KEY[tierId] ?? "UNRANKED";
 }
 
 async function settleInBatches<T, R>(items: T[], size: number, task: (item: T) => Promise<R>) {
@@ -118,6 +100,9 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  const RANK_CACHE_TTL = 2 * 60 * 60 * 1000; // 2시간
+  const now = Date.now();
+
   const accounts = await prisma.riotAccount.findMany({
     where: {
       region: { in: ["KR", "AP"] },
@@ -128,21 +113,42 @@ export async function GET(req: NextRequest) {
       gameName: true,
       tagLine: true,
       region: true,
+      accessToken: true,
+      entitlementsToken: true,
+      ssid: true,
+      tokenExpiresAt: true,
+      cachedTierId: true,
+      rankCachedAt: true,
     },
     orderBy: [{ region: "asc" }, { gameName: "asc" }],
   });
 
-  const rankedAccounts = await settleInBatches(accounts, 3, async (account) => {
+  const rankedAccounts = await settleInBatches(accounts, 5, async (account) => {
     const region = account.region.toUpperCase() === "AP" ? "AP" : "KR";
-    const rank = await getRankByPuuid(account.puuid, toValorantRegion(region), {
-      gameName: account.gameName,
-      tagLine: account.tagLine,
-    }).catch(() => null);
+    const cacheAge = account.rankCachedAt ? now - account.rankCachedAt.getTime() : Infinity;
+    const isFresh = cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null;
 
-    return {
-      region,
-      tier: normalizeTier(rank?.tierName),
-    };
+    if (isFresh) {
+      return { region, tier: tierIdToDetailTier(account.cachedTierId!) };
+    }
+
+    const tokens = await ensureValidTokens(
+      account.puuid,
+      account.accessToken,
+      account.entitlementsToken,
+      account.ssid,
+      account.tokenExpiresAt
+    );
+
+    const rank = await fetchRank(account.puuid, account.region, account.gameName, account.tagLine, tokens);
+    const tierId = rank.tierId;
+
+    prisma.riotAccount.update({
+      where: { puuid: account.puuid },
+      data: { cachedTierId: tierId, cachedTierName: rank.tierName, rankCachedAt: new Date() },
+    }).catch(() => {});
+
+    return { region, tier: tierIdToDetailTier(tierId) };
   });
 
   const countsByRegion = {

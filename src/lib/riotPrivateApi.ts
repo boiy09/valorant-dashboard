@@ -300,3 +300,86 @@ export async function getBattlepass(
     totalLevelsCompleted: contract.ProgressionLevelReached ?? 0,
   };
 }
+
+// ────────────────────────────────────────────────────────────
+// MMR / 프로필 (rate limit 없음)
+// ────────────────────────────────────────────────────────────
+
+export interface PrivateMMR {
+  currentTierId: number;
+  rankedRating: number;
+}
+
+export interface PrivateProfile {
+  level: number;
+  cardId: string;
+}
+
+export async function getPrivateMMR(
+  puuid: string,
+  region: string,
+  accessToken: string,
+  entitlementsToken: string
+): Promise<PrivateMMR | null> {
+  try {
+    const shard = regionToShard(region);
+    const headers = await pvpHeaders(accessToken, entitlementsToken);
+    const response = await fetch(`https://pd.${shard}.a.pvp.net/mmr/v1/players/${puuid}`, { headers, signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return null;
+
+    const data = await response.json() as {
+      QueueSkills?: {
+        competitive?: {
+          SeasonalInfoBySeasonID?: Record<string, {
+            CompetitiveTier?: number;
+            RankedRating?: number;
+            NumberOfGames?: number;
+          }>;
+        };
+      };
+    };
+
+    const seasons = data.QueueSkills?.competitive?.SeasonalInfoBySeasonID ?? {};
+    // 가장 최근 시즌 (게임 수 > 0) 찾기
+    const latest = Object.values(seasons)
+      .filter((s) => (s.NumberOfGames ?? 0) > 0)
+      .sort((a, b) => (b.CompetitiveTier ?? 0) - (a.CompetitiveTier ?? 0))[0];
+
+    const tierId = latest?.CompetitiveTier ?? 0;
+    if (tierId <= 0) return null;
+
+    return { currentTierId: tierId, rankedRating: latest?.RankedRating ?? 0 };
+  } catch {
+    return null;
+  }
+}
+
+export async function getPrivateProfile(
+  puuid: string,
+  region: string,
+  accessToken: string,
+  entitlementsToken: string
+): Promise<PrivateProfile | null> {
+  try {
+    const shard = regionToShard(region);
+    const headers = await pvpHeaders(accessToken, entitlementsToken);
+
+    const [xpRes, loadoutRes] = await Promise.all([
+      fetch(`https://pd.${shard}.a.pvp.net/account-xp/v1/players/${puuid}`, { headers, signal: AbortSignal.timeout(8000) }),
+      fetch(`https://pd.${shard}.a.pvp.net/personalization/v2/players/${puuid}/playerloadout`, { headers, signal: AbortSignal.timeout(8000) }),
+    ]);
+
+    const level = xpRes.ok
+      ? ((await xpRes.json()) as { Progress?: { Level?: number } }).Progress?.Level ?? 0
+      : 0;
+
+    const cardId = loadoutRes.ok
+      ? ((await loadoutRes.json()) as { Identity?: { PlayerCardID?: string } }).Identity?.PlayerCardID ?? ""
+      : "";
+
+    if (!level && !cardId) return null;
+    return { level, cardId };
+  } catch {
+    return null;
+  }
+}

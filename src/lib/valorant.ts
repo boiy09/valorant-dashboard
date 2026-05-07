@@ -36,6 +36,7 @@ export interface PlayerProfile {
 export interface RankData {
   tier: string;
   tierName: string;
+  tierId: number;
   rr: number | null;
   rrChange: number | null;
   isCurrent: boolean;
@@ -586,6 +587,7 @@ export async function getRankByPuuid(
     return {
       tier: tierName,
       tierName,
+      tierId,
       rr,
       rrChange,
       isCurrent: currentTierId > 0 || Boolean(opGgRank?.isCurrent),
@@ -604,11 +606,17 @@ export async function getRankByPuuid(
   }
 }
 
+export interface RecentMatchesOptions {
+  puuidRankMap?: Map<string, { tierId: number; tierName: string; tierIcon?: string | null }>;
+  skipAccountFallback?: boolean;
+}
+
 export async function getRecentMatches(
   puuid: string,
   count = 5,
   region: ValorantRegion = "kr",
-  platform: ValorantPlatform = "pc"
+  platform: ValorantPlatform = "pc",
+  options?: RecentMatchesOptions
 ): Promise<MatchStats[]> {
   const response = await henrikClient.get(
     `/v4/by-puuid/matches/${region}/${platform}/${puuid}?size=${count}`
@@ -771,10 +779,10 @@ export async function getRecentMatches(
       const rawName = firstString(p.game_name, p.gameName, p.name, p.player_name, p.playerName);
       const rawNameIsAgent = isAgentName(rawName, pAgentName);
       const rawNameIsUsable = !rawNameIsAgent && !isPrivateLikeName(rawName);
-      const accountFallback =
-        !localName || !localTag || !localCardIcon || !rawNameIsUsable
-          ? await getAccountByPuuid(pPuuid).catch(() => null)
-          : null;
+      const needsAccountFallback = !options?.skipAccountFallback && (!localName || !localTag || !localCardIcon || !rawNameIsUsable);
+      const accountFallback = needsAccountFallback
+        ? await getAccountByPuuid(pPuuid).catch(() => null)
+        : null;
       const fallbackCard = asRecord(accountFallback?.card);
       const pName = localName || firstPlayerName(pAgentName, accountFallback?.game_name, accountFallback?.gameName, accountFallback?.name);
       const pTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
@@ -783,9 +791,13 @@ export async function getRecentMatches(
       const pCardIcon = localCardIcon || firstString(fallbackCard.small, fallbackCard.wide, fallbackCard.large);
       const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
-      const fallbackRank = pTierId > 0 ? null : await getScoreboardRankByPuuid(pPuuid, region).catch(() => null);
-      const finalTierId = pTierId || fallbackRank?.tierId || 0;
-      const finalTierName = pTierId > 0 ? toString(pTier.name, "Unranked") : fallbackRank?.tierName ?? "Unranked";
+      const mappedRank = pTierId <= 0 ? (options?.puuidRankMap?.get(pPuuid) ?? null) : null;
+      const fallbackRank = pTierId <= 0 && !mappedRank && !options?.puuidRankMap
+        ? await getScoreboardRankByPuuid(pPuuid, region).catch(() => null)
+        : null;
+      const rankData = mappedRank ?? fallbackRank;
+      const finalTierId = pTierId || rankData?.tierId || 0;
+      const finalTierName = pTierId > 0 ? toString(pTier.name, "Unranked") : rankData?.tierName ?? "Unranked";
       return {
         puuid: pPuuid,
         name: isPrivate ? "비공개" : displayName,
@@ -798,7 +810,7 @@ export async function getRecentMatches(
         agentIcon: pIcon,
         tierName: finalTierName,
         tierId: finalTierId,
-        tierIcon: fallbackRank?.tierIcon ?? (await getRankIconByTier(finalTierId)),
+        tierIcon: rankData?.tierIcon ?? (await getRankIconByTier(finalTierId)),
         acs: totalRounds > 0 ? Math.round(pScore / totalRounds) : 0,
         kills: pk,
         deaths: pd,

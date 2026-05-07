@@ -257,7 +257,7 @@ function TierDistributionChart({
                   ))}
                 </div>
               </div>
-              {group.tiers.length > 1 ? (
+              {group.key !== "UNRANKED" && group.key !== "RADIANT" ? (
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                   {group.tiers.map((tier) => (
                     <span key={tier.key} className="inline-flex items-center gap-1 text-[10px] font-bold text-[#8da0ad]">
@@ -297,7 +297,7 @@ function TierDistributionChart({
                   <span className="flex-1 font-bold text-white">{group.label}</span>
                   <span className="text-[#8da0ad]">{group.count}명 · {group.percent}%</span>
                 </div>
-                {group.tiers.length > 1 && (
+                {group.key !== "UNRANKED" && group.key !== "RADIANT" && (
                   <div className="mt-0.5 ml-7 flex flex-col gap-0.5">
                     {group.tiers.map((tier) => (
                       <div key={tier.key} className="flex items-center gap-1.5 text-[10px] text-[#8da0ad]">

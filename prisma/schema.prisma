@@ -53,6 +53,12 @@ model RiotAccount {
   entitlementsToken String?
   tokenExpiresAt    DateTime?
   isVerified        Boolean   @default(false)
+  // 외부 API 호출 최소화를 위한 랭크/프로필 캐시
+  cachedTierId      Int?
+  cachedTierName    String?
+  cachedLevel       Int?
+  cachedCard        String?
+  rankCachedAt      DateTime?
   @@index([userId])
   @@index([region])
   @@unique([userId, region])

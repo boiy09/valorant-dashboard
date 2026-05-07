@@ -676,6 +676,44 @@ app.post('/auth/browser/mfa', async (req, res) => {
   }
 });
 
+// ──────────────────────────────────────────────
+// 배포 웹훅
+// ──────────────────────────────────────────────
+const { execFile } = require('child_process');
+const path = require('path');
+
+let deploying = false;
+
+app.post('/deploy', (req, res) => {
+  const deploySecret = process.env.DEPLOY_SECRET;
+  if (!deploySecret) {
+    return res.status(500).json({ status: 'error', message: 'DEPLOY_SECRET 미설정' });
+  }
+
+  const token = req.headers['x-deploy-secret'];
+  if (!token || token !== deploySecret) {
+    return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+  }
+
+  if (deploying) {
+    return res.status(409).json({ status: 'error', message: '이미 배포 중입니다.' });
+  }
+
+  deploying = true;
+  res.json({ status: 'ok', message: '배포를 시작합니다.' });
+  console.log(`[deploy] ${new Date().toISOString()} 배포 시작`);
+
+  const script = path.join(__dirname, '..', 'deploy.sh');
+  execFile('bash', [script], { cwd: path.join(__dirname, '..'), env: process.env }, (err, stdout, stderr) => {
+    deploying = false;
+    if (err) {
+      console.error('[deploy] 실패:', stderr);
+    } else {
+      console.log('[deploy] 완료:', stdout.trim());
+    }
+  });
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`[proxy] Riot 인증 프록시 서버 실행 중 - 포트 ${PORT}`);

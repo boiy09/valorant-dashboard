@@ -11,7 +11,15 @@ import { getPrivateMMR, getPrivateProfile } from "@/lib/riotPrivateApi";
 import { getTrackerCurrentRank } from "@/lib/trackergg";
 import { getRankByPuuid, getRankIconByTier, getPlayerByRiotId, type ValorantRegion } from "@/lib/valorant";
 
-const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 만료 5분 전부터 갱신
+const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
+
+// 타임아웃 래퍼 — ms 내 응답 없으면 null 반환
+function withTimeout<T>(promise: Promise<T | null>, ms: number): Promise<T | null> {
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}
 
 export interface AccountTokens {
   accessToken: string;
@@ -29,7 +37,7 @@ export interface FetchedProfile {
   card: string | null;
 }
 
-// DB에서 유효한 토큰을 가져오거나 ssid로 갱신
+// 유효한 토큰 확인 or ssid로 갱신 (최대 6초)
 export async function ensureValidTokens(
   puuid: string,
   accessToken: string | null,
@@ -48,33 +56,35 @@ export async function ensureValidTokens(
     return { accessToken: accessToken!, entitlementsToken: entitlementsToken! };
   }
 
-  // 토큰 만료 — ssid로 갱신 시도
   if (!ssid) return null;
 
   try {
-    const result = await refreshTokens(ssid);
-    if (result.status !== "success") return null;
+    const result = await withTimeout(
+      refreshTokens(ssid).catch(() => null),
+      6000
+    );
+    if (!result || result.status !== "success") return null;
 
-    // 새 entitlementsToken 발급
     const entRes = await fetch("https://entitlements.auth.riotgames.com/api/token/v1", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${result.accessToken}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${result.accessToken}` },
       body: JSON.stringify({}),
-    });
-    if (!entRes.ok) return null;
+      signal: AbortSignal.timeout(5000),
+    }).catch(() => null);
+
+    if (!entRes?.ok) return null;
 
     const entData = await entRes.json() as { entitlements_token: string };
     const newAccess = result.accessToken;
     const newEnt = entData.entitlements_token;
-    const expiresAt = new Date(now + 55 * 60 * 1000); // 55분 후 만료 처리
 
-    // DB 비동기 업데이트
     prisma.riotAccount.update({
       where: { puuid },
-      data: { accessToken: newAccess, entitlementsToken: newEnt, tokenExpiresAt: expiresAt },
+      data: {
+        accessToken: newAccess,
+        entitlementsToken: newEnt,
+        tokenExpiresAt: new Date(now + 55 * 60 * 1000),
+      },
     }).catch(() => {});
 
     return { accessToken: newAccess, entitlementsToken: newEnt };
@@ -83,7 +93,7 @@ export async function ensureValidTokens(
   }
 }
 
-// 랭크 조회: Private API → tracker.gg → Henrik
+// 랭크 조회: Private API(5s) → tracker.gg(6s) → Henrik(10s)
 export async function fetchRank(
   puuid: string,
   region: string,
@@ -95,40 +105,39 @@ export async function fetchRank(
 
   // 1. Riot Private API
   if (tokens) {
-    const mmr = await getPrivateMMR(puuid, region, tokens.accessToken, tokens.entitlementsToken).catch(() => null);
+    const mmr = await withTimeout(
+      getPrivateMMR(puuid, region, tokens.accessToken, tokens.entitlementsToken).catch(() => null),
+      5000
+    );
     if (mmr && mmr.currentTierId > 0) {
       const rankIcon = await getRankIconByTier(mmr.currentTierId).catch(() => null);
-      // tierName은 valorant-api.com에서 가져와야 하므로 Henrik getRankByPuuid 없이 tierId만 활용
-      // 티어명은 DB tierId → tierName 매핑으로 처리 (아래 공통 함수 사용)
-      return {
-        tierId: mmr.currentTierId,
-        tierName: tierIdToName(mmr.currentTierId),
-        rankIcon,
-      };
+      return { tierId: mmr.currentTierId, tierName: tierIdToName(mmr.currentTierId), rankIcon };
     }
   }
 
   // 2. tracker.gg
-  const tgg = await getTrackerCurrentRank(gameName, tagLine).catch(() => null);
+  const tgg = await withTimeout(
+    getTrackerCurrentRank(gameName, tagLine).catch(() => null),
+    6000
+  );
   if (tgg && tgg.tierId > 0) {
     const rankIcon = tgg.rankIcon ?? await getRankIconByTier(tgg.tierId).catch(() => null);
     return { tierId: tgg.tierId, tierName: tgg.tierName, rankIcon };
   }
 
   // 3. Henrik (최후 수단)
-  const henrik = await getRankByPuuid(puuid, regionLower, { gameName, tagLine }).catch(() => null);
+  const henrik = await withTimeout(
+    getRankByPuuid(puuid, regionLower, { gameName, tagLine }).catch(() => null),
+    10000
+  );
   if (henrik && henrik.tierId > 0) {
-    return {
-      tierId: henrik.tierId,
-      tierName: henrik.tierName,
-      rankIcon: henrik.rankIcon ?? null,
-    };
+    return { tierId: henrik.tierId, tierName: henrik.tierName, rankIcon: henrik.rankIcon ?? null };
   }
 
   return { tierId: 0, tierName: "언랭크", rankIcon: null };
 }
 
-// 프로필(레벨+카드) 조회: Private API → Henrik
+// 프로필(레벨+카드) 조회: Private API(5s) → Henrik(10s)
 export async function fetchProfile(
   puuid: string,
   region: string,
@@ -138,7 +147,10 @@ export async function fetchProfile(
 ): Promise<FetchedProfile> {
   // 1. Riot Private API
   if (tokens) {
-    const profile = await getPrivateProfile(puuid, region, tokens.accessToken, tokens.entitlementsToken).catch(() => null);
+    const profile = await withTimeout(
+      getPrivateProfile(puuid, region, tokens.accessToken, tokens.entitlementsToken).catch(() => null),
+      5000
+    );
     if (profile) {
       const cardUrl = profile.cardId
         ? `https://media.valorant-api.com/playercards/${profile.cardId}/smallart.png`
@@ -148,14 +160,16 @@ export async function fetchProfile(
   }
 
   // 2. Henrik
-  const henrik = await getPlayerByRiotId(gameName, tagLine).catch(() => null);
+  const henrik = await withTimeout(
+    getPlayerByRiotId(gameName, tagLine).catch(() => null),
+    10000
+  );
   return {
     level: henrik?.accountLevel != null && henrik.accountLevel >= 0 ? henrik.accountLevel : null,
     card: henrik?.card ?? null,
   };
 }
 
-// tierId → 한국어 tierName 매핑 (Henrik 없이 사용)
 function tierIdToName(tierId: number): string {
   const map: Record<number, string> = {
     0: "언랭크",

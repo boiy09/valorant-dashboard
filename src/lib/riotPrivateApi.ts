@@ -324,7 +324,7 @@ export async function getPrivateMMR(
   try {
     const shard = regionToShard(region);
     const headers = await pvpHeaders(accessToken, entitlementsToken);
-    const response = await fetch(`https://pd.${shard}.a.pvp.net/mmr/v1/players/${puuid}`, { headers });
+    const response = await fetch(`https://pd.${shard}.a.pvp.net/mmr/v1/players/${puuid}`, { headers, signal: AbortSignal.timeout(8000) });
     if (!response.ok) return null;
 
     const data = await response.json() as {
@@ -365,8 +365,8 @@ export async function getPrivateProfile(
     const headers = await pvpHeaders(accessToken, entitlementsToken);
 
     const [xpRes, loadoutRes] = await Promise.all([
-      fetch(`https://pd.${shard}.a.pvp.net/account-xp/v1/players/${puuid}`, { headers }),
-      fetch(`https://pd.${shard}.a.pvp.net/personalization/v2/players/${puuid}/playerloadout`, { headers }),
+      fetch(`https://pd.${shard}.a.pvp.net/account-xp/v1/players/${puuid}`, { headers, signal: AbortSignal.timeout(8000) }),
+      fetch(`https://pd.${shard}.a.pvp.net/personalization/v2/players/${puuid}/playerloadout`, { headers, signal: AbortSignal.timeout(8000) }),
     ]);
 
     const level = xpRes.ok

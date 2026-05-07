@@ -168,7 +168,7 @@ export async function getTrackerCurrentRank(
   try {
     const encoded = `${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
     const url = `${BASE_URL}/profile/riot/${encoded}`;
-    const res = await fetch(url, { headers: getHeaders(), cache: "no-store" });
+    const res = await fetch(url, { headers: getHeaders(), cache: "no-store", signal: AbortSignal.timeout(7000) });
     if (!res.ok) return null;
 
     const json = (await res.json()) as { data?: { segments?: unknown[] } };

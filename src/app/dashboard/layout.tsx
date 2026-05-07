@@ -8,23 +8,32 @@ import HeaderRiotLink from "./HeaderRiotLink";
 import MemberSidebar from "./MemberSidebar";
 
 const BASE_TABS = [
-  { href: "/dashboard", label: "대시보드", emoji: "🏠" },
-  { href: "/dashboard/riot-connect", label: "라이엇 연동 방법", emoji: "🔗" },
-  { href: "/dashboard/valorant", label: "전적", emoji: "🎯" },
-  { href: "/dashboard/store", label: "상점", emoji: "🛍️" },
-  { href: "/dashboard/stats", label: "통계 분석", emoji: "📊" },
-  { href: "/dashboard/scrim", label: "내전", emoji: "⚔️" },
-  { href: "/dashboard/schedule", label: "일정", emoji: "📅" },
-  { href: "/dashboard/announce", label: "공지", emoji: "📢" },
-  { href: "/dashboard/vote", label: "투표", emoji: "🗳️" },
-  { href: "/dashboard/points", label: "포인트", emoji: "💎" },
-  { href: "/dashboard/market", label: "장터", emoji: "🛒" },
-  { href: "/dashboard/highlight", label: "하이라이트", emoji: "🎬" },
-  { href: "/dashboard/search", label: "전적 검색", emoji: "🔎" },
-  { href: "/dashboard/members", label: "멤버", emoji: "👥" },
+  { href: "/dashboard", label: "대시보드", icon: "⌂" },
+  { href: "/dashboard/riot-connect", label: "라이엇 연동", icon: "⛓" },
+  { href: "/dashboard/valorant", label: "전적", icon: "◎" },
+  { href: "/dashboard/store", label: "상점", icon: "▣" },
+  { href: "/dashboard/stats", label: "통계 분석", icon: "▥" },
+  { href: "/dashboard/scrim", label: "내전", icon: "⚔" },
+  { href: "/dashboard/schedule", label: "일정", icon: "▤" },
+  { href: "/dashboard/announce", label: "공지", icon: "▰" },
+  { href: "/dashboard/vote", label: "투표", icon: "◆" },
+  { href: "/dashboard/points", label: "포인트", icon: "◇" },
+  { href: "/dashboard/market", label: "장터", icon: "▧" },
+  { href: "/dashboard/highlight", label: "하이라이트", icon: "▸" },
+  { href: "/dashboard/search", label: "전적 검색", icon: "⌕" },
+  { href: "/dashboard/members", label: "멤버", icon: "●" },
 ];
 
-const ADMIN_TAB = { href: "/dashboard/admin", label: "관리", emoji: "🛠️" };
+const ADMIN_TAB = { href: "/dashboard/admin", label: "관리", icon: "!" };
+
+function ValorantMark() {
+  return (
+    <span className="val-logo-mark" aria-hidden="true">
+      <span />
+      <span />
+    </span>
+  );
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -46,7 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (status === "loading" || status === "unauthenticated") {
     return (
       <div className="min-h-screen bg-[#0f1923] flex items-center justify-center">
-        <div className="w-1.5 h-1.5 rounded-full bg-[#ff4655] animate-pulse" />
+        <div className="val-loader" />
       </div>
     );
   }
@@ -57,13 +66,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     .find((tab) => pathname === tab.href || pathname.startsWith(tab.href + "/"))?.href;
 
   return (
-    <div className="min-h-screen bg-[#0f1923] flex flex-col">
-      <div className="h-[2px] w-full bg-gradient-to-r from-[#ff4655] via-[#ff4655]/50 to-transparent flex-shrink-0" />
+    <div className="val-shell min-h-screen flex flex-col">
+      <div className="val-page-art" aria-hidden="true" />
+      <div className="val-top-scan" aria-hidden="true" />
 
-      <header className="bg-[#111c24] border-b border-[#2a3540] flex-shrink-0">
-        <div className="max-w-screen-2xl mx-auto px-4 h-11 flex items-center justify-between">
-          <Link href="/dashboard" className="font-black text-sm tracking-[0.2em] text-white">
-            VALO<span className="text-[#ff4655]">SEGI</span>
+      <header className="val-topbar flex-shrink-0">
+        <div className="max-w-screen-2xl mx-auto px-4 h-14 flex items-center justify-between">
+          <Link href="/dashboard" className="group flex items-center gap-3">
+            <ValorantMark />
+            <span className="font-black text-[15px] tracking-[0.24em] text-white">
+              VALO<span className="text-[#ff4655]">SEGI</span>
+            </span>
           </Link>
 
           <div className="flex items-center gap-3">
@@ -72,15 +85,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <img
                 src={session.user.image}
                 alt="avatar"
-                className="w-7 h-7 rounded-full border border-[#2a3540]"
+                className="w-8 h-8 rounded-full border border-[#ff4655]/40 shadow-[0_0_18px_rgba(255,70,85,0.18)]"
               />
             )}
             {session?.user?.name && (
-              <span className="text-[#ece8e1] text-xs hidden sm:block">{session.user.name}</span>
+              <span className="text-[#ece8e1] text-xs font-bold hidden sm:block">{session.user.name}</span>
             )}
             <button
               onClick={() => signOut({ callbackUrl: "/" })}
-              className="text-[#7b8a96] hover:text-white text-xs transition-colors px-2 py-1 border border-[#2a3540] hover:border-[#7b8a96] rounded"
+              className="val-mini-button"
             >
               로그아웃
             </button>
@@ -88,8 +101,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      <nav className="bg-[#0d1821] border-b-2 border-[#1a242d] flex-shrink-0 overflow-x-auto">
-        <div className="max-w-screen-2xl mx-auto px-2 flex items-stretch gap-0 min-w-max">
+      <nav className="val-nav flex-shrink-0 overflow-x-auto">
+        <div className="max-w-screen-2xl mx-auto px-2 flex items-stretch gap-1 min-w-max">
           {tabs.map((tab) => {
             const isActive = tab.href === activeHref;
 
@@ -97,14 +110,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`relative flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-all ${
-                  isActive
-                    ? "text-white bg-[#ff4655]/10 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-[#ff4655]"
-                    : "text-[#7b8a96] hover:text-[#ece8e1] hover:bg-white/[0.03]"
-                }`}
+                className={`val-nav-link ${isActive ? "is-active" : ""}`}
               >
-                <span className="leading-none text-sm" aria-hidden="true">
-                  {tab.emoji}
+                <span className="val-nav-icon" aria-hidden="true">
+                  {tab.icon}
                 </span>
                 <span>{tab.label}</span>
               </Link>
@@ -113,7 +122,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </nav>
 
-      <div className="flex-1 max-w-screen-2xl w-full mx-auto px-4 py-6 flex gap-5 items-start">
+      <div className="relative z-10 flex-1 max-w-screen-2xl w-full mx-auto px-4 py-6 flex gap-5 items-start">
         <main className="flex-1 min-w-0">{children}</main>
         <MemberSidebar />
       </div>

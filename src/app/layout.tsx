@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Valorant Dashboard",
-  description: "발로란트 통계 대시보드",
+  description: "발로란트 서버 대시보드",
 };
 
 export default function RootLayout({
@@ -26,8 +26,8 @@ export default function RootLayout({
   return (
     <html lang="ko" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-[#0f1923] text-white">
-          <Providers>{children}</Providers>
-        </body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

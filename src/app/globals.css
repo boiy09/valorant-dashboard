@@ -3,6 +3,7 @@
 :root {
   --val-red: #ff4655;
   --val-red-dark: #cc3644;
+  --val-teal: #0fffd0;
   --val-bg: #0f1923;
   --val-bg-2: #1a242d;
   --val-bg-3: #111c24;
@@ -17,7 +18,10 @@
 }
 
 body {
-  background: var(--val-bg);
+  background:
+    radial-gradient(circle at 18% -12%, rgba(255, 70, 85, 0.18), transparent 28%),
+    radial-gradient(circle at 92% 6%, rgba(15, 255, 208, 0.08), transparent 28%),
+    linear-gradient(180deg, #08111a 0%, var(--val-bg) 42%, #09131c 100%);
   color: var(--val-text);
   font-family: Arial, Helvetica, sans-serif;
   scrollbar-width: thin;
@@ -48,10 +52,13 @@ body {
 }
 
 .val-card {
-  background: var(--val-bg-2);
+  background:
+    linear-gradient(135deg, rgba(255, 70, 85, 0.05), transparent 34%),
+    linear-gradient(180deg, rgba(26, 36, 45, 0.96), rgba(18, 29, 39, 0.96));
   border: 1px solid var(--val-border);
   position: relative;
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
 }
 
 .val-card::before {
@@ -116,4 +123,218 @@ body {
 .stat-highlight {
   background: linear-gradient(135deg, rgba(255,70,85,0.08) 0%, transparent 60%);
   border-left: 2px solid var(--val-red);
+}
+
+.val-shell {
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(9, 19, 28, 0.92), rgba(9, 19, 28, 0.98));
+  background-size: 44px 44px, 44px 44px, auto;
+}
+
+.val-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, rgba(255, 70, 85, 0.12) 0 8%, transparent 8% 100%),
+    repeating-linear-gradient(135deg, transparent 0 18px, rgba(255, 255, 255, 0.018) 18px 19px);
+}
+
+.val-shell::after {
+  content: "";
+  position: fixed;
+  right: -4vw;
+  bottom: -12vh;
+  z-index: -2;
+  width: min(42vw, 580px);
+  height: min(82vh, 860px);
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(9, 19, 28, 0), rgba(9, 19, 28, 0.8)),
+    url("https://media.valorant-api.com/agents/add6443a-41bd-e414-f6ad-e58d267f4e95/fullportrait.png") center bottom / contain no-repeat;
+  opacity: 0.2;
+  filter: saturate(1.2) contrast(1.08);
+}
+
+.val-page-art {
+  position: fixed;
+  left: -8vw;
+  bottom: -20vh;
+  z-index: -2;
+  width: min(38vw, 520px);
+  height: min(78vh, 780px);
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(9, 19, 28, 0), rgba(9, 19, 28, 0.88)),
+    url("https://media.valorant-api.com/agents/a3bfb853-43b2-7238-a4f1-ad90e9e46bcc/fullportrait.png") center bottom / contain no-repeat;
+  opacity: 0.12;
+  transform: scaleX(-1);
+}
+
+.val-top-scan {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, rgba(255, 70, 85, 0.08) 50%, transparent 100%);
+  height: 16vh;
+  opacity: 0.18;
+  animation: scanline 9s linear infinite;
+}
+
+.val-topbar {
+  position: relative;
+  z-index: 20;
+  background:
+    linear-gradient(90deg, rgba(255, 70, 85, 0.1), transparent 26%),
+    rgba(12, 24, 34, 0.92);
+  border-top: 2px solid var(--val-red);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.val-topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(15, 255, 208, 0.5), transparent);
+}
+
+.val-logo-mark {
+  position: relative;
+  display: inline-flex;
+  width: 26px;
+  height: 22px;
+  align-items: flex-end;
+  justify-content: center;
+  filter: drop-shadow(0 0 12px rgba(255, 70, 85, 0.34));
+}
+
+.val-logo-mark span {
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 20px;
+  background: var(--val-red);
+}
+
+.val-logo-mark span:first-child {
+  left: 2px;
+  clip-path: polygon(0 0, 100% 78%, 72% 100%, 0 40%);
+}
+
+.val-logo-mark span:last-child {
+  right: 2px;
+  clip-path: polygon(100% 0, 100% 40%, 28% 100%, 0 78%);
+}
+
+.val-nav {
+  position: relative;
+  z-index: 20;
+  background: rgba(8, 17, 25, 0.9);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(12px);
+}
+
+.val-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 15px;
+  color: var(--val-muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.val-nav-link:hover {
+  color: var(--val-text);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.val-nav-link.is-active {
+  color: white;
+  background:
+    linear-gradient(135deg, rgba(255, 70, 85, 0.18), transparent 72%),
+    rgba(255, 70, 85, 0.06);
+}
+
+.val-nav-link.is-active::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 2px;
+  background: var(--val-red);
+  box-shadow: 0 0 16px rgba(255, 70, 85, 0.6);
+}
+
+.val-nav-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  color: var(--val-red);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.val-mini-button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--val-muted);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.val-mini-button:hover {
+  color: white;
+  border-color: rgba(255, 70, 85, 0.65);
+  background: rgba(255, 70, 85, 0.12);
+}
+
+.val-loader {
+  width: 34px;
+  height: 34px;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--val-red);
+  border-right-color: var(--val-teal);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 900px) {
+  .val-shell::after,
+  .val-page-art {
+    opacity: 0.08;
+    width: 70vw;
+  }
+
+  .val-nav-link {
+    padding-inline: 12px;
+  }
 }

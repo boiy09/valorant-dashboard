@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ActivityChart from "./ActivityChart";
 import AttendanceCalendar from "./AttendanceCalendar";
 import BotStatus from "./BotStatus";
 
@@ -100,7 +99,6 @@ export default function ActivityPageClient() {
     { label: "Attendance", value: activity ? `${activity.attendanceCount}d` : "--" },
   ];
 
-  const activityEmptyText = activityReady ? "No activity data yet." : "Loading...";
   const attendanceEmptyText = activityReady ? "No attendance data yet." : "Loading...";
 
   return (
@@ -116,17 +114,6 @@ export default function ActivityPageClient() {
                 <div className="text-xl font-black text-white">{item.value}</div>
               </div>
             ))}
-          </div>
-
-          <div className="val-card p-5">
-            <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">Weekly Activity</div>
-            {activity ? (
-              <ActivityChart data={activity.weeklyData} />
-            ) : (
-              <div className="flex h-20 items-center justify-center text-sm text-[#7b8a96]">
-                {activityEmptyText}
-              </div>
-            )}
           </div>
 
           <div className="val-card p-5">

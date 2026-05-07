@@ -55,6 +55,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="val-shell min-h-screen flex flex-col">
       <div className="val-page-art" aria-hidden="true" />
+      <div className="val-page-art-extra val-page-art-extra-left" aria-hidden="true" />
+      <div className="val-page-art-extra val-page-art-extra-right" aria-hidden="true" />
       <div className="val-top-scan" aria-hidden="true" />
 
       <header className="val-topbar flex-shrink-0">

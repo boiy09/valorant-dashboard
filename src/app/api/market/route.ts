@@ -9,12 +9,12 @@ async function getUser(session: any) {
 }
 
 export async function GET(req: NextRequest) {
-  const status = req.nextUrl.searchParams.get("status") ?? "sale";
+  const status = req.nextUrl.searchParams.get("status");
   const category = req.nextUrl.searchParams.get("category");
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "20");
 
   const posts = await prisma.marketPost.findMany({
-    where: { status, ...(category ? { category } : {}) },
+    where: { ...(status ? { status } : {}), ...(category ? { category } : {}) },
     include: { user: { select: { name: true, discordId: true, image: true } } },
     orderBy: { createdAt: "desc" },
     take: limit,

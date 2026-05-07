@@ -150,7 +150,7 @@ body {
 .val-shell::after {
   content: "";
   position: fixed;
-  right: -7vw;
+  right: -11vw;
   bottom: -7vh;
   z-index: -2;
   width: min(52vw, 900px);
@@ -166,7 +166,7 @@ body {
 
 .val-page-art {
   position: fixed;
-  left: -9vw;
+  left: -13vw;
   bottom: -7vh;
   z-index: -2;
   width: min(52vw, 880px);
@@ -193,6 +193,10 @@ body {
     url("https://media.valorant-api.com/agents/bb2a4828-46eb-8cd1-e765-15848195d751/fullportrait.png") center bottom / contain no-repeat;
   opacity: 0.68;
   filter: saturate(1.28) contrast(1.14) drop-shadow(0 0 48px rgba(15, 255, 208, 0.22));
+}
+
+.val-dashboard-frame {
+  max-width: min(1360px, calc(100vw - clamp(32px, 12vw, 240px)));
 }
 
 .val-top-scan {
@@ -345,6 +349,10 @@ body {
 }
 
 @media (max-width: 900px) {
+  .val-dashboard-frame {
+    max-width: 100%;
+  }
+
   .val-shell::after,
   .val-page-art {
     opacity: 0.18;

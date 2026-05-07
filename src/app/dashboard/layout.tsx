@@ -118,7 +118,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </nav>
 
-      <div className="relative z-10 flex-1 max-w-screen-2xl w-full mx-auto px-4 py-6 flex gap-5 items-start">
+      <div className="val-dashboard-frame relative z-10 flex-1 w-full mx-auto px-4 py-6 flex gap-5 items-start">
         <main className="flex-1 min-w-0">{children}</main>
         <MemberSidebar />
       </div>

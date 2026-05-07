@@ -142,7 +142,6 @@ export async function GET(req: NextRequest) {
     return {
       region,
       tier: normalizeTier(rank?.tierName),
-      icon: rank?.rankIcon ?? null,
     };
   });
 
@@ -150,18 +149,16 @@ export async function GET(req: NextRequest) {
     KR: Object.fromEntries(DETAIL_TIERS.map((tier) => [tier, 0])) as Record<DetailTier, number>,
     AP: Object.fromEntries(DETAIL_TIERS.map((tier) => [tier, 0])) as Record<DetailTier, number>,
   };
-  const iconByTier: Partial<Record<DetailTier, string | null>> = {};
 
   for (const account of rankedAccounts) {
     const region = account.region as "KR" | "AP";
     countsByRegion[region][account.tier] += 1;
-    if (account.icon) iconByTier[account.tier] = account.icon;
   }
 
   return Response.json({
     regions: {
-      KR: await buildRegion("KR", countsByRegion.KR, iconByTier),
-      AP: await buildRegion("AP", countsByRegion.AP, iconByTier),
+      KR: await buildRegion("KR", countsByRegion.KR),
+      AP: await buildRegion("AP", countsByRegion.AP),
     },
     generatedAt: new Date().toISOString(),
   });
@@ -170,15 +167,14 @@ export async function GET(req: NextRequest) {
 async function buildEmptyRegions() {
   const empty = Object.fromEntries(DETAIL_TIERS.map((tier) => [tier, 0])) as Record<DetailTier, number>;
   return {
-    KR: await buildRegion("KR", empty, {}),
-    AP: await buildRegion("AP", empty, {}),
+    KR: await buildRegion("KR", empty),
+    AP: await buildRegion("AP", empty),
   };
 }
 
 async function buildRegion(
   region: "KR" | "AP",
-  counts: Record<DetailTier, number>,
-  iconByTier: Partial<Record<DetailTier, string | null>>
+  counts: Record<DetailTier, number>
 ) {
   const total = DETAIL_TIERS.reduce((sum, tier) => sum + counts[tier], 0);
   const tiers = await Promise.all(
@@ -188,7 +184,7 @@ async function buildRegion(
       color: TIER_META[tier].color,
       count: counts[tier],
       percent: total > 0 ? Math.round((counts[tier] / total) * 1000) / 10 : 0,
-      icon: iconByTier[tier] ?? (await getRankIconByTier(TIER_IDS[tier])),
+      icon: await getRankIconByTier(TIER_IDS[tier]),
     }))
   );
 

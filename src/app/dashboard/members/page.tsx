@@ -102,6 +102,7 @@ export default function MembersPage() {
   const valonekkis = filteredMembers.filter((member) => getRoleGroup(member.roles) === "valonekki");
   const valosegis = filteredMembers.filter((member) => getRoleGroup(member.roles) === "valosegi");
   const rest = filteredMembers.filter((member) => getRoleGroup(member.roles) === "member");
+  const isRoleFiltered = selectedRole !== "all";
 
   return (
     <div>
@@ -156,12 +157,18 @@ export default function MembersPage() {
             </div>
           </div>
 
-          <div className="mb-6 grid gap-4 xl:grid-cols-3">
-            <PinnedRoleSection title="⭐ 관리자" members={admins} emptyText="관리자 역할 멤버가 없습니다." />
-            <PinnedRoleSection title="⚜️ 발로네끼" members={valonekkis} emptyText="발로네끼 역할 멤버가 없습니다." />
-            <PinnedRoleSection title="⚜️ 발로세끼" members={valosegis} emptyText="발로세끼 역할 멤버가 없습니다." />
-          </div>
-          <MemberSection title="멤버" members={rest} />
+          {isRoleFiltered ? (
+            <MemberSection title={`${selectedRole} 필터 결과`} members={filteredMembers} showEmpty />
+          ) : (
+            <>
+              <div className="mb-6 grid gap-4">
+                <PinnedRoleSection title="⭐ 관리자" members={admins} emptyText="관리자 역할 멤버가 없습니다." />
+                <PinnedRoleSection title="⚜️ 발로네끼" members={valonekkis} emptyText="발로네끼 역할 멤버가 없습니다." />
+                <PinnedRoleSection title="⚜️ 발로세끼" members={valosegis} emptyText="발로세끼 역할 멤버가 없습니다." />
+              </div>
+              <MemberSection title="멤버" members={rest} />
+            </>
+          )}
         </>
       )}
     </div>
@@ -192,19 +199,33 @@ function PinnedRoleSection({ title, members, emptyText }: { title: string; membe
   );
 }
 
-function MemberSection({ title, members, highlight }: { title: string; members: Member[]; highlight?: boolean }) {
-  if (members.length === 0) return null;
+function MemberSection({
+  title,
+  members,
+  highlight,
+  showEmpty,
+}: {
+  title: string;
+  members: Member[];
+  highlight?: boolean;
+  showEmpty?: boolean;
+}) {
+  if (members.length === 0 && !showEmpty) return null;
 
   return (
     <div className="mb-6">
       <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">
         {title} ({members.length})
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {members.map((member) => (
-          <MemberCard key={member.id} member={member} highlight={highlight} />
-        ))}
-      </div>
+      {members.length === 0 ? (
+        <div className="val-card p-10 text-center text-sm text-[#7b8a96]">조건에 맞는 멤버가 없습니다.</div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {members.map((member) => (
+            <MemberCard key={member.id} member={member} highlight={highlight} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -242,13 +263,13 @@ function MemberCard({ member, highlight }: { member: Member; highlight?: boolean
         </div>
       </div>
 
-      <div className="mt-3 space-y-2">
+      <div className="mt-3 grid grid-cols-1 gap-2 xl:grid-cols-2">
         {member.riotAccounts.length > 0 ? (
-          member.riotAccounts.map((account) => (
-            <RiotAccountRow key={`${account.region}:${account.riotId}`} account={account} />
-          ))
+          [...member.riotAccounts]
+            .sort((a, b) => (a.region === "KR" ? -1 : 1) - (b.region === "KR" ? -1 : 1))
+            .map((account) => <RiotAccountRow key={`${account.region}:${account.riotId}`} account={account} />)
         ) : (
-          <div className="rounded border border-[#263442] bg-[#0b1721]/60 px-3 py-2 text-xs text-[#7b8a96]">
+          <div className="rounded border border-[#263442] bg-[#0b1721]/60 px-3 py-2 text-xs text-[#7b8a96] xl:col-span-2">
             Riot 계정 미연동
           </div>
         )}

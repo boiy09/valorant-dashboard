@@ -52,6 +52,15 @@ interface TierDistributionData {
   generatedAt: string;
 }
 
+interface TierDistributionGroup {
+  key: string;
+  label: string;
+  color: string;
+  count: number;
+  percent: number;
+  tiers: TierDistributionItem[];
+}
+
 function fmtRankingTime(seconds: number, hours: number, minutes: number) {
   if (seconds < 60) return `${seconds}s`;
   if (hours > 0) return `${hours}h ${minutes}m`;
@@ -68,6 +77,42 @@ function fmtDateRange(period: RankingPeriod | null) {
 function getVisibleTiers(region: TierDistributionRegion) {
   const active = region.tiers.filter((tier) => tier.count > 0);
   return active.length > 0 ? active : region.tiers.slice(0, 1);
+}
+
+function getTierGroupKey(tier: TierDistributionItem) {
+  if (tier.key === "UNRANKED" || tier.key === "RADIANT") return tier.key;
+  return tier.key.split("_")[0] ?? tier.key;
+}
+
+function getTierGroupLabel(tier: TierDistributionItem) {
+  if (tier.key === "UNRANKED" || tier.key === "RADIANT") return tier.label;
+  return tier.label.replace(/\s+[123]$/, "");
+}
+
+function getVisibleTierGroups(region: TierDistributionRegion): TierDistributionGroup[] {
+  const visibleTiers = getVisibleTiers(region);
+  const groups = new Map<string, TierDistributionGroup>();
+
+  for (const tier of visibleTiers) {
+    const key = getTierGroupKey(tier);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count += tier.count;
+      existing.percent = region.total > 0 ? Math.round((existing.count / region.total) * 1000) / 10 : 0;
+      existing.tiers.push(tier);
+    } else {
+      groups.set(key, {
+        key,
+        label: getTierGroupLabel(tier),
+        color: tier.color,
+        count: tier.count,
+        percent: tier.percent,
+        tiers: [tier],
+      });
+    }
+  }
+
+  return Array.from(groups.values());
 }
 
 function getPieStyle(region: TierDistributionRegion): CSSProperties {
@@ -142,6 +187,7 @@ function TierDistributionChart({
   chartType: "bar" | "pie";
 }) {
   const visibleTiers = getVisibleTiers(region);
+  const visibleGroups = getVisibleTierGroups(region);
 
   return (
     <div className="border border-[#263442] bg-[#0b1721]/60 p-4">
@@ -159,23 +205,48 @@ function TierDistributionChart({
         </div>
       ) : chartType === "bar" ? (
         <div className="space-y-3">
-          {visibleTiers.map((tier) => (
-            <div key={tier.key}>
+          {visibleGroups.map((group) => (
+            <div key={group.key}>
               <div className="mb-1 flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 font-bold text-white">
-                  {tier.icon ? <img src={tier.icon} alt={tier.label} className="h-5 w-5 object-contain" /> : null}
-                  {tier.label}
+                  {group.tiers[0]?.icon ? (
+                    <img src={group.tiers[0].icon} alt={group.label} className="h-5 w-5 object-contain" />
+                  ) : null}
+                  {group.label}
                 </span>
                 <span className="text-[#8da0ad]">
-                  {tier.count}명 · {tier.percent}%
+                  {group.count}명 · {group.percent}%
                 </span>
               </div>
               <div className="h-3 overflow-hidden bg-[#172431]">
                 <div
-                  className="h-full"
-                  style={{ width: `${Math.max(tier.percent, 3)}%`, backgroundColor: tier.color }}
-                />
+                  className="flex h-full overflow-hidden"
+                  style={{ width: `${Math.max(group.percent, 3)}%` }}
+                >
+                  {group.tiers.map((tier) => (
+                    <div
+                      key={tier.key}
+                      className="h-full border-r border-[#0b1721]/70 last:border-r-0"
+                      title={`${tier.label} ${tier.count}명`}
+                      style={{
+                        width: `${Math.max((tier.count / group.count) * 100, 6)}%`,
+                        backgroundColor: tier.color,
+                        filter: `brightness(${0.9 + Number(tier.key.match(/[123]$/)?.[0] ?? 1) * 0.08})`,
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
+              {group.tiers.length > 1 ? (
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {group.tiers.map((tier) => (
+                    <span key={tier.key} className="inline-flex items-center gap-1 text-[10px] font-bold text-[#8da0ad]">
+                      {tier.icon ? <img src={tier.icon} alt={tier.label} className="h-4 w-4 object-contain" /> : null}
+                      {tier.label} {tier.count}명
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

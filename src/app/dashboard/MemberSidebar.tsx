@@ -12,40 +12,40 @@ interface Member {
   isOnline: boolean;
 }
 
-type RoleGroup = "관리자" | "어시스트" | "일반";
-type SectionKey = "관리자" | "어시스트" | "온라인" | "오프라인";
+type RoleGroup = "admin" | "valonekki" | "member";
+type SectionKey = "admin" | "valonekki" | "online" | "offline";
 
-const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
-const ASSIST_ROLE_KEYWORDS = ["어시스트", "assistant", "assist", "staff", "스태프", "매니저"];
+const ADMIN_ROLE_NAME = "관리자";
+const VALONEKKI_ROLE_NAME = "발로네끼";
 
 const SECTION_STYLES: Record<
   SectionKey,
   { label: string; emoji: string; dot: string; text: string; ring: string }
 > = {
-  관리자: {
+  admin: {
     label: "관리자",
-    emoji: "🛡️",
+    emoji: "⭐",
     dot: "bg-[#ff4655]",
     text: "text-[#ff4655]",
     ring: "ring-1 ring-[#ff4655]/60",
   },
-  어시스트: {
-    label: "어시스트",
-    emoji: "🧩",
+  valonekki: {
+    label: "발로네끼",
+    emoji: "⚜️",
     dot: "bg-orange-400",
     text: "text-orange-400",
     ring: "ring-1 ring-orange-400/60",
   },
-  온라인: {
+  online: {
     label: "온라인",
-    emoji: "🟢",
+    emoji: "●",
     dot: "bg-green-400",
     text: "text-[#7b8a96]",
     ring: "",
   },
-  오프라인: {
+  offline: {
     label: "오프라인",
-    emoji: "⚫",
+    emoji: "●",
     dot: "bg-[#3a4a56]",
     text: "text-[#4a5a68]",
     ring: "",
@@ -56,17 +56,15 @@ function normalizeRoleName(role: string) {
   return role.trim().toLowerCase();
 }
 
-function hasMatchingRole(roles: string[], keywords: string[]) {
-  const normalizedRoles = roles.map(normalizeRoleName);
-  return normalizedRoles.some((role) =>
-    keywords.some((keyword) => role.includes(keyword.toLowerCase()))
-  );
+function hasExactRole(roles: string[], roleName: string) {
+  const normalizedRoleName = normalizeRoleName(roleName);
+  return roles.some((role) => normalizeRoleName(role) === normalizedRoleName);
 }
 
 function getRoleGroup(roles: string[]): RoleGroup {
-  if (hasMatchingRole(roles, ADMIN_ROLE_KEYWORDS)) return "관리자";
-  if (hasMatchingRole(roles, ASSIST_ROLE_KEYWORDS)) return "어시스트";
-  return "일반";
+  if (hasExactRole(roles, ADMIN_ROLE_NAME)) return "admin";
+  if (hasExactRole(roles, VALONEKKI_ROLE_NAME)) return "valonekki";
+  return "member";
 }
 
 export default function MemberSidebar() {
@@ -81,32 +79,28 @@ export default function MemberSidebar() {
       .finally(() => setLoading(false));
   }, []);
 
-  const admins = members.filter((member) => getRoleGroup(member.roles) === "관리자");
-  const assists = members.filter((member) => getRoleGroup(member.roles) === "어시스트");
-  const onlines = members.filter(
-    (member) => getRoleGroup(member.roles) === "일반" && member.isOnline
-  );
-  const offlines = members.filter(
-    (member) => getRoleGroup(member.roles) === "일반" && !member.isOnline
-  );
+  const admins = members.filter((member) => getRoleGroup(member.roles) === "admin");
+  const valonekkis = members.filter((member) => getRoleGroup(member.roles) === "valonekki");
+  const onlines = members.filter((member) => getRoleGroup(member.roles) === "member" && member.isOnline);
+  const offlines = members.filter((member) => getRoleGroup(member.roles) === "member" && !member.isOnline);
   const onlineCount = members.filter((member) => member.isOnline).length;
 
   const sections = [
-    { key: "관리자", members: admins },
-    { key: "어시스트", members: assists },
-    { key: "온라인", members: onlines },
-    { key: "오프라인", members: offlines },
+    { key: "admin", members: admins },
+    { key: "valonekki", members: valonekkis },
+    { key: "online", members: onlines },
+    { key: "offline", members: offlines },
   ] as const satisfies ReadonlyArray<{ key: SectionKey; members: Member[] }>;
 
   return (
     <aside className="w-52 flex-shrink-0">
-      <div className="sticky top-6 bg-[#111c24] border border-[#2a3540] rounded overflow-hidden">
-        <div className="px-3 py-2.5 border-b border-[#2a3540] flex items-center justify-between">
-          <span className="text-[#7b8a96] text-[10px] tracking-widest uppercase">서버 멤버</span>
+      <div className="sticky top-6 overflow-hidden rounded border border-[#2a3540] bg-[#111c24]">
+        <div className="flex items-center justify-between border-b border-[#2a3540] px-3 py-2.5">
+          <span className="text-[10px] uppercase tracking-widest text-[#7b8a96]">서버 멤버</span>
           {!loading && (
             <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-              <span className="text-[#7b8a96] text-[10px]">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+              <span className="text-[10px] text-[#7b8a96]">
                 {onlineCount} / {members.length}
               </span>
             </div>
@@ -114,18 +108,18 @@ export default function MemberSidebar() {
         </div>
 
         <div
-          className="member-scroll overflow-y-auto max-h-[calc(100vh-10rem)]"
+          className="member-scroll max-h-[calc(100vh-10rem)] overflow-y-auto"
           style={{
             scrollbarWidth: "thin",
             scrollbarColor: "rgba(255,70,85,0.45) transparent",
           }}
         >
           {loading ? (
-            <div className="p-4 flex items-center justify-center">
-              <div className="w-2.5 h-2.5 border-2 border-[#ff4655] border-t-transparent rounded-full animate-spin" />
+            <div className="flex items-center justify-center p-4">
+              <div className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-[#ff4655] border-t-transparent" />
             </div>
           ) : members.length === 0 ? (
-            <div className="p-4 text-center text-[#7b8a96] text-xs">멤버가 없습니다.</div>
+            <div className="p-4 text-center text-xs text-[#7b8a96]">멤버가 없습니다.</div>
           ) : (
             <div>
               {sections.map(({ key, members: sectionMembers }) => {
@@ -133,11 +127,11 @@ export default function MemberSidebar() {
 
                 return (
                   <div key={key}>
-                    <div className="px-3 pt-2.5 pb-1 flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 px-3 pb-1 pt-2.5">
                       <span className="text-[10px]" aria-hidden="true">
                         {style.emoji}
                       </span>
-                      <span className={`text-[9px] tracking-widest uppercase font-bold ${style.text}`}>
+                      <span className={`text-[9px] font-bold uppercase tracking-widest ${style.text}`}>
                         {style.label} · {sectionMembers.length}
                       </span>
                     </div>
@@ -156,38 +150,32 @@ export default function MemberSidebar() {
 }
 
 function MemberRow({ member, sectionKey }: { member: Member; sectionKey: SectionKey }) {
-  const displayName = member.name || "알 수 없음";
+  const displayName = member.name || "이름 없음";
   const initial = displayName.charAt(0).toUpperCase();
   const style = SECTION_STYLES[sectionKey];
-  const isOffline = sectionKey === "오프라인";
+  const isOffline = sectionKey === "offline";
 
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.03] transition-colors ${
+      className={`flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-white/[0.03] ${
         isOffline ? "opacity-40" : ""
       }`}
     >
       <div className="relative flex-shrink-0">
         {member.image ? (
-          <img
-            src={member.image}
-            alt={displayName}
-            className={`w-6 h-6 rounded-full object-cover ${style.ring}`}
-          />
+          <img src={member.image} alt={displayName} className={`h-6 w-6 rounded-full object-cover ${style.ring}`} />
         ) : (
           <div
-            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-[#2a3540] text-[#7b8a96] ${style.ring}`}
+            className={`flex h-6 w-6 items-center justify-center rounded-full bg-[#2a3540] text-[10px] font-bold text-[#7b8a96] ${style.ring}`}
           >
             {initial}
           </div>
         )}
-        <span
-          className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#111c24] ${style.dot}`}
-        />
+        <span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-[#111c24] ${style.dot}`} />
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-xs text-[#ece8e1] truncate">{displayName}</div>
-        {member.riotId && <div className="text-[9px] text-[#4a5a68] truncate">{member.riotId}</div>}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-xs text-[#ece8e1]">{displayName}</div>
+        {member.riotId && <div className="truncate text-[9px] text-[#4a5a68]">{member.riotId}</div>}
       </div>
     </div>
   );

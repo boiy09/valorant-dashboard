@@ -231,34 +231,6 @@ body {
   background: linear-gradient(90deg, transparent, rgba(15, 255, 208, 0.5), transparent);
 }
 
-.val-logo-mark {
-  position: relative;
-  display: inline-flex;
-  width: 26px;
-  height: 22px;
-  align-items: flex-end;
-  justify-content: center;
-  filter: drop-shadow(0 0 12px rgba(255, 70, 85, 0.34));
-}
-
-.val-logo-mark span {
-  position: absolute;
-  bottom: 0;
-  width: 10px;
-  height: 20px;
-  background: var(--val-red);
-}
-
-.val-logo-mark span:first-child {
-  left: 2px;
-  clip-path: polygon(0 0, 100% 78%, 72% 100%, 0 40%);
-}
-
-.val-logo-mark span:last-child {
-  right: 2px;
-  clip-path: polygon(100% 0, 100% 40%, 28% 100%, 0 78%);
-}
-
 .val-nav {
   position: relative;
   z-index: 20;

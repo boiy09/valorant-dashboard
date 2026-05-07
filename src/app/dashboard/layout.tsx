@@ -22,15 +22,6 @@ const BASE_TABS = [
 
 const ADMIN_TAB = { href: "/dashboard/admin", label: "관리", icon: "!" };
 
-function ValorantMark() {
-  return (
-    <span className="val-logo-mark" aria-hidden="true">
-      <span />
-      <span />
-    </span>
-  );
-}
-
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -69,7 +60,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <header className="val-topbar flex-shrink-0">
         <div className="max-w-screen-2xl mx-auto px-4 h-14 flex items-center justify-between">
           <Link href="/dashboard" className="group flex items-center gap-3">
-            <ValorantMark />
+            <img
+              src="/valosegi-logo.webp"
+              alt="VALOSEGI"
+              className="h-9 w-9 rounded-md object-cover border border-[#ff4655]/40 shadow-[0_0_18px_rgba(255,70,85,0.2)]"
+            />
             <span className="font-black text-[15px] tracking-[0.24em] text-white">
               VALO<span className="text-[#ff4655]">SEGI</span>
             </span>

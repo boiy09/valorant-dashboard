@@ -16,6 +16,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Valorant Dashboard",
   description: "발로란트 서버 대시보드",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/valosegi-icon.png", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/valosegi-icon.png",
+  },
 };
 
 export default function RootLayout({

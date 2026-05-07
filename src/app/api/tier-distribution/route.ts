@@ -68,27 +68,12 @@ function toValorantRegion(region: string): ValorantRegion {
   return region.toUpperCase() === "AP" ? "ap" : "kr";
 }
 
-function divisionFromName(value: string) {
-  const match = value.match(/(?:^|\s)([123])(?:$|\s)/);
-  return match?.[1] ?? "1";
-}
+const TIER_ID_TO_KEY = Object.fromEntries(
+  Object.entries(TIER_IDS).map(([key, id]) => [id, key as DetailTier])
+) as Record<number, DetailTier>;
 
-function normalizeTier(tierName: string | null | undefined): DetailTier {
-  const raw = String(tierName ?? "").trim();
-  const normalized = raw.toLowerCase();
-  const division = divisionFromName(normalized);
-
-  if (!raw || normalized.includes("unrank") || raw.includes("언랭")) return "UNRANKED";
-  if (normalized.includes("radiant") || raw.includes("레디언트")) return "RADIANT";
-  if (normalized.includes("immortal") || raw.includes("불멸")) return `IMMORTAL_${division}` as DetailTier;
-  if (normalized.includes("ascendant") || raw.includes("초월")) return `ASCENDANT_${division}` as DetailTier;
-  if (normalized.includes("diamond") || raw.includes("다이아")) return `DIAMOND_${division}` as DetailTier;
-  if (normalized.includes("platinum") || raw.includes("플래")) return `PLATINUM_${division}` as DetailTier;
-  if (normalized.includes("gold") || raw.includes("골드")) return `GOLD_${division}` as DetailTier;
-  if (normalized.includes("silver") || raw.includes("실버")) return `SILVER_${division}` as DetailTier;
-  if (normalized.includes("bronze") || raw.includes("브론즈")) return `BRONZE_${division}` as DetailTier;
-  if (normalized.includes("iron") || raw.includes("아이언")) return `IRON_${division}` as DetailTier;
-  return "UNRANKED";
+function tierIdToDetailTier(tierId: number): DetailTier {
+  return TIER_ID_TO_KEY[tierId] ?? "UNRANKED";
 }
 
 async function settleInBatches<T, R>(items: T[], size: number, task: (item: T) => Promise<R>) {
@@ -141,7 +126,7 @@ export async function GET(req: NextRequest) {
 
     return {
       region,
-      tier: normalizeTier(rank?.tierName),
+      tier: tierIdToDetailTier(rank?.tierId ?? 0),
     };
   });
 

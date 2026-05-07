@@ -36,6 +36,7 @@ export interface PlayerProfile {
 export interface RankData {
   tier: string;
   tierName: string;
+  tierId: number;
   rr: number | null;
   rrChange: number | null;
   isCurrent: boolean;
@@ -586,6 +587,7 @@ export async function getRankByPuuid(
     return {
       tier: tierName,
       tierName,
+      tierId,
       rr,
       rrChange,
       isCurrent: currentTierId > 0 || Boolean(opGgRank?.isCurrent),

@@ -59,15 +59,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <header className="val-topbar flex-shrink-0">
         <div className="max-w-screen-2xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link href="/dashboard" className="group flex items-center gap-3">
+          <Link href="/dashboard" className="group flex items-center">
             <img
-              src="/valosegi-logo.webp"
-              alt="VALOSEGI"
-              className="h-9 w-9 rounded-md object-cover border border-[#ff4655]/40 shadow-[0_0_18px_rgba(255,70,85,0.2)]"
+              src="/valosegi-header-logo.webp"
+              alt="발로세끼"
+              className="h-12 w-auto max-w-[180px] object-contain"
             />
-            <span className="font-black text-[15px] tracking-[0.24em] text-white">
-              VALO<span className="text-[#ff4655]">SEGI</span>
-            </span>
           </Link>
 
           <div className="flex items-center gap-3">

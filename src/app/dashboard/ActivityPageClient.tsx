@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import AttendanceCalendar from "./AttendanceCalendar";
 import BotStatus from "./BotStatus";
 
@@ -28,10 +28,27 @@ interface RankingPeriod {
   end: string;
 }
 
-function fmtTime(seconds: number) {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return hours === 0 ? `${minutes}m` : `${hours}h ${minutes}m`;
+interface TierDistributionItem {
+  key: string;
+  label: string;
+  color: string;
+  count: number;
+  percent: number;
+}
+
+interface TierDistributionRegion {
+  region: "KR" | "AP";
+  label: string;
+  total: number;
+  tiers: TierDistributionItem[];
+}
+
+interface TierDistributionData {
+  regions: {
+    KR: TierDistributionRegion;
+    AP: TierDistributionRegion;
+  };
+  generatedAt: string;
 }
 
 function fmtRankingTime(seconds: number, hours: number, minutes: number) {
@@ -45,6 +62,142 @@ function fmtDateRange(period: RankingPeriod | null) {
 
   const format = (date: string) => date.replaceAll("-", ".");
   return `${format(period.start)} - ${format(period.end)}`;
+}
+
+function getVisibleTiers(region: TierDistributionRegion) {
+  const active = region.tiers.filter((tier) => tier.count > 0);
+  return active.length > 0 ? active : region.tiers.slice(0, 1);
+}
+
+function getPieStyle(region: TierDistributionRegion): CSSProperties {
+  const visibleTiers = getVisibleTiers(region);
+  if (region.total === 0) {
+    return { background: "conic-gradient(#263442 0deg 360deg)" };
+  }
+
+  let current = 0;
+  const segments = visibleTiers.map((tier) => {
+    const start = current;
+    const end = current + (tier.count / region.total) * 360;
+    current = end;
+    return `${tier.color} ${start}deg ${end}deg`;
+  });
+
+  return { background: `conic-gradient(${segments.join(", ")})` };
+}
+
+function TierDistributionPanel({
+  data,
+  ready,
+  chartType,
+  onChartTypeChange,
+}: {
+  data: TierDistributionData | null;
+  ready: boolean;
+  chartType: "bar" | "pie";
+  onChartTypeChange: (type: "bar" | "pie") => void;
+}) {
+  return (
+    <div className="val-card p-5">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-xs uppercase tracking-widest text-[#7b8a96]">Tier Distribution</div>
+          <div className="mt-1 text-sm text-[#8da0ad]">URL로 연동된 Riot 계정 기준</div>
+        </div>
+        <div className="flex gap-1">
+          {(["bar", "pie"] as const).map((type) => (
+            <button
+              key={type}
+              onClick={() => onChartTypeChange(type)}
+              className={`rounded px-3 py-1 text-xs font-bold transition-colors ${
+                chartType === type ? "bg-[#ff4655] text-white" : "text-[#7b8a96] hover:text-white"
+              }`}
+            >
+              {type === "bar" ? "막대" : "원형"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!ready ? (
+        <div className="py-10 text-center text-sm text-[#7b8a96]">티어 정보를 불러오는 중입니다.</div>
+      ) : !data ? (
+        <div className="py-10 text-center text-sm text-[#7b8a96]">티어 정보를 불러오지 못했습니다.</div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <TierDistributionChart region={data.regions.KR} chartType={chartType} />
+          <TierDistributionChart region={data.regions.AP} chartType={chartType} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TierDistributionChart({
+  region,
+  chartType,
+}: {
+  region: TierDistributionRegion;
+  chartType: "bar" | "pie";
+}) {
+  const visibleTiers = getVisibleTiers(region);
+
+  return (
+    <div className="border border-[#263442] bg-[#0b1721]/60 p-4">
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <div>
+          <div className="text-lg font-black text-white">{region.label}</div>
+          <div className="text-xs text-[#7b8a96]">연동 계정 {region.total}개</div>
+        </div>
+        <div className="text-xs font-bold text-[#ff4655]">{region.region}</div>
+      </div>
+
+      {region.total === 0 ? (
+        <div className="flex h-56 items-center justify-center border border-dashed border-[#263442] text-sm text-[#7b8a96]">
+          연동된 계정이 없습니다.
+        </div>
+      ) : chartType === "bar" ? (
+        <div className="space-y-3">
+          {visibleTiers.map((tier) => (
+            <div key={tier.key}>
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span className="font-bold text-white">{tier.label}</span>
+                <span className="text-[#8da0ad]">
+                  {tier.count}명 · {tier.percent}%
+                </span>
+              </div>
+              <div className="h-3 overflow-hidden bg-[#172431]">
+                <div
+                  className="h-full"
+                  style={{ width: `${Math.max(tier.percent, 3)}%`, backgroundColor: tier.color }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[180px_1fr]">
+          <div className="relative mx-auto h-40 w-40 rounded-full" style={getPieStyle(region)}>
+            <div className="absolute inset-7 flex flex-col items-center justify-center rounded-full bg-[#0b1721]">
+              <span className="text-2xl font-black text-white">{region.total}</span>
+              <span className="text-xs text-[#7b8a96]">계정</span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {visibleTiers.map((tier) => (
+              <div key={tier.key} className="flex items-center gap-2 text-xs">
+                <span className="h-2.5 w-2.5" style={{ backgroundColor: tier.color }} />
+                <span className="flex-1 font-bold text-white">{tier.label}</span>
+                <span className="text-[#8da0ad]">
+                  {tier.count}명 · {tier.percent}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function isActivityData(value: unknown): value is ActivityData {
@@ -68,6 +221,9 @@ export default function ActivityPageClient() {
   const [ranking, setRanking] = useState<RankingEntry[]>([]);
   const [rankingPeriod, setRankingPeriod] = useState<RankingPeriod | null>(null);
   const [rankType, setRankType] = useState<"weekly" | "monthly">("weekly");
+  const [tierDistribution, setTierDistribution] = useState<TierDistributionData | null>(null);
+  const [tierDistributionReady, setTierDistributionReady] = useState(false);
+  const [chartType, setChartType] = useState<"bar" | "pie">("bar");
 
   useEffect(() => {
     fetch("/api/activity")
@@ -94,11 +250,17 @@ export default function ActivityPageClient() {
       });
   }, [rankType]);
 
-  const summaryCards = [
-    { label: "This Month", value: activity ? fmtTime(activity.monthSeconds) : "--" },
-    { label: "Total Time", value: activity ? fmtTime(activity.totalSeconds) : "--" },
-    { label: "Attendance", value: activity ? `${activity.attendanceCount}d` : "--" },
-  ];
+  useEffect(() => {
+    fetch("/api/tier-distribution")
+      .then((response) => response.json())
+      .then((data) => {
+        const kr = data?.regions?.KR;
+        const ap = data?.regions?.AP;
+        setTierDistribution(kr && ap ? data : null);
+      })
+      .catch(() => setTierDistribution(null))
+      .finally(() => setTierDistributionReady(true));
+  }, []);
 
   const attendanceEmptyText = activityReady ? "No attendance data yet." : "Loading...";
 
@@ -108,14 +270,12 @@ export default function ActivityPageClient() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="flex flex-col gap-4 lg:col-span-2">
-          <div className="grid grid-cols-3 gap-3">
-            {summaryCards.map((item) => (
-              <div key={item.label} className="val-card p-4">
-                <div className="mb-1 text-xs uppercase tracking-wider text-[#7b8a96]">{item.label}</div>
-                <div className="text-xl font-black text-white">{item.value}</div>
-              </div>
-            ))}
-          </div>
+          <TierDistributionPanel
+            data={tierDistribution}
+            ready={tierDistributionReady}
+            chartType={chartType}
+            onChartTypeChange={setChartType}
+          />
 
           <div className="val-card p-5">
             <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">Attendance Calendar</div>

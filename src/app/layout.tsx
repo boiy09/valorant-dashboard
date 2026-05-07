@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Valorant Dashboard",
+  title: "발로세끼",
   description: "발로란트 서버 대시보드",
   icons: {
     icon: [

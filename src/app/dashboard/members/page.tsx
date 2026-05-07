@@ -263,13 +263,13 @@ function MemberCard({ member, highlight }: { member: Member; highlight?: boolean
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-2 xl:grid-cols-2">
+      <div className="mt-3 flex flex-col gap-2">
         {member.riotAccounts.length > 0 ? (
           [...member.riotAccounts]
             .sort((a, b) => (a.region === "KR" ? -1 : 1) - (b.region === "KR" ? -1 : 1))
             .map((account) => <RiotAccountRow key={`${account.region}:${account.riotId}`} account={account} />)
         ) : (
-          <div className="rounded border border-[#263442] bg-[#0b1721]/60 px-3 py-2 text-xs text-[#7b8a96] xl:col-span-2">
+          <div className="rounded border border-[#263442] bg-[#0b1721]/60 px-3 py-2 text-xs text-[#7b8a96]">
             Riot 계정 미연동
           </div>
         )}
@@ -280,8 +280,8 @@ function MemberCard({ member, highlight }: { member: Member; highlight?: boolean
 
 function RiotAccountRow({ account }: { account: RiotAccountSummary }) {
   return (
-    <div className="grid grid-cols-[44px_minmax(0,1fr)] items-center gap-2 rounded border border-[#263442] bg-[#0b1721]/70 p-2">
-      <div className="relative h-10 w-10 overflow-hidden rounded bg-[#172431]">
+    <div className="flex items-center gap-3 rounded border border-[#263442] bg-[#0b1721]/70 p-2">
+      <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-[#172431]">
         {account.card ? (
           <img src={account.card} alt="" className="h-full w-full object-cover" />
         ) : (
@@ -292,19 +292,19 @@ function RiotAccountRow({ account }: { account: RiotAccountSummary }) {
         </span>
       </div>
 
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="rounded bg-[#ff4655]/15 px-1.5 py-0.5 text-[9px] font-black text-[#ff4655]">
+          <span className="flex-shrink-0 rounded bg-[#ff4655]/15 px-1.5 py-0.5 text-[9px] font-black text-[#ff4655]">
             {account.region}
           </span>
-          <span className="min-w-0 break-all text-xs font-bold leading-snug text-white" title={account.riotId}>
+          <span className="truncate text-xs font-bold text-white" title={account.riotId}>
             {account.riotId}
           </span>
         </div>
         <div className="mt-0.5 text-[10px] text-[#7b8a96]">Lv. {account.level ?? "-"}</div>
       </div>
 
-      <div className="col-span-2 mt-1 flex items-center gap-1.5 border-t border-[#263442]/70 pt-1.5">
+      <div className="flex flex-shrink-0 items-center gap-1.5">
         {account.rankIcon ? (
           <img src={account.rankIcon} alt="" className="h-6 w-6 object-contain" />
         ) : (

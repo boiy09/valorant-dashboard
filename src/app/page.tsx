@@ -51,7 +51,7 @@ export default async function Home() {
 
           <p className="text-[#7b8a96] text-base leading-relaxed max-w-xl">
             발로란트를 즐기는 모든 분들을 위한 커뮤니티입니다.<br />
-            내전 시스템, ELO 랭킹, 전적 분석까지 — 한 곳에서 모두 확인하세요.
+            내전 시스템, 전적 분석, 활동 추적까지 — 한 곳에서 모두 확인하세요.
           </p>
 
           <div className="flex items-center gap-3 flex-wrap justify-center">
@@ -77,8 +77,7 @@ export default async function Home() {
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {[
-            { icon: "⚔️",  title: "내전 시스템",   desc: "10명이 모이면 자동으로 팀이 나뉘고 내전이 시작돼요. ELO 기반 밸런스 매칭." },
-            { icon: "📊",  title: "ELO 랭킹",     desc: "내전 결과에 따라 ELO 점수가 변동돼요. 서버 내 실력 순위를 확인해보세요." },
+            { icon: "⚔️",  title: "내전 시스템",   desc: "10명이 모이면 자동으로 팀이 나뉘고 내전이 시작돼요. Discord 봇으로 간편하게 기록." },
             { icon: "🎮",  title: "전적 분석",     desc: "라이엇 계정 연동 후 랭크, 에이전트별 통계, 최근 경기 폼을 분석해드려요." },
             { icon: "🎙️", title: "음성 활동 추적", desc: "음성 채널 입장 시 자동으로 활동 시간이 기록돼요. 월간 활동 랭킹도 있어요." },
             { icon: "📅",  title: "일정 관리",     desc: "내전, 연습, 토너먼트 일정을 Discord 봇으로 등록하고 30분 전 알림을 받아요." },
@@ -102,7 +101,7 @@ export default async function Home() {
             { label: "Discord 봇",    value: "24/7 운영" },
             { label: "내전 매칭",     value: "10인 자동" },
             { label: "전적 추적",     value: "실시간"    },
-            { label: "ELO 시스템",    value: "자동 반영" },
+            { label: "음성 활동",     value: "자동 기록" },
           ].map(s => (
             <div key={s.label}>
               <div className="text-white font-black text-xl">{s.value}</div>

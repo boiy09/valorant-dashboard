@@ -54,9 +54,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="val-shell min-h-screen flex flex-col">
-      <div className="val-page-art" aria-hidden="true" />
-      <div className="val-page-art-extra val-page-art-extra-left" aria-hidden="true" />
-      <div className="val-page-art-extra val-page-art-extra-right" aria-hidden="true" />
+      <div className="val-agent-squad val-agent-squad-left" aria-hidden="true">
+        <span className="val-agent-pawn agent-reyna" />
+        <span className="val-agent-pawn agent-raze" />
+        <span className="val-agent-pawn agent-phoenix" />
+        <span className="val-agent-pawn agent-omen" />
+        <span className="val-agent-pawn agent-viper" />
+      </div>
+      <div className="val-agent-squad val-agent-squad-right" aria-hidden="true">
+        <span className="val-agent-pawn agent-jett" />
+        <span className="val-agent-pawn agent-sage" />
+        <span className="val-agent-pawn agent-killjoy" />
+        <span className="val-agent-pawn agent-sova" />
+        <span className="val-agent-pawn agent-chamber" />
+      </div>
       <div className="val-top-scan" aria-hidden="true" />
 
       <header className="val-topbar flex-shrink-0">

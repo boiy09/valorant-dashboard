@@ -115,19 +115,41 @@ function getVisibleTierGroups(region: TierDistributionRegion): TierDistributionG
   return Array.from(groups.values());
 }
 
+function getSubTierBrightness(tierKey: string): number {
+  if (tierKey.endsWith("_1")) return 0.72;
+  if (tierKey.endsWith("_3")) return 1.32;
+  return 1.0;
+}
+
+function adjustBrightness(hex: string, factor: number): string {
+  if (!hex.startsWith("#") || hex.length < 7) return hex;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const clamp = (n: number) => Math.min(255, Math.max(0, Math.round(n)));
+  return `rgb(${clamp(r * factor)},${clamp(g * factor)},${clamp(b * factor)})`;
+}
+
 function getPieStyle(region: TierDistributionRegion): CSSProperties {
-  const visibleTiers = getVisibleTiers(region);
+  const groups = getVisibleTierGroups(region);
   if (region.total === 0) {
     return { background: "conic-gradient(#263442 0deg 360deg)" };
   }
 
   let current = 0;
-  const segments = visibleTiers.map((tier) => {
-    const start = current;
-    const end = current + (tier.count / region.total) * 360;
-    current = end;
-    return `${tier.color} ${start}deg ${end}deg`;
-  });
+  const segments: string[] = [];
+
+  for (const group of groups) {
+    for (const tier of group.tiers) {
+      const deg = (tier.count / region.total) * 360;
+      if (deg <= 0) continue;
+      const start = current;
+      const end = current + deg;
+      const color = adjustBrightness(tier.color, getSubTierBrightness(tier.key));
+      segments.push(`${color} ${start}deg ${end}deg`);
+      current = end;
+    }
+  }
 
   return { background: `conic-gradient(${segments.join(", ")})` };
 }
@@ -186,7 +208,6 @@ function TierDistributionChart({
   region: TierDistributionRegion;
   chartType: "bar" | "pie";
 }) {
-  const visibleTiers = getVisibleTiers(region);
   const visibleGroups = getVisibleTierGroups(region);
 
   return (
@@ -218,7 +239,7 @@ function TierDistributionChart({
                   {group.count}명 · {group.percent}%
                 </span>
               </div>
-              <div className="h-3 overflow-hidden bg-[#172431]">
+              <div className="h-4 overflow-hidden bg-[#172431]">
                 <div
                   className="flex h-full overflow-hidden"
                   style={{ width: `${Math.max(group.percent, 3)}%` }}
@@ -226,22 +247,28 @@ function TierDistributionChart({
                   {group.tiers.map((tier) => (
                     <div
                       key={tier.key}
-                      className="h-full border-r border-[#0b1721]/70 last:border-r-0"
+                      className="h-full border-r border-[#0b1721]/50 last:border-r-0"
                       title={`${tier.label} ${tier.count}명`}
                       style={{
                         width: `${Math.max((tier.count / group.count) * 100, 6)}%`,
-                        backgroundColor: tier.color,
-                        filter: `brightness(${0.9 + Number(tier.key.match(/[123]$/)?.[0] ?? 1) * 0.08})`,
+                        backgroundColor: adjustBrightness(tier.color, getSubTierBrightness(tier.key)),
                       }}
                     />
                   ))}
                 </div>
               </div>
               {group.tiers.length > 1 ? (
-                <div className="mt-1 flex flex-wrap gap-1.5">
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                   {group.tiers.map((tier) => (
                     <span key={tier.key} className="inline-flex items-center gap-1 text-[10px] font-bold text-[#8da0ad]">
-                      {tier.icon ? <img src={tier.icon} alt={tier.label} className="h-4 w-4 object-contain" /> : null}
+                      {tier.icon ? (
+                        <img src={tier.icon} alt={tier.label} className="h-3.5 w-3.5 object-contain" />
+                      ) : (
+                        <span
+                          className="inline-block h-2 w-2 flex-shrink-0"
+                          style={{ backgroundColor: adjustBrightness(tier.color, getSubTierBrightness(tier.key)) }}
+                        />
+                      )}
                       {tier.label} {tier.count}명
                     </span>
                   ))}
@@ -251,25 +278,43 @@ function TierDistributionChart({
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[180px_1fr]">
-          <div className="relative mx-auto h-40 w-40 rounded-full" style={getPieStyle(region)}>
-            <div className="absolute inset-7 flex flex-col items-center justify-center rounded-full bg-[#0b1721]">
+        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[192px_1fr]">
+          <div className="relative mx-auto h-44 w-44 flex-shrink-0 rounded-full" style={getPieStyle(region)}>
+            <div className="absolute inset-8 flex flex-col items-center justify-center rounded-full bg-[#0b1721]">
               <span className="text-2xl font-black text-white">{region.total}</span>
               <span className="text-xs text-[#7b8a96]">계정</span>
             </div>
           </div>
-          <div className="space-y-2">
-            {visibleTiers.map((tier) => (
-              <div key={tier.key} className="flex items-center gap-2 text-xs">
-                {tier.icon ? (
-                  <img src={tier.icon} alt={tier.label} className="h-5 w-5 object-contain" />
-                ) : (
-                  <span className="h-2.5 w-2.5" style={{ backgroundColor: tier.color }} />
+          <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
+            {visibleGroups.map((group) => (
+              <div key={group.key}>
+                <div className="flex items-center gap-2 text-xs">
+                  {group.tiers[0]?.icon ? (
+                    <img src={group.tiers[0].icon} alt={group.label} className="h-5 w-5 flex-shrink-0 object-contain" />
+                  ) : (
+                    <span className="h-2.5 w-2.5 flex-shrink-0" style={{ backgroundColor: group.color }} />
+                  )}
+                  <span className="flex-1 font-bold text-white">{group.label}</span>
+                  <span className="text-[#8da0ad]">{group.count}명 · {group.percent}%</span>
+                </div>
+                {group.tiers.length > 1 && (
+                  <div className="mt-0.5 ml-7 flex flex-col gap-0.5">
+                    {group.tiers.map((tier) => (
+                      <div key={tier.key} className="flex items-center gap-1.5 text-[10px] text-[#8da0ad]">
+                        {tier.icon ? (
+                          <img src={tier.icon} alt={tier.label} className="h-3.5 w-3.5 flex-shrink-0 object-contain" />
+                        ) : (
+                          <span
+                            className="h-2 w-2 flex-shrink-0"
+                            style={{ backgroundColor: adjustBrightness(tier.color, getSubTierBrightness(tier.key)) }}
+                          />
+                        )}
+                        <span className="flex-1">{tier.label}</span>
+                        <span>{tier.count}명</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
-                <span className="flex-1 font-bold text-white">{tier.label}</span>
-                <span className="text-[#8da0ad]">
-                  {tier.count}명 · {tier.percent}%
-                </span>
               </div>
             ))}
           </div>

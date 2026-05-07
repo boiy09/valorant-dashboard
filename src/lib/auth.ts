@@ -29,21 +29,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.provider === "discord" && profile) {
         try {
           const { prisma } = await import("./prisma");
+          const discordId = profile.id as string;
           const email = user.email ?? `${profile.id}@discord`;
-          await prisma.user.upsert({
-            where: { email },
-            update: {
-              name: user.name,
-              image: user.image,
-              discordId: profile.id as string,
-            },
-            create: {
-              email,
-              discordId: profile.id as string,
-              name: user.name,
-              image: user.image,
-            },
-          });
+          const existingByDiscord = await prisma.user.findUnique({ where: { discordId } });
+          const existingByEmail = await prisma.user.findUnique({ where: { email } });
+
+          if (existingByDiscord) {
+            await prisma.user.update({
+              where: { id: existingByDiscord.id },
+              data: {
+                email: !existingByEmail || existingByEmail.id === existingByDiscord.id ? email : existingByDiscord.email,
+                name: user.name,
+                image: user.image,
+              },
+            });
+          } else {
+            if (existingByEmail) {
+              await prisma.user.update({
+                where: { id: existingByEmail.id },
+                data: {
+                  discordId,
+                  name: user.name,
+                  image: user.image,
+                },
+              });
+            } else {
+              await prisma.user.create({
+                data: {
+                  email,
+                  discordId,
+                  name: user.name,
+                  image: user.image,
+                },
+              });
+            }
+          }
         } catch (e) {
           console.error(`유저 저장 오류 [discord:${profile.id}]:`, e);
           return false;

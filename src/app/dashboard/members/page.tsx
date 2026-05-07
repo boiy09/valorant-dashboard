@@ -192,7 +192,7 @@ function MemberCard({ member, highlight }: { member: Member; highlight?: boolean
           <div className="truncate text-sm font-bold text-white">{member.name ?? "이름 없음"}</div>
           {member.roles.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
-              {member.roles.slice(0, 3).map((role) => (
+              {member.roles.map((role) => (
                 <span
                   key={role}
                   className={`rounded px-1.5 py-0.5 text-[10px] ${
@@ -204,7 +204,6 @@ function MemberCard({ member, highlight }: { member: Member; highlight?: boolean
                   {role}
                 </span>
               ))}
-              {member.roles.length > 3 && <span className="text-[10px] text-[#7b8a96]">+{member.roles.length - 3}</span>}
             </div>
           )}
         </div>
@@ -244,7 +243,9 @@ function RiotAccountRow({ account }: { account: RiotAccountSummary }) {
           <span className="rounded bg-[#ff4655]/15 px-1.5 py-0.5 text-[9px] font-black text-[#ff4655]">
             {account.region}
           </span>
-          <span className="truncate text-xs font-bold text-white">{account.riotId}</span>
+          <span className="member-riot-marquee min-w-0 flex-1 text-xs font-bold text-white" title={account.riotId}>
+            <span>{account.riotId}</span>
+          </span>
         </div>
         <div className="mt-0.5 text-[10px] text-[#7b8a96]">Lv. {account.level ?? "-"}</div>
       </div>

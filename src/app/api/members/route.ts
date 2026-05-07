@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
     accountDetails.set(account.puuid, {
       region,
       riotId: `${account.gameName}#${account.tagLine}`,
-      level: profile?.accountLevel ?? null,
+      level: profile && profile.accountLevel >= 0 ? profile.accountLevel : null,
       card: profile?.card ?? null,
       tier: rank?.tierName ?? "언랭크",
       rankIcon: rank?.rankIcon ?? null,

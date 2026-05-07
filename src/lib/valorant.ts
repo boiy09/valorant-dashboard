@@ -312,6 +312,7 @@ function getPlayerCardIcon(player: Record<string, unknown>) {
   const accountCard = asRecord(account.card);
   const customization = asRecord(player.customization);
   const cardId = firstString(
+    player.card,
     player.player_card,
     player.playerCard,
     player.player_card_id,
@@ -442,18 +443,29 @@ export async function getPlayerByRiotId(
 ): Promise<PlayerProfile> {
   const key = `account:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
   const { data } = await apiCache.getOrFetch(key, TTL.MEDIUM, async () => {
-    const response = await henrikClient.get(
-      `/v1/account/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
-    );
-    return response.data?.data;
+    const encodedName = encodeURIComponent(gameName);
+    const encodedTag = encodeURIComponent(tagLine);
+    const response =
+      (await henrikGet(`/v2/account/${encodedName}/${encodedTag}`).catch(() => null)) ??
+      (await henrikGet(`/v1/account/${encodedName}/${encodedTag}`).catch(() => null));
+    return response?.data?.data;
   });
+  const account = asRecord(data);
+  const fallback = account?.puuid ? await getAccountByPuuid(toString(account.puuid, "")).catch(() => null) : null;
+  const fallbackCard = asRecord(fallback?.card);
+  const card =
+    getPlayerCardIcon(account) ||
+    firstString(fallbackCard.small, fallbackCard.smallArt, fallbackCard.wide, fallbackCard.large);
 
   return {
-    puuid: toString(data?.puuid, ""),
-    gameName: toString(data?.name, gameName),
-    tagLine: toString(data?.tag, tagLine),
-    accountLevel: toNumber(data?.account_level),
-    card: data?.card?.small ?? undefined,
+    puuid: toString(account.puuid, ""),
+    gameName: toString(account.name ?? account.gameName ?? account.game_name, gameName),
+    tagLine: toString(account.tag ?? account.tagLine ?? account.tag_line, tagLine),
+    accountLevel: toNumber(
+      account.account_level ?? account.accountLevel ?? account.level ?? fallback?.account_level ?? fallback?.accountLevel,
+      -1
+    ),
+    card: card || undefined,
   };
 }
 

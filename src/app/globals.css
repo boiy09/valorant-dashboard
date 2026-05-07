@@ -392,30 +392,6 @@ body {
   background: rgba(255, 70, 85, 0.12);
 }
 
-.member-riot-marquee {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.member-riot-marquee > span {
-  display: inline-block;
-  min-width: 100%;
-}
-
-.member-riot-marquee:hover > span {
-  animation: member-riot-marquee 4s ease-in-out infinite alternate;
-}
-
-@keyframes member-riot-marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(calc(-100% + 120px));
-  }
-}
-
 .val-loader {
   width: 34px;
   height: 34px;

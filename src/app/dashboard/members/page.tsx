@@ -167,7 +167,7 @@ function MemberSection({ title, members, highlight }: { title: string; members: 
       <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">
         {title} ({members.length})
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {members.map((member) => (
           <MemberCard key={member.id} member={member} highlight={highlight} />
         ))}
@@ -226,7 +226,7 @@ function MemberCard({ member, highlight }: { member: Member; highlight?: boolean
 
 function RiotAccountRow({ account }: { account: RiotAccountSummary }) {
   return (
-    <div className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-2 rounded border border-[#263442] bg-[#0b1721]/70 p-2">
+    <div className="grid grid-cols-[44px_minmax(0,1fr)] items-center gap-2 rounded border border-[#263442] bg-[#0b1721]/70 p-2">
       <div className="relative h-10 w-10 overflow-hidden rounded bg-[#172431]">
         {account.card ? (
           <img src={account.card} alt="" className="h-full w-full object-cover" />
@@ -243,20 +243,20 @@ function RiotAccountRow({ account }: { account: RiotAccountSummary }) {
           <span className="rounded bg-[#ff4655]/15 px-1.5 py-0.5 text-[9px] font-black text-[#ff4655]">
             {account.region}
           </span>
-          <span className="member-riot-marquee min-w-0 flex-1 text-xs font-bold text-white" title={account.riotId}>
-            <span>{account.riotId}</span>
+          <span className="min-w-0 break-all text-xs font-bold leading-snug text-white" title={account.riotId}>
+            {account.riotId}
           </span>
         </div>
         <div className="mt-0.5 text-[10px] text-[#7b8a96]">Lv. {account.level ?? "-"}</div>
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="col-span-2 mt-1 flex items-center gap-1.5 border-t border-[#263442]/70 pt-1.5">
         {account.rankIcon ? (
           <img src={account.rankIcon} alt="" className="h-6 w-6 object-contain" />
         ) : (
           <div className="h-6 w-6 rounded-full bg-[#263442]" />
         )}
-        <span className="max-w-[72px] truncate text-[10px] font-bold text-[#8da0ad]">{account.tier}</span>
+        <span className="text-[10px] font-bold text-[#8da0ad]">{account.tier}</span>
       </div>
     </div>
   );

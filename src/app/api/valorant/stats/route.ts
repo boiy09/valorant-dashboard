@@ -34,30 +34,30 @@ export async function GET() {
 
   // Build puuidRankMap from DB for all guild members — used for scoreboard rank display
   const guildMemberAccounts = await prisma.riotAccount.findMany({
-    where: {
-      cachedTierId: { not: null, gt: 0 },
-      user: { guilds: { some: {} } },
-    },
+    where: { cachedTierId: { gt: 0 }, user: { guilds: { some: {} } } },
     select: { puuid: true, cachedTierId: true, cachedTierName: true },
   });
 
-  const puuidRankMapRaw = new Map(
-    guildMemberAccounts.map((a) => [
+  type RankEntry = { tierId: number; tierName: string; tierIcon?: string | null };
+  type GuildAccount = { puuid: string; cachedTierId: number | null; cachedTierName: string | null };
+  const puuidRankMap = new Map<string, RankEntry>(
+    (guildMemberAccounts as GuildAccount[]).map((a) => [
       a.puuid,
-      { tierId: a.cachedTierId!, tierName: a.cachedTierName ?? "Unranked", tierIcon: undefined as string | null | undefined },
+      { tierId: a.cachedTierId as number, tierName: a.cachedTierName ?? "Unranked" },
     ])
   );
 
   // Populate tierIcons for the map entries
   await Promise.all(
-    [...puuidRankMapRaw.entries()].map(async ([puuid, entry]) => {
+    [...puuidRankMap.entries()].map(async ([puuid, entry]) => {
       const icon = await getRankIconByTier(entry.tierId).catch(() => null);
-      puuidRankMapRaw.set(puuid, { ...entry, tierIcon: icon });
+      puuidRankMap.set(puuid, { ...entry, tierIcon: icon });
     })
   );
 
+  type AccountRow = { puuid: string; gameName: string; tagLine: string; region: string; accessToken: string | null; entitlementsToken: string | null; ssid: string | null; tokenExpiresAt: Date | null };
   const accountStats = await Promise.all(
-    accounts.map(async (account) => {
+    (accounts as AccountRow[]).map(async (account) => {
       const region = account.region as RiotRegion;
       const qRegion = toQueryRegion(region);
 
@@ -72,12 +72,10 @@ export async function GET() {
       const [rank, recentMatches] = await Promise.all([
         fetchRank(account.puuid, account.region, account.gameName, account.tagLine, tokens)
           .then(async (r) => {
-            // fetchRank returns a simplified rank; also get full Henrik rank for season data
             const full = await getRankByPuuid(account.puuid, qRegion, {
               gameName: account.gameName,
               tagLine: account.tagLine,
             }).catch(() => null);
-            // Use Private API / tracker.gg tier if Henrik shows unranked
             if (full && r.tierId > 0 && full.tierId <= 0) {
               return { ...full, tierId: r.tierId, tierName: r.tierName, rankIcon: r.rankIcon };
             }
@@ -85,7 +83,7 @@ export async function GET() {
           })
           .catch(() => null),
         getRecentMatches(account.puuid, 10, qRegion, "pc", {
-          puuidRankMap: puuidRankMapRaw,
+          puuidRankMap,
           skipAccountFallback: true,
           skipRankFallback: true,
         }).catch(() => []),

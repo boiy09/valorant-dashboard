@@ -1,0 +1,36 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            cd ~/valorant-dashboard
+            export DATABASE_URL="${{ secrets.DATABASE_URL }}"
+
+            git fetch origin master
+            git reset --hard origin/master
+
+            npm ci --prefer-offline 2>/dev/null || npm install
+
+            npx prisma generate
+
+            export DATABASE_URL="${{ secrets.DATABASE_URL }}"
+            npm run build
+
+            pm2 restart valorant-dashboard || pm2 start npm --name "valorant-dashboard" -- start
+            pm2 save
+            echo "✅ 배포 완료"

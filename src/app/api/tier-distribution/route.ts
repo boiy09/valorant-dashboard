@@ -103,6 +103,9 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  const RANK_CACHE_TTL = 2 * 60 * 60 * 1000; // 2시간
+  const now = Date.now();
+
   const accounts = await prisma.riotAccount.findMany({
     where: {
       region: { in: ["KR", "AP"] },
@@ -113,21 +116,33 @@ export async function GET(req: NextRequest) {
       gameName: true,
       tagLine: true,
       region: true,
+      cachedTierId: true,
+      rankCachedAt: true,
     },
     orderBy: [{ region: "asc" }, { gameName: "asc" }],
   });
 
   const rankedAccounts = await settleInBatches(accounts, 3, async (account) => {
     const region = account.region.toUpperCase() === "AP" ? "AP" : "KR";
+    const cacheAge = account.rankCachedAt ? now - account.rankCachedAt.getTime() : Infinity;
+    const isFresh = cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null;
+
+    if (isFresh) {
+      return { region, tier: tierIdToDetailTier(account.cachedTierId!) };
+    }
+
     const rank = await getRankByPuuid(account.puuid, toValorantRegion(region), {
       gameName: account.gameName,
       tagLine: account.tagLine,
     }).catch(() => null);
 
-    return {
-      region,
-      tier: tierIdToDetailTier(rank?.tierId ?? 0),
-    };
+    const tierId = rank?.tierId ?? 0;
+    prisma.riotAccount.update({
+      where: { puuid: account.puuid },
+      data: { cachedTierId: tierId, cachedTierName: rank?.tierName ?? "언랭크", rankCachedAt: new Date() },
+    }).catch(() => {});
+
+    return { region, tier: tierIdToDetailTier(tierId) };
   });
 
   const countsByRegion = {

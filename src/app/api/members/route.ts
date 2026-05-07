@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getPlayerByRiotId, getRankByPuuid, type ValorantRegion } from "@/lib/valorant";
+import { getPlayerByRiotId, getRankByPuuid, getRankIconByTier, type ValorantRegion } from "@/lib/valorant";
 
 function toValorantRegion(region: string): ValorantRegion {
   return region.toUpperCase() === "AP" ? "ap" : "kr";
@@ -45,6 +45,11 @@ export async function GET(req: NextRequest) {
               gameName: true,
               tagLine: true,
               region: true,
+              cachedTierId: true,
+              cachedTierName: true,
+              cachedLevel: true,
+              cachedCard: true,
+              rankCachedAt: true,
             },
             orderBy: { region: "asc" },
           },
@@ -63,9 +68,28 @@ export async function GET(req: NextRequest) {
     rankIcon: string | null;
   }>();
 
+  const RANK_CACHE_TTL = 2 * 60 * 60 * 1000; // 2시간
+  const now = Date.now();
+
   const allAccounts = members.flatMap((member) => member.user.riotAccounts);
   await settleInBatches(allAccounts, 3, async (account) => {
     const region = account.region.toUpperCase() === "AP" ? "AP" : "KR";
+    const cacheAge = account.rankCachedAt ? now - account.rankCachedAt.getTime() : Infinity;
+    const isFresh = cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null;
+
+    if (isFresh) {
+      const rankIcon = account.cachedTierId ? await getRankIconByTier(account.cachedTierId).catch(() => null) : null;
+      accountDetails.set(account.puuid, {
+        region,
+        riotId: `${account.gameName}#${account.tagLine}`,
+        level: account.cachedLevel,
+        card: account.cachedCard,
+        tier: account.cachedTierName ?? "언랭크",
+        rankIcon,
+      });
+      return;
+    }
+
     const [profile, rank] = await Promise.all([
       getPlayerByRiotId(account.gameName, account.tagLine).catch(() => null),
       getRankByPuuid(account.puuid, toValorantRegion(region), {
@@ -74,11 +98,26 @@ export async function GET(req: NextRequest) {
       }).catch(() => null),
     ]);
 
+    const level = profile && profile.accountLevel >= 0 ? profile.accountLevel : null;
+    const card = profile?.card ?? null;
+    const tierId = rank?.tierId ?? 0;
+
+    prisma.riotAccount.update({
+      where: { puuid: account.puuid },
+      data: {
+        cachedTierId: tierId,
+        cachedTierName: rank?.tierName ?? "언랭크",
+        cachedLevel: level,
+        cachedCard: card,
+        rankCachedAt: new Date(),
+      },
+    }).catch(() => {});
+
     accountDetails.set(account.puuid, {
       region,
       riotId: `${account.gameName}#${account.tagLine}`,
-      level: profile && profile.accountLevel >= 0 ? profile.accountLevel : null,
-      card: profile?.card ?? null,
+      level,
+      card,
       tier: rank?.tierName ?? "언랭크",
       rankIcon: rank?.rankIcon ?? null,
     });

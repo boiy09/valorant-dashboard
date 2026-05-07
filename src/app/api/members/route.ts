@@ -81,7 +81,8 @@ export async function GET(req: NextRequest) {
   await settleInBatches(allAccounts, 5, async (account) => {
     const region = toRegionLabel(account.region);
     const cacheAge = account.rankCachedAt ? now - account.rankCachedAt.getTime() : Infinity;
-    const isFresh = cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null;
+    const hasProfileData = account.cachedLevel !== null || account.cachedCard !== null;
+    const isFresh = cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null && hasProfileData;
 
     if (isFresh) {
       const rankIcon = account.cachedTierId
@@ -98,7 +99,6 @@ export async function GET(req: NextRequest) {
       return;
     }
 
-    // 토큰 확인/갱신
     const tokens = await ensureValidTokens(
       account.puuid,
       account.accessToken,
@@ -107,13 +107,11 @@ export async function GET(req: NextRequest) {
       account.tokenExpiresAt
     );
 
-    // 랭크 + 프로필 병렬 조회 (Private API → tracker.gg → Henrik)
     const [rank, profile] = await Promise.all([
       fetchRank(account.puuid, account.region, account.gameName, account.tagLine, tokens),
       fetchProfile(account.puuid, account.region, account.gameName, account.tagLine, tokens),
     ]);
 
-    // DB 캐시 비동기 업데이트
     prisma.riotAccount.update({
       where: { puuid: account.puuid },
       data: {

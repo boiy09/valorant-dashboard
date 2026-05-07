@@ -150,32 +150,49 @@ body {
 .val-shell::after {
   content: "";
   position: fixed;
-  right: -4vw;
-  bottom: -12vh;
+  right: -2vw;
+  bottom: -10vh;
   z-index: -2;
-  width: min(42vw, 580px);
-  height: min(82vh, 860px);
+  width: min(38vw, 560px);
+  height: min(86vh, 880px);
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(9, 19, 28, 0), rgba(9, 19, 28, 0.8)),
+    linear-gradient(180deg, rgba(9, 19, 28, 0), rgba(9, 19, 28, 0.62)),
+    linear-gradient(90deg, rgba(9, 19, 28, 0.86), transparent 28%, transparent 72%, rgba(9, 19, 28, 0.2)),
     url("https://media.valorant-api.com/agents/add6443a-41bd-e414-f6ad-e58d267f4e95/fullportrait.png") center bottom / contain no-repeat;
-  opacity: 0.2;
-  filter: saturate(1.2) contrast(1.08);
+  opacity: 0.42;
+  filter: saturate(1.18) contrast(1.08) drop-shadow(0 0 42px rgba(15, 255, 208, 0.12));
 }
 
 .val-page-art {
   position: fixed;
-  left: -8vw;
-  bottom: -20vh;
+  left: -7vw;
+  bottom: -18vh;
   z-index: -2;
-  width: min(38vw, 520px);
-  height: min(78vh, 780px);
+  width: min(34vw, 500px);
+  height: min(80vh, 800px);
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(9, 19, 28, 0), rgba(9, 19, 28, 0.88)),
+    linear-gradient(180deg, rgba(9, 19, 28, 0), rgba(9, 19, 28, 0.72)),
+    linear-gradient(270deg, rgba(9, 19, 28, 0.86), transparent 34%),
     url("https://media.valorant-api.com/agents/a3bfb853-43b2-7238-a4f1-ad90e9e46bcc/fullportrait.png") center bottom / contain no-repeat;
-  opacity: 0.12;
+  opacity: 0.32;
   transform: scaleX(-1);
+  filter: saturate(1.12) contrast(1.08) drop-shadow(0 0 42px rgba(255, 70, 85, 0.14));
+}
+
+.val-page-art::after {
+  content: "";
+  position: absolute;
+  right: -24vw;
+  bottom: 4vh;
+  width: min(24vw, 360px);
+  height: min(58vh, 620px);
+  background:
+    linear-gradient(180deg, rgba(9, 19, 28, 0), rgba(9, 19, 28, 0.78)),
+    url("https://media.valorant-api.com/agents/bb2a4828-46eb-8cd1-e765-15848195d751/fullportrait.png") center bottom / contain no-repeat;
+  opacity: 0.32;
+  filter: saturate(1.18) contrast(1.08);
 }
 
 .val-top-scan {
@@ -330,8 +347,12 @@ body {
 @media (max-width: 900px) {
   .val-shell::after,
   .val-page-art {
-    opacity: 0.08;
-    width: 70vw;
+    opacity: 0.1;
+    width: 72vw;
+  }
+
+  .val-page-art::after {
+    display: none;
   }
 
   .val-nav-link {

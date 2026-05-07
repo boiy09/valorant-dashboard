@@ -45,9 +45,11 @@ function buildCalendarDays(monthDate: Date) {
 export default function AttendanceCalendar({
   attendanceDates,
   activitySecondsByDate,
+  minAttendanceSeconds,
 }: {
   attendanceDates: string[];
   activitySecondsByDate: Record<string, number>;
+  minAttendanceSeconds: number;
 }) {
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const today = new Date();
@@ -58,6 +60,7 @@ export default function AttendanceCalendar({
   const dateSet = useMemo(() => new Set(attendanceDates), [attendanceDates]);
   const days = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
   const monthAttendanceCount = days.filter((day) => day.inMonth && dateSet.has(day.key)).length;
+  const minAttendanceText = formatDuration(minAttendanceSeconds);
 
   function moveMonth(delta: number) {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
@@ -100,6 +103,10 @@ export default function AttendanceCalendar({
             ›
           </button>
         </div>
+      </div>
+
+      <div className="mb-3 border-l-2 border-[#ff4655] bg-[#ff4655]/10 px-3 py-2 text-xs font-semibold text-[#ece8e1]">
+        출석은 하루 음성 채널 활동 시간이 최소 {minAttendanceText} 이상일 때만 인정됩니다.
       </div>
 
       <div className="grid grid-cols-7 overflow-hidden rounded border border-[#2a3540] bg-[#0f1923]">
@@ -169,7 +176,7 @@ export default function AttendanceCalendar({
           <span className="h-2.5 w-2.5 rounded-sm bg-[#1a242d]" />
           미출석
         </span>
-        <span className="text-[#4a5a68]">날짜 칸의 시간은 해당일 음성 채널 접속 시간입니다.</span>
+        <span className="text-[#4a5a68]">날짜 칸의 시간은 해당일 음성 채널 접속 시간이며, {minAttendanceText} 미만은 미출석입니다.</span>
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ interface ActivityData {
   totalSeconds: number;
   monthSeconds: number;
   attendanceCount: number;
+  minAttendanceSeconds?: number;
 }
 
 interface RankingEntry {
@@ -122,6 +123,7 @@ export default function ActivityPageClient() {
               <AttendanceCalendar
                 attendanceDates={activity.attendanceDates}
                 activitySecondsByDate={activity.activitySecondsByDate}
+                minAttendanceSeconds={activity.minAttendanceSeconds ?? 600}
               />
             ) : (
               <div className="text-sm text-[#7b8a96]">{attendanceEmptyText}</div>

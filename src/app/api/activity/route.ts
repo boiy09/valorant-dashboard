@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const EXCLUDED_CHANNEL_KEYWORDS = ["잠수", "afk"];
 const MAX_CONTINUOUS_ACTIVITY_SECONDS = 18 * 60 * 60;
+const MIN_ATTENDANCE_SECONDS = 10 * 60;
 
 type ActivityInterval = {
   start: number;
@@ -141,7 +142,7 @@ export async function GET(req: NextRequest) {
   }));
 
   const attendanceDates = Object.entries(activitySecondsByDate)
-    .filter(([, seconds]) => seconds > 0)
+    .filter(([, seconds]) => seconds >= MIN_ATTENDANCE_SECONDS)
     .map(([date]) => date)
     .sort();
 
@@ -158,5 +159,6 @@ export async function GET(req: NextRequest) {
     totalSeconds,
     monthSeconds,
     attendanceCount: attendanceDates.length,
+    minAttendanceSeconds: MIN_ATTENDANCE_SECONDS,
   });
 }

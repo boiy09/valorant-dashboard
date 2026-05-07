@@ -1,4 +1,4 @@
-import { Events, GuildMember, VoiceBasedChannel, VoiceState } from "discord.js";
+import { Events, Guild, GuildMember, VoiceBasedChannel, VoiceState } from "discord.js";
 import type { BotClient } from "../index";
 import { prisma } from "../../lib/prisma";
 
@@ -30,6 +30,19 @@ async function getOrCreateGuild(guildId: string, guildName: string) {
 
 function getSessionKey(discordUserId: string, guildDiscordId: string) {
   return `${discordUserId}_${guildDiscordId}`;
+}
+
+function getCachedVoiceMembers(guild: Guild) {
+  const activeVoiceMembers: Array<{ member: GuildMember; channel: VoiceBasedChannel }> = [];
+
+  for (const [, voiceState] of guild.voiceStates.cache) {
+    const member = voiceState.member ?? guild.members.cache.get(voiceState.id);
+    const channel = voiceState.channel;
+    if (!member || !channel || member.user.bot) continue;
+    activeVoiceMembers.push({ member, channel });
+  }
+
+  return activeVoiceMembers;
 }
 
 async function ensureDailyAttendance(userId: string, guildId: string) {
@@ -123,8 +136,9 @@ async function hydrateVoiceSessions(client: BotClient) {
 
   for (const activity of openActivities) {
     const guild = client.guilds.cache.get(activity.guild.discordId);
-    const member = guild?.members.cache.get(activity.user.discordId ?? "");
-    const currentChannelId = member?.voice.channelId ?? null;
+    const voiceState = activity.user.discordId ? guild?.voiceStates.cache.get(activity.user.discordId) : null;
+    const member = voiceState?.member ?? guild?.members.cache.get(activity.user.discordId ?? "");
+    const currentChannelId = voiceState?.channelId ?? member?.voice.channelId ?? null;
     const sessionKey =
       activity.user.discordId && guild ? getSessionKey(activity.user.discordId, guild.id) : null;
 
@@ -142,10 +156,7 @@ async function hydrateVoiceSessions(client: BotClient) {
   }
 
   for (const [, guild] of client.guilds.cache) {
-    await guild.members.fetch();
-    for (const [, member] of guild.members.cache) {
-      const channel = member.voice.channel;
-      if (!channel || member.user.bot) continue;
+    for (const { member, channel } of getCachedVoiceMembers(guild)) {
       if (isExcludedVoiceChannel(channel.name)) continue;
       await openSessionForMember(member, channel);
     }

@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL ?? process.env.NEXTAUTH_URL ?? "https://valorant-dashboard-henna.vercel.app";
 
@@ -20,5 +20,5 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setURL(DASHBOARD_URL)
   );
 
-  await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+  await interaction.reply({ embeds: [embed], components: [row], flags: MessageFlags.Ephemeral });
 }

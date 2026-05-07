@@ -1,6 +1,7 @@
 import {
   ChannelType,
   ChatInputCommandInteraction,
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
 } from "discord.js";
@@ -27,7 +28,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const guildDiscordId = interaction.guildId;
   if (!guildDiscordId || !interaction.guild) {

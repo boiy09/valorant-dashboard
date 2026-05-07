@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 
 const COMMANDS = [
   {
@@ -65,5 +65,5 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     )
     .setFooter({ text: "관리 명령어는 권한이 있는 멤버에게만 보일 수 있습니다." });
 
-  await interaction.reply({ embeds: [embed], ephemeral: true });
+  await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }

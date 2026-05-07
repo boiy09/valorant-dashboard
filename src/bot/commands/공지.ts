@@ -3,6 +3,7 @@ import {
   EmbedBuilder,
   PermissionFlagsBits,
   ChatInputCommandInteraction,
+  MessageFlags,
 } from "discord.js";
 import { prisma } from "../../lib/prisma";
 
@@ -73,7 +74,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
   } else if (sub === "목록") {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const announcements = await prisma.announcement.findMany({
       where: { guildId: guild.id },

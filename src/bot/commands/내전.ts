@@ -7,6 +7,7 @@ import {
   ActionRowBuilder,
   ComponentType,
   GuildMember,
+  MessageFlags,
 } from "discord.js";
 import { prisma } from "../../lib/prisma";
 
@@ -43,12 +44,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // 현재 음성채널에 있는 멤버 수집
     const voiceChannel = (interaction.member as GuildMember)?.voice?.channel;
     if (!voiceChannel) {
-      return interaction.reply({ content: "❌ 음성 채널에 입장한 후 사용해주세요.", ephemeral: true });
+      return interaction.reply({ content: "❌ 음성 채널에 입장한 후 사용해주세요.", flags: MessageFlags.Ephemeral });
     }
 
     const members = voiceChannel.members.filter((m) => !m.user.bot);
     if (members.size < 2) {
-      return interaction.reply({ content: "❌ 내전을 위해 최소 2명이 필요해요.", ephemeral: true });
+      return interaction.reply({ content: "❌ 내전을 위해 최소 2명이 필요해요.", flags: MessageFlags.Ephemeral });
     }
 
     // 팀 자동 랜덤 배정
@@ -92,7 +93,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     collector.on("collect", async (btn) => {
       if (btn.user.id !== interaction.user.id) {
-        return btn.reply({ content: "❌ 내전을 시작한 사람만 결과를 입력할 수 있어요.", ephemeral: true });
+        return btn.reply({ content: "❌ 내전을 시작한 사람만 결과를 입력할 수 있어요.", flags: MessageFlags.Ephemeral });
       }
 
       const winnerId = btn.customId === "win_a" ? "team_a" : btn.customId === "win_b" ? "team_b" : "draw";

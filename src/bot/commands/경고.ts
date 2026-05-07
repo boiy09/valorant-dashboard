@@ -4,6 +4,7 @@ import {
   PermissionFlagsBits,
   ChatInputCommandInteraction,
   GuildMember,
+  MessageFlags,
 } from "discord.js";
 import { prisma } from "../../lib/prisma";
 
@@ -35,7 +36,7 @@ async function getOrCreateUser(discordId: string, name: string) {
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const sub = interaction.options.getSubcommand();
   const guildDiscordId = interaction.guildId!;
 

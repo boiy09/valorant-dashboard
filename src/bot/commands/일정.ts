@@ -1,6 +1,7 @@
 import {
   ChatInputCommandInteraction,
   EmbedBuilder,
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
 } from "discord.js";
@@ -39,7 +40,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const guildDiscordId = interaction.guildId;
 
   if (!guildDiscordId || !interaction.guild) {
-    await interaction.reply({ content: "서버 안에서만 사용할 수 있습니다.", ephemeral: true });
+    await interaction.reply({ content: "서버 안에서만 사용할 수 있습니다.", flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -93,7 +94,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   }
 
   if (subcommand === "목록") {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const events = await prisma.scrimEvent.findMany({
       where: { guildId: guild.id, scheduledAt: { gte: new Date() } },
@@ -120,7 +121,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   }
 
   if (subcommand === "취소") {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const shortId = interaction.options.getString("id", true);
     const event = await prisma.scrimEvent.findFirst({

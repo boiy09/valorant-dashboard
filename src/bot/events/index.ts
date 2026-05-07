@@ -1,4 +1,5 @@
-import { Events } from "discord.js";
+import { Events, MessageFlags } from "discord.js";
+import type { Guild, InteractionReplyOptions } from "discord.js";
 import type { BotClient } from "../index";
 import { prisma } from "../../lib/prisma";
 
@@ -13,6 +14,15 @@ function isVideoAttachment(name: string, contentType: string | null | undefined)
   );
 }
 
+async function fetchGuildMembersSafely(guild: Guild) {
+  try {
+    return await guild.members.fetch();
+  } catch (error) {
+    console.error(`멤버 전체 조회 제한 [${guild.name}]: 캐시된 멤버로 동기화를 진행합니다.`, error);
+    return guild.members.cache;
+  }
+}
+
 export function registerEvents(client: BotClient) {
   client.once(Events.ClientReady, async (discordClient) => {
     console.log(`봇 온라인: ${discordClient.user.tag}`);
@@ -25,7 +35,7 @@ export function registerEvents(client: BotClient) {
           create: { discordId: guild.id, name: guild.name },
         });
 
-        const members = await guild.members.fetch();
+        const members = await fetchGuildMembersSafely(guild);
         for (const [, member] of members) {
           if (member.user.bot) continue;
 
@@ -83,7 +93,10 @@ export function registerEvents(client: BotClient) {
       await command.execute(interaction);
     } catch (error) {
       console.error(`명령어 오류 [${interaction.commandName}]:`, error);
-      const message = { content: "명령어 실행 중 오류가 발생했습니다.", ephemeral: true };
+      const message: InteractionReplyOptions = {
+        content: "명령어 실행 중 오류가 발생했습니다.",
+        flags: MessageFlags.Ephemeral,
+      };
 
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(message);
@@ -164,7 +177,7 @@ export function registerEvents(client: BotClient) {
     });
 
     try {
-      const members = await guild.members.fetch();
+      const members = await fetchGuildMembersSafely(guild);
       for (const [, member] of members) {
         if (member.user.bot) continue;
 

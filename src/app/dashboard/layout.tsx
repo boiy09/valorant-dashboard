@@ -14,7 +14,6 @@ const BASE_TABS = [
   { href: "/dashboard/scrim", label: "내전", icon: "⚔" },
   { href: "/dashboard/schedule", label: "일정", icon: "▤" },
   { href: "/dashboard/announce", label: "공지", icon: "▰" },
-  { href: "/dashboard/vote", label: "투표", icon: "◆" },
   { href: "/dashboard/market", label: "장터", icon: "▧" },
   { href: "/dashboard/highlight", label: "하이라이트", icon: "▸" },
   { href: "/dashboard/search", label: "전적 검색", icon: "⌕" },

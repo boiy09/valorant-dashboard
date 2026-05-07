@@ -792,7 +792,8 @@ export async function getRecentMatches(
       const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
       const mappedRank = pTierId <= 0 ? (options?.puuidRankMap?.get(pPuuid) ?? null) : null;
-      const fallbackRank = pTierId <= 0 && !mappedRank && !options?.puuidRankMap
+      // puuidRankMap에 없는 플레이어는 API 폴백으로 랭크 조회 (apiCache로 캐시됨)
+      const fallbackRank = pTierId <= 0 && !mappedRank
         ? await getScoreboardRankByPuuid(pPuuid, region).catch(() => null)
         : null;
       const rankData = mappedRank ?? fallbackRank;

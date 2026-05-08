@@ -5,6 +5,7 @@ import { prisma } from "../../lib/prisma";
 
 const VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv", ".avi"];
 const VIDEO_URL_PATTERN = /https?:\/\/\S+\.(?:mp4|mov|webm|mkv|avi)(?:\?\S*)?/gi;
+const MAX_VOICE_SESSION_SECONDS = 18 * 60 * 60;
 
 function isVideoAttachment(name: string, contentType: string | null | undefined) {
   const lowerName = name.toLowerCase();
@@ -36,6 +37,7 @@ export function registerEvents(client: BotClient) {
         });
 
         const members = await fetchGuildMembersSafely(guild);
+        const syncedUserIds: string[] = [];
         for (const [, member] of members) {
           if (member.user.bot) continue;
 
@@ -50,6 +52,7 @@ export function registerEvents(client: BotClient) {
               image: member.user.displayAvatarURL(),
             },
           });
+          syncedUserIds.push(user.id);
 
           const roles = member.roles.cache
             .filter((role) => role.name !== "@everyone")
@@ -61,6 +64,18 @@ export function registerEvents(client: BotClient) {
             update: { roles, nickname: member.nickname ?? undefined },
             create: { userId: user.id, guildId: dbGuild.id, roles, nickname: member.nickname ?? undefined },
           });
+        }
+
+        if (syncedUserIds.length > 0) {
+          const removed = await prisma.guildMember.deleteMany({
+            where: {
+              guildId: dbGuild.id,
+              userId: { notIn: syncedUserIds },
+            },
+          });
+          if (removed.count > 0) {
+            console.log(`탈퇴 멤버 정리 완료: ${guild.name} (${removed.count}명)`);
+          }
         }
 
         await prisma.guildMember.updateMany({ where: { guildId: dbGuild.id }, data: { isOnline: false } });
@@ -232,6 +247,43 @@ export function registerEvents(client: BotClient) {
       update: {},
       create: { userId: user.id, guildId: guild.id },
     });
+  });
+
+  client.on(Events.GuildMemberRemove, async (member) => {
+    if (member.user.bot) return;
+
+    try {
+      const guild = await prisma.guild.findUnique({ where: { discordId: member.guild.id } });
+      const user = await prisma.user.findUnique({ where: { discordId: member.user.id } });
+      if (!guild || !user) return;
+
+      const now = new Date();
+      const openActivities = await prisma.voiceActivity.findMany({
+        where: { guildId: guild.id, userId: user.id, leftAt: null },
+        select: { id: true, joinedAt: true },
+      });
+
+      for (const activity of openActivities) {
+        const duration = Math.max(
+          0,
+          Math.min(Math.floor((now.getTime() - activity.joinedAt.getTime()) / 1000), MAX_VOICE_SESSION_SECONDS)
+        );
+        await prisma.voiceActivity.update({
+          where: { id: activity.id },
+          data: {
+            leftAt: new Date(activity.joinedAt.getTime() + duration * 1000),
+            duration,
+          },
+        });
+      }
+
+      await prisma.guildMember.deleteMany({
+        where: { guildId: guild.id, userId: user.id },
+      });
+      console.log(`탈퇴 멤버 제거: ${member.user.tag ?? member.user.id}`);
+    } catch (error) {
+      console.error("탈퇴 멤버 제거 오류:", error);
+    }
   });
 
   client.on(Events.PresenceUpdate, async (_, newPresence) => {

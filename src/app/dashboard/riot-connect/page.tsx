@@ -228,11 +228,6 @@ export default function RiotConnectPage() {
                   <div className="text-[#9aa8b3] text-base leading-relaxed">
                     로그인 후 <span className="text-white font-medium">playvalorant.com</span> 페이지로 이동됩니다 (404 오류 화면이 뜨는 게 정상입니다). 브라우저 주소창의 URL 전체를 <span className="text-white font-medium">Ctrl+A → Ctrl+C</span> 로 복사하세요.
                   </div>
-                  <div className="mt-3 bg-[#0f1923] border border-[#2a3540] rounded px-3 py-2 text-[11px] font-mono text-[#7b8a96] overflow-hidden">
-                    <span>https://playvalorant.com/ko-kr/opt_in/</span>
-                    <span className="text-[#ff4655] font-bold">#access_token=eyJ...</span>
-                    <span>&id_token=eyJ...</span>
-                  </div>
                 </div>
               </div>
               <div className="flex gap-4">

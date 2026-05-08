@@ -381,18 +381,52 @@ function RegionSection({ data }: { data: RegionStats }) {
   );
 }
 
+function readStatsCache() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.sessionStorage.getItem("valorant-dashboard:valorant-stats");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt?: number; data?: { accounts: RegionStats[] } };
+    if (!parsed.savedAt || Date.now() - parsed.savedAt > 10 * 60 * 1000) return null;
+    return parsed.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStatsCache(data: { accounts: RegionStats[] }) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem("valorant-dashboard:valorant-stats", JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {}
+}
+
 export default function ValorantPage() {
   const [data, setData] = useState<{ accounts: RegionStats[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/valorant/stats")
+    const cached = readStatsCache();
+    if (cached) {
+      setData(cached);
+    }
+
+    fetch("/api/valorant/stats", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
-        if (d.error) setError(d.error);
-        else setData(d);
+        if (d.error) {
+          if (!cached) setError(d.error);
+          return;
+        }
+        setError(null);
+        setData(d);
+        writeStatsCache(d);
       })
-      .catch(() => setError("데이터를 불러오지 못했습니다."));
+      .catch(() => {
+        if (!cached) setError("데이터를 불러오지 못했습니다.");
+      });
   }, []);
 
   const sortedStats = (data?.accounts ?? []).sort(

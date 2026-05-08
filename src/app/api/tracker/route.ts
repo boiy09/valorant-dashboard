@@ -174,7 +174,7 @@ async function fetchFromHenrik(
       const m = key.match(/e(\d+)a(\d+)/);
       seasons.push({
         season: key,
-        label: m ? `에피소드 ${m[1]} 액트 ${m[2]}` : key,
+        label: m ? `E${m[1]} A${m[2]}` : key,
         rankName: val.final_rank_patched ?? null,
         tier: val.final_rank ?? 0,
         matchesPlayed: val.number_of_games ?? 0,

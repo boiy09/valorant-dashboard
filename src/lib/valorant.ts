@@ -311,7 +311,7 @@ function getTeamScores(match: unknown, puuid: string) {
 
 function seasonLabel(season: string) {
   const match = season.match(/e(\d+)a(\d+)/i);
-  return match ? `에피소드 ${match[1]} 액트 ${match[2]}` : season || "시즌 정보 없음";
+  return match ? `E${match[1]} A${match[2]}` : season || "시즌 정보 없음";
 }
 
 function getSeasonGames(record: Record<string, unknown>) {

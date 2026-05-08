@@ -76,6 +76,7 @@ async function syncDiscordMembers() {
   });
 
   let synced = 0;
+  const syncedUserIds: string[] = [];
   for (const member of members) {
     if (!member.user || member.user.bot) continue;
 
@@ -114,9 +115,25 @@ async function syncDiscordMembers() {
       },
     });
     synced += 1;
+    syncedUserIds.push(user.id);
   }
 
-  return { ok: true, status: 200, message: `${synced}명 멤버/역할 정보를 갱신했습니다.`, synced };
+  const removed = syncedUserIds.length > 0
+    ? await prisma.guildMember.deleteMany({
+        where: {
+          guildId: guild.id,
+          userId: { notIn: syncedUserIds },
+        },
+      })
+    : { count: 0 };
+
+  return {
+    ok: true,
+    status: 200,
+    message: `${synced}명 멤버/역할 정보를 갱신했고 탈퇴 멤버 ${removed.count}명을 정리했습니다.`,
+    synced,
+    removed: removed.count,
+  };
 }
 
 async function restartBot() {

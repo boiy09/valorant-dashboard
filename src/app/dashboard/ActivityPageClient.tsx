@@ -130,7 +130,7 @@ function adjustBrightness(hex: string, factor: number): string {
   return `rgb(${clamp(r * factor)},${clamp(g * factor)},${clamp(b * factor)})`;
 }
 
-function getPieStyle(region: TierDistributionRegion): CSSProperties {
+function getPieStyle(region: TierDistributionRegion, mode: "detail" | "group" = "detail"): CSSProperties {
   const groups = getVisibleTierGroups(region);
   if (region.total === 0) {
     return { background: "conic-gradient(#263442 0deg 360deg)" };
@@ -140,6 +140,16 @@ function getPieStyle(region: TierDistributionRegion): CSSProperties {
   const segments: string[] = [];
 
   for (const group of groups) {
+    if (mode === "group") {
+      const deg = (group.count / region.total) * 360;
+      if (deg <= 0) continue;
+      const start = current;
+      const end = current + deg;
+      segments.push(`${group.color} ${start}deg ${end}deg`);
+      current = end;
+      continue;
+    }
+
     for (const tier of group.tiers) {
       const deg = (tier.count / region.total) * 360;
       if (deg <= 0) continue;
@@ -239,9 +249,9 @@ function TierDistributionChart({
                   {group.count}명 · {group.percent}%
                 </span>
               </div>
-              <div className="h-4 overflow-hidden bg-[#172431]">
+              <div className="h-5 rounded-sm border bg-[#172431] p-[2px]" style={{ borderColor: group.color }}>
                 <div
-                  className="flex h-full overflow-hidden"
+                  className="flex h-full overflow-hidden rounded-[2px]"
                   style={{ width: `${Math.max(group.percent, 3)}%` }}
                 >
                   {group.tiers.map((tier) => (
@@ -257,7 +267,7 @@ function TierDistributionChart({
                   ))}
                 </div>
               </div>
-              {group.key !== "UNRANKED" && group.key !== "RADIANT" ? (
+              {group.tiers.length > 1 ? (
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                   {group.tiers.map((tier) => (
                     <span key={tier.key} className="inline-flex items-center gap-1 text-[10px] font-bold text-[#8da0ad]">
@@ -279,10 +289,13 @@ function TierDistributionChart({
         </div>
       ) : (
         <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[192px_1fr]">
-          <div className="relative mx-auto h-44 w-44 flex-shrink-0 rounded-full" style={getPieStyle(region)}>
-            <div className="absolute inset-8 flex flex-col items-center justify-center rounded-full bg-[#0b1721]">
+          <div className="relative mx-auto h-44 w-44 flex-shrink-0 rounded-full p-[7px]" style={getPieStyle(region, "group")}>
+            <div className="absolute inset-[5px] rounded-full border-[3px] border-[#0b1721]/85" />
+            <div className="relative h-full w-full rounded-full" style={getPieStyle(region, "detail")}>
+              <div className="absolute inset-8 flex flex-col items-center justify-center rounded-full bg-[#0b1721]">
               <span className="text-2xl font-black text-white">{region.total}</span>
               <span className="text-xs text-[#7b8a96]">계정</span>
+              </div>
             </div>
           </div>
           <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
@@ -297,7 +310,7 @@ function TierDistributionChart({
                   <span className="flex-1 font-bold text-white">{group.label}</span>
                   <span className="text-[#8da0ad]">{group.count}명 · {group.percent}%</span>
                 </div>
-                {group.key !== "UNRANKED" && group.key !== "RADIANT" && (
+                {group.tiers.length > 1 && (
                   <div className="mt-0.5 ml-7 flex flex-col gap-0.5">
                     {group.tiers.map((tier) => (
                       <div key={tier.key} className="flex items-center gap-1.5 text-[10px] text-[#8da0ad]">
@@ -339,6 +352,28 @@ function isActivityData(value: unknown): value is ActivityData {
   );
 }
 
+function readSessionCache<T>(key: string, maxAgeMs: number): T | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt?: number; data?: T };
+    if (!parsed.savedAt || Date.now() - parsed.savedAt > maxAgeMs) return null;
+    return parsed.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionCache<T>(key: string, data: T) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {}
+}
+
 export default function ActivityPageClient() {
   const [activity, setActivity] = useState<ActivityData | null>(null);
   const [activityReady, setActivityReady] = useState(false);
@@ -375,14 +410,28 @@ export default function ActivityPageClient() {
   }, [rankType]);
 
   useEffect(() => {
+    const cacheKey = "valorant-dashboard:tier-distribution";
+    const cached = readSessionCache<TierDistributionData>(cacheKey, 10 * 60 * 1000);
+    if (cached?.regions?.KR && cached?.regions?.AP) {
+      setTierDistribution(cached);
+      setTierDistributionReady(true);
+    }
+
     fetch("/api/tier-distribution")
       .then((response) => response.json())
       .then((data) => {
         const kr = data?.regions?.KR;
         const ap = data?.regions?.AP;
-        setTierDistribution(kr && ap ? data : null);
+        if (kr && ap) {
+          setTierDistribution(data);
+          writeSessionCache(cacheKey, data);
+        } else if (!cached) {
+          setTierDistribution(null);
+        }
       })
-      .catch(() => setTierDistribution(null))
+      .catch(() => {
+        if (!cached) setTierDistribution(null);
+      })
       .finally(() => setTierDistributionReady(true));
   }, []);
 

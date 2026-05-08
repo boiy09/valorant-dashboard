@@ -73,7 +73,7 @@ export interface TggProfile {
 
 function parseSeasonLabel(season: string): string {
   const m = season.match(/e(\d+)a(\d+)/i);
-  if (m) return `에피소드 ${m[1]} 액트 ${m[2]}`;
+  if (m) return `E${m[1]} A${m[2]}`;
   return season;
 }
 

@@ -132,7 +132,7 @@ export default function AttendanceCalendar({
                 day.inMonth ? "bg-[#0f1923]" : "bg-[#0b141c] text-[#3a4a56]"
               }`}
             >
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center justify-between gap-1">
                 <span
                   className={`flex h-6 w-6 items-center justify-center rounded text-xs font-bold ${
                     isToday
@@ -145,14 +145,14 @@ export default function AttendanceCalendar({
                   {day.day}
                 </span>
                 {attended && (
-                  <span className="rounded bg-green-400/10 px-1.5 py-0.5 text-[10px] font-bold text-green-400">
+                  <span className="whitespace-nowrap break-keep rounded bg-green-400/10 px-1.5 py-0.5 text-[10px] font-bold leading-none text-green-400">
                     출석
                   </span>
                 )}
               </div>
 
               {duration && day.inMonth && (
-                <div className="mt-3 whitespace-nowrap rounded border border-[#2a3540] bg-[#111c24] px-1.5 py-1 text-center text-[11px] font-bold tabular-nums text-[#ece8e1]">
+                <div className="mt-3 whitespace-nowrap rounded border border-[#2a3540] bg-[#111c24] px-1 py-1 text-center text-[10px] font-bold tabular-nums text-[#ece8e1] sm:text-[11px]">
                   {duration}
                 </div>
               )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import BotStatus from "./BotStatus";
 
 interface Member {
   id: string;
@@ -96,7 +97,7 @@ export default function MemberSidebar() {
   ] as const satisfies ReadonlyArray<{ key: SectionKey; members: Member[] }>;
 
   return (
-    <aside className="w-52 flex-shrink-0">
+    <aside className="w-56 flex-shrink-0">
       <div className="sticky top-6 overflow-hidden rounded border border-[#2a3540] bg-[#111c24]">
         <div className="flex items-center justify-between border-b border-[#2a3540] px-3 py-2.5">
           <span className="text-[10px] uppercase tracking-widest text-[#7b8a96]">서버 멤버</span>
@@ -111,7 +112,7 @@ export default function MemberSidebar() {
         </div>
 
         <div
-          className="member-scroll max-h-[calc(100vh-10rem)] overflow-y-auto"
+          className="member-scroll max-h-[calc(100vh-22rem)] overflow-y-auto"
           style={{
             scrollbarWidth: "thin",
             scrollbarColor: "rgba(255,70,85,0.45) transparent",
@@ -147,6 +148,8 @@ export default function MemberSidebar() {
             </div>
           )}
         </div>
+
+        <BotStatus compact />
       </div>
     </aside>
   );

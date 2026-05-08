@@ -152,7 +152,7 @@ export default function AttendanceCalendar({
               </div>
 
               {duration && day.inMonth && (
-                <div className="mt-3 rounded border border-[#2a3540] bg-[#111c24] px-2 py-1 text-center text-[11px] font-bold tabular-nums text-[#ece8e1]">
+                <div className="mt-3 whitespace-nowrap rounded border border-[#2a3540] bg-[#111c24] px-1.5 py-1 text-center text-[11px] font-bold tabular-nums text-[#ece8e1]">
                   {duration}
                 </div>
               )}

@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import AttendanceCalendar from "./AttendanceCalendar";
-import BotStatus from "./BotStatus";
 
 interface ActivityData {
   weeklyData: { date: string; hours: number }[];
@@ -456,9 +455,9 @@ export default function ActivityPageClient() {
         />
 
         {/* 하단: 캘린더+랭킹 (좌) / BotStatus (우) */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(520px,1.15fr)_minmax(360px,0.85fr)]">
           {/* 캘린더 + 액티비티 랭킹 — 좌 2열 */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-2">
+          <>
             <div className="val-card p-5">
               <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">Attendance Calendar</div>
               {activity ? (
@@ -542,12 +541,9 @@ export default function ActivityPageClient() {
                 </div>
               )}
             </div>
-          </div>
+          </>
 
           {/* BotStatus — 우 1열 */}
-          <div className="flex flex-col gap-4">
-            <BotStatus />
-          </div>
         </div>
       </div>
     </div>

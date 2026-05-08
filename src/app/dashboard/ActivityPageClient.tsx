@@ -73,6 +73,20 @@ function fmtDateRange(period: RankingPeriod | null) {
   return `${format(period.start)} - ${format(period.end)}`;
 }
 
+function rankingRowClass(rank: number) {
+  if (rank === 1) return "rounded border-l-2 border-yellow-400 bg-yellow-400/10 px-2";
+  if (rank === 2) return "rounded border-l-2 border-zinc-300 bg-zinc-300/10 px-2";
+  if (rank === 3) return "rounded border-l-2 border-amber-600 bg-amber-600/10 px-2";
+  return "px-2";
+}
+
+function rankingAccentTextClass(rank: number) {
+  if (rank === 1) return "text-yellow-400";
+  if (rank === 2) return "text-zinc-300";
+  if (rank === 3) return "text-amber-600";
+  return "text-[#ff4655]";
+}
+
 function rankingBasisText(type: "weekly" | "monthly") {
   const period = type === "weekly" ? "최근 7일" : "이번 달 1일부터 현재";
   return `${period} · 음성 채널 체류 시간 합산 · 겹친 기록 병합 · 잠수/AFK 채널 제외 · 단일 세션 최대 18시간`;
@@ -508,9 +522,7 @@ export default function ActivityPageClient() {
                   {ranking.map((entry) => (
                     <div
                       key={entry.rank}
-                      className={`grid grid-cols-[28px_36px_minmax(0,1fr)_72px] items-center gap-2 py-1.5 ${
-                        entry.rank <= 3 ? "stat-highlight rounded px-2" : "px-2"
-                      }`}
+                      className={`grid grid-cols-[28px_36px_minmax(0,1fr)_72px] items-center gap-2 py-1.5 ${rankingRowClass(entry.rank)}`}
                     >
                       <span
                         className={`text-center text-sm font-black tabular-nums ${
@@ -533,7 +545,7 @@ export default function ActivityPageClient() {
                         </div>
                       )}
                       <span className="truncate text-sm font-bold text-white">{entry.name}</span>
-                      <span className="whitespace-nowrap text-right text-xs font-bold tabular-nums text-[#ff4655]">
+                      <span className={`whitespace-nowrap text-right text-xs font-bold tabular-nums ${rankingAccentTextClass(entry.rank)}`}>
                         {fmtRankingTime(entry.seconds, entry.hours, entry.minutes)}
                       </span>
                     </div>

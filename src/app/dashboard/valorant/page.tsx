@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { RankData, MatchStats, ScoreboardPlayer } from "@/lib/valorant";
+import { normalizeTierName } from "@/lib/tierName";
 import MatchDetailScoreboard from "./MatchDetailScoreboard";
 
 type RiotRegion = "KR" | "AP";
@@ -72,7 +73,7 @@ function RankSummaryCard({
           <div className="h-12 w-12 rounded bg-[#111c24] ring-1 ring-[#2a3540]" />
         )}
         <div className="min-w-0">
-          <div className="truncate text-lg font-black text-white">{rankName || "정보 없음"}</div>
+          <div className="truncate text-lg font-black text-white">{normalizeTierName(rankName) || "정보 없음"}</div>
           <div className="text-xs font-bold text-[#8da0ad]">{season || "시즌 정보 없음"}</div>
           <div className="mt-1 text-xs text-[#7b8a96]">
             {safeGames > 0 ? `${safeWins}승 ${losses}패` : "승패 정보 없음"}
@@ -170,7 +171,7 @@ function ScoreboardTable({ players, myPuuid, label, accent }: {
                 <td className="px-2 py-2">
                   <div className="flex items-center gap-1.5">
                     {p.tierIcon ? <img src={p.tierIcon} alt={p.tierName} className="h-6 w-6 object-contain" /> : <div className="h-6 w-6 rounded-full bg-[#2a3540]" />}
-                    <span className={`truncate text-[11px] font-bold ${tierColor(p.tierId)}`}>{p.tierName}</span>
+                    <span className={`truncate text-[11px] font-bold ${tierColor(p.tierId)}`}>{normalizeTierName(p.tierName, p.tierId)}</span>
                   </div>
                 </td>
                 <td className="bg-[#24384a] px-2 py-2 text-right text-base font-black text-white">{p.acs}</td>

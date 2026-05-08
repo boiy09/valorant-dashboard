@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { normalizeTierName } from "@/lib/tierName";
 
 interface RiotAccountSummary {
   region: "KR" | "AP";
@@ -310,7 +311,7 @@ function RiotAccountRow({ account }: { account: RiotAccountSummary }) {
         ) : (
           <div className="h-6 w-6 rounded-full bg-[#263442]" />
         )}
-        <span className="text-[10px] font-bold text-[#8da0ad]">{account.tier}</span>
+        <span className="text-[10px] font-bold text-[#8da0ad]">{normalizeTierName(account.tier)}</span>
       </div>
     </div>
   );

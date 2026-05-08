@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MatchScoreboardData, ScoreboardPlayer, ScoreboardTeam } from "@/lib/valorant";
+import { normalizeTierName } from "@/lib/tierName";
 
 type PlayerRow = ScoreboardPlayer;
 type Team = ScoreboardTeam;
@@ -145,7 +146,7 @@ function PlayerTable({
                         )}
                       </div>
                       <div className={`text-[10px] ${tierColor(player.tierId)}`}>
-                        {player.tierName}
+                        {normalizeTierName(player.tierName, player.tierId)}
                       </div>
                     </div>
                   </div>

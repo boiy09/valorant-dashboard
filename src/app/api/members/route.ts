@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { normalizeTierName } from "@/lib/tierName";
 import { getRankIconByTier } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 
@@ -93,7 +94,7 @@ export async function GET(req: NextRequest) {
         riotId: `${account.gameName}#${account.tagLine}`,
         level: account.cachedLevel,
         card: account.cachedCard,
-        tier: account.cachedTierName ?? "언랭크",
+        tier: normalizeTierName(account.cachedTierName, account.cachedTierId),
         rankIcon,
       });
       return;

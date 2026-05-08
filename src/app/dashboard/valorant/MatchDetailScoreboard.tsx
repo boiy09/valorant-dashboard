@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MatchResult, MatchScoreboardData, ScoreboardPlayer } from "@/lib/valorant";
+import { normalizeTierName } from "@/lib/tierName";
 
 interface MatchDetailPayload extends MatchScoreboardData {
   matchId: string;
@@ -206,7 +207,7 @@ function ScoreboardTable({
                     ) : (
                       <div className="h-6 w-6 rounded-full bg-[#2a3540]" />
                     )}
-                    <span className={`truncate text-[11px] font-bold ${tierColor(player.tierId)}`}>{player.tierName}</span>
+                    <span className={`truncate text-[11px] font-bold ${tierColor(player.tierId)}`}>{normalizeTierName(player.tierName, player.tierId)}</span>
                   </div>
                 </td>
                 <td className="bg-[#24384a] px-2 py-2 text-center text-base font-black text-white">{player.acs}</td>
@@ -238,7 +239,7 @@ function hasUsefulName(player?: ScoreboardPlayer) {
 
 function hasUsefulTier(player?: ScoreboardPlayer) {
   if (!player) return false;
-  return player.tierId > 0 && player.tierName.trim().toLowerCase() !== "unranked";
+  return player.tierId > 0 && normalizeTierName(player.tierName, player.tierId) !== "언랭크";
 }
 
 function mergePlayerIdentity(fresh: ScoreboardPlayer, previous?: ScoreboardPlayer): ScoreboardPlayer {
@@ -257,7 +258,7 @@ function mergePlayerIdentity(fresh: ScoreboardPlayer, previous?: ScoreboardPlaye
     agentIcon: fresh.agentIcon || previous.agentIcon,
     level: fresh.level ?? previous.level,
     tierId: usePreviousTier ? previous.tierId : fresh.tierId,
-    tierName: usePreviousTier ? previous.tierName : fresh.tierName,
+    tierName: normalizeTierName(usePreviousTier ? previous.tierName : fresh.tierName, usePreviousTier ? previous.tierId : fresh.tierId),
     tierIcon: fresh.tierIcon || previous.tierIcon,
   };
 }
@@ -379,7 +380,7 @@ export default function MatchDetailScoreboard({
           <div>
             <div className="text-[11px] font-bold text-[#9fb0be]">Average Rank</div>
             <div className="text-lg font-black text-white">
-              {derived.myTeamPlayers.find((player) => player.tierId > 0)?.tierName ?? "Unrated"}
+              {normalizeTierName(derived.myTeamPlayers.find((player) => player.tierId > 0)?.tierName, derived.myTeamPlayers.find((player) => player.tierId > 0)?.tierId)}
             </div>
           </div>
         </div>

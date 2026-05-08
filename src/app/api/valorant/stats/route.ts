@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { normalizeTierName } from "@/lib/tierName";
 import { getRankByPuuid, getRecentMatches, getRankIconByTier } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank } from "@/lib/rankFetcher";
 
@@ -43,7 +44,7 @@ export async function GET() {
   const puuidRankMap = new Map<string, RankEntry>(
     (guildMemberAccounts as GuildAccount[]).map((a) => [
       a.puuid,
-      { tierId: a.cachedTierId as number, tierName: a.cachedTierName ?? "Unranked" },
+      { tierId: a.cachedTierId as number, tierName: normalizeTierName(a.cachedTierName, a.cachedTierId) },
     ])
   );
 

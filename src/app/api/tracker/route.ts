@@ -4,6 +4,7 @@ import axios from "axios";
 import { getTrackerProfile, getTrackerAgents } from "@/lib/trackergg";
 import { apiCache, TTL } from "@/lib/apiCache";
 import { formatValorantSeasonLabel } from "@/lib/seasonLabel";
+import { normalizeTierName } from "@/lib/tierName";
 
 // ──────────────────────────────────────────────
 // Henrik 클라이언트 (폴백용)
@@ -175,7 +176,7 @@ async function fetchFromHenrik(
       seasons.push({
         season: key,
         label: formatValorantSeasonLabel(key),
-        rankName: val.final_rank_patched ?? null,
+        rankName: normalizeTierName(val.final_rank_patched ?? null, val.final_rank ?? 0),
         tier: val.final_rank ?? 0,
         matchesPlayed: val.number_of_games ?? 0,
         wins: val.wins ?? 0,

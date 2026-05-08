@@ -1,4 +1,5 @@
 import { formatValorantSeasonLabel } from "@/lib/seasonLabel";
+import { normalizeTierName } from "@/lib/tierName";
 
 /**
  * Tracker.gg Valorant API 클라이언트
@@ -116,7 +117,7 @@ export async function getTrackerProfile(
     killsPerRound: Math.round(statVal(overviewStats?.killsPerRound) * 100) / 100,
     scorePerRound: Math.round(statVal(overviewStats?.scorePerRound)),
     damagePerRound: Math.round(statVal(overviewStats?.damagePerRound)),
-    peakRankName: statMeta(overviewStats?.peakRank, "tierName"),
+    peakRankName: normalizeTierName(statMeta(overviewStats?.peakRank, "tierName"), Math.round(statVal(overviewStats?.peakRank))),
     peakRankTier: Math.round(statVal(overviewStats?.peakRank)),
   };
 
@@ -135,7 +136,7 @@ export async function getTrackerProfile(
       return {
         season: seasonKey,
         label: parseSeasonLabel(seasonKey),
-        rankName: statMeta(stats?.rank, "tierName") || null,
+        rankName: normalizeTierName(statMeta(stats?.rank, "tierName"), Math.round(statVal(stats?.rank))) || null,
         tier: Math.round(statVal(stats?.rank)),
         matchesPlayed: mp,
         wins: w,
@@ -187,7 +188,7 @@ export async function getTrackerCurrentRank(
     const tierName = statMeta(rankStat, "tierName") || null;
     const rankIcon = statMeta(rankStat, "iconUrl") || null;
 
-    return { tierId, tierName: tierName ?? "언랭크", rankIcon: rankIcon || null };
+    return { tierId, tierName: normalizeTierName(tierName, tierId), rankIcon: rankIcon || null };
   } catch {
     return null;
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { normalizeTierName } from "@/lib/tierName";
 
 type RiotRegion = "KR" | "AP";
 
@@ -346,7 +347,7 @@ export default function TrackerStats({ gameName, tagLine, region = "KR" }: Props
                 <div className="w-36 flex-shrink-0">
                   {season.rankName ? (
                     <span className={`text-sm font-bold ${tierColor(season.tier)}`}>
-                      {season.rankName}
+                      {normalizeTierName(season.rankName, season.tier)}
                     </span>
                   ) : (
                     <span className="text-[#7b8a96] text-sm">언랭크</span>

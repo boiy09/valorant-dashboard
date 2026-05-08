@@ -1,5 +1,6 @@
 import axios from "axios";
 import { apiCache, TTL } from "@/lib/apiCache";
+import { normalizeTierName } from "@/lib/tierName";
 import { formatValorantSeasonLabel } from "@/lib/seasonLabel";
 import { getOpGgRankFallback } from "@/lib/opgg";
 
@@ -327,7 +328,7 @@ function getSeasonTierId(record: Record<string, unknown>) {
 }
 
 function getSeasonTierName(record: Record<string, unknown>, tierId: number) {
-  return toString(
+  const name = toString(
     record.final_rank_patched ??
       record.finalRankPatched ??
       record.rank_patched ??
@@ -335,6 +336,7 @@ function getSeasonTierName(record: Record<string, unknown>, tierId: number) {
       record.patched_tier,
     tierId > 0 ? "랭크 정보" : "언랭크"
   );
+  return normalizeTierName(name, tierId);
 }
 
 function getSeasonEntries(bySeason: unknown) {
@@ -485,7 +487,7 @@ async function getScoreboardRankByPuuid(puuid: string, region: ValorantRegion) {
   if (tierId <= 0) return null;
   return {
     tierId,
-    tierName: toString(tier.name ?? current.currenttierpatched ?? data?.currenttierpatched, "Unranked"),
+    tierName: normalizeTierName(toString(tier.name ?? current.currenttierpatched ?? data?.currenttierpatched, "Unranked"), tierId),
     tierIcon: await getRankIconByTier(tierId),
   };
 }
@@ -573,10 +575,10 @@ export async function getRankByPuuid(
       opGgRank?.rankIcon ? Promise.resolve(opGgRank.rankIcon) : getRankIconByTier(tierId),
       getRankIconByTier(peakTierId),
     ]);
-    const tierName = toString(
+    const tierName = normalizeTierName(toString(
       currentTierId > 0 ? (currentTier.name ?? current.currenttierpatched) : opGgRank?.tierName,
       "언랭크"
-    );
+    ), tierId);
     const rr = currentTierId > 0 ? toNumber(current.rr ?? current.ranking_in_tier) : null;
     const rrChange = currentTierId > 0 ? toNumber(current.last_change ?? current.mmr_change_to_last_game) : null;
     const peakSeason = seasonSummaries.reduce<RankSeasonSummary | null>(
@@ -591,8 +593,8 @@ export async function getRankByPuuid(
       rr,
       rrChange,
       isCurrent: currentTierId > 0 || Boolean(opGgRank?.isCurrent),
-      peakTier: toString(peakTier.name ?? peak.patched_tier, "기록 없음"),
-      peakTierName: toString(peakTier.name ?? peak.patched_tier, "기록 없음"),
+      peakTier: peakTierId > 0 ? normalizeTierName(toString(peakTier.name ?? peak.patched_tier, "기록 없음"), peakTierId) : "기록 없음",
+      peakTierName: peakTierId > 0 ? normalizeTierName(toString(peakTier.name ?? peak.patched_tier, "기록 없음"), peakTierId) : "기록 없음",
       wins,
       games: games > 0 ? games : toNumber(latestSeason.number_of_games),
       rankIcon,
@@ -798,7 +800,10 @@ export async function getRecentMatches(
         : null;
       const rankData = mappedRank ?? fallbackRank;
       const finalTierId = pTierId || rankData?.tierId || 0;
-      const finalTierName = pTierId > 0 ? toString(pTier.name, "Unranked") : rankData?.tierName ?? "Unranked";
+      const finalTierName = normalizeTierName(
+        pTierId > 0 ? toString(pTier.name, "Unranked") : rankData?.tierName ?? "Unranked",
+        finalTierId
+      );
       return {
         puuid: pPuuid,
         name: isPrivate ? "비공개" : displayName,
@@ -891,7 +896,7 @@ export async function getMmrHistoryByPuuid(
   return history.map((entry) => ({
     matchId: toString(entry?.match_id, ""),
     map: toString(entry?.map?.name, "맵 정보 없음"),
-    tierName: toString(entry?.currenttierpatched, "언랭크"),
+    tierName: normalizeTierName(toString(entry?.currenttierpatched, "언랭크")),
     rr: toNumber(entry?.ranking_in_tier),
     rrChange: toNumber(entry?.mmr_change_to_last_game),
     elo: toNumber(entry?.elo),

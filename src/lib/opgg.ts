@@ -1,4 +1,5 @@
 import { apiCache, TTL } from "@/lib/apiCache";
+import { normalizeTierName } from "@/lib/tierName";
 
 export interface OpGgRankFallback {
   tierId: number;
@@ -58,7 +59,7 @@ function parseRank(html: string): OpGgRankFallback | null {
 
   return {
     tierId,
-    tierName: tierName || name,
+    tierName: normalizeTierName(tierName || name, tierId),
     rankIcon: imageUrl,
     isCurrent: currentTierId > 0,
   };

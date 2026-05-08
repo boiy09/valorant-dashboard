@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { normalizeTierName } from "@/lib/tierName";
 import TrackerStats from "../TrackerStats";
 
 type RiotRegion = "KR" | "AP";
@@ -119,7 +120,7 @@ export default function SearchPage() {
                 </div>
                 {result.rank ? (
                   <div className="flex items-center gap-4 mt-2 flex-wrap">
-                    <span className="text-white font-bold">{result.rank.tierName}</span>
+                    <span className="text-white font-bold">{normalizeTierName(result.rank.tierName)}</span>
                     <span className="text-[#ff4655] font-bold">{result.rank.rr} RR</span>
                     <span className="text-[#7b8a96] text-sm">
                       {result.rank.wins}승 / {Math.max(result.rank.games - result.rank.wins, 0)}패

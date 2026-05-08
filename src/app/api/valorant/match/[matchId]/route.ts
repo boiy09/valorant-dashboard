@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import axios from "axios";
 import { apiCache } from "@/lib/apiCache";
+import { normalizeTierName } from "@/lib/tierName";
 
 const MATCH_TTL = 7 * 24 * 60 * 60 * 1000; // 7일 (매치는 불변)
 
@@ -130,7 +131,7 @@ async function getCurrentRankByPuuid(puuid: string) {
 
   return {
     tierId,
-    tierName: firstString(tier.name, current.currenttierpatched, data?.currenttierpatched) || "Unranked",
+    tierName: normalizeTierName(firstString(tier.name, current.currenttierpatched, data?.currenttierpatched) || "Unranked", tierId),
     tierIcon: await getRankIconByTier(tierId),
   };
 }
@@ -205,8 +206,10 @@ export async function GET(
       const matchTierId = toNumber(tier.id);
       const rankFallback = matchTierId > 0 ? null : await getCurrentRankByPuuid(puuid).catch(() => null);
       const finalTierId = matchTierId || rankFallback?.tierId || 0;
-      const finalTierName =
-        matchTierId > 0 ? firstString(tier.name) || "Unranked" : rankFallback?.tierName ?? "Unranked";
+      const finalTierName = normalizeTierName(
+        matchTierId > 0 ? firstString(tier.name) || "Unranked" : rankFallback?.tierName ?? "Unranked",
+        finalTierId
+      );
       const finalTierIcon = rankFallback?.tierIcon ?? (await getRankIconByTier(finalTierId));
 
       return {

@@ -473,26 +473,28 @@ export default function ActivityPageClient() {
             </div>
 
             <div className="val-card p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
+              <div className="mb-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="text-xs uppercase tracking-widest text-[#7b8a96]">Activity Ranking</div>
-                  <div className="mt-1 text-[11px] font-semibold text-[#8da0ad]">{fmtDateRange(rankingPeriod)}</div>
-                  <div className="mt-1 max-w-[260px] text-[10px] leading-relaxed text-[#657482]">
-                    {rankingBasisText(rankType)}
+                  <div className="flex shrink-0 gap-1">
+                    {(["weekly", "monthly"] as const).map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => setRankType(type)}
+                        className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                          rankType === type ? "bg-[#ff4655] text-white" : "text-[#7b8a96] hover:text-white"
+                        }`}
+                      >
+                        {type === "weekly" ? "Weekly" : "Monthly"}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div className="flex gap-1">
-                  {(["weekly", "monthly"] as const).map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => setRankType(type)}
-                      className={`rounded px-2 py-0.5 text-xs transition-colors ${
-                        rankType === type ? "bg-[#ff4655] text-white" : "text-[#7b8a96] hover:text-white"
-                      }`}
-                    >
-                      {type === "weekly" ? "Weekly" : "Monthly"}
-                    </button>
-                  ))}
+                <div className="mb-3 grid gap-1 border-l-2 border-[#ff4655] bg-[#ff4655]/10 px-3 py-2">
+                  <div className="font-mono text-[11px] font-bold text-[#c8d3db]">{fmtDateRange(rankingPeriod)}</div>
+                  <div className="text-[11px] font-semibold leading-relaxed text-[#ece8e1]">
+                    {rankingBasisText(rankType)}
+                  </div>
                 </div>
               </div>
 
@@ -507,10 +509,12 @@ export default function ActivityPageClient() {
                   {ranking.map((entry) => (
                     <div
                       key={entry.rank}
-                      className={`flex items-center gap-3 py-1.5 ${entry.rank <= 3 ? "stat-highlight rounded px-2" : ""}`}
+                      className={`grid grid-cols-[28px_36px_minmax(0,1fr)_72px] items-center gap-2 py-1.5 ${
+                        entry.rank <= 3 ? "stat-highlight rounded px-2" : "px-2"
+                      }`}
                     >
                       <span
-                        className={`w-5 text-center text-sm font-black ${
+                        className={`text-center text-sm font-black tabular-nums ${
                           entry.rank === 1
                             ? "text-yellow-400"
                             : entry.rank === 2
@@ -523,14 +527,14 @@ export default function ActivityPageClient() {
                         {entry.rank}
                       </span>
                       {entry.image ? (
-                        <img src={entry.image} alt={entry.name} className="h-7 w-7 rounded-full" />
+                        <img src={entry.image} alt={entry.name} className="mx-auto h-7 w-7 rounded-full" />
                       ) : (
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2a3540] text-xs text-[#7b8a96]">
+                        <div className="mx-auto flex h-7 w-7 items-center justify-center rounded-full bg-[#2a3540] text-xs text-[#7b8a96]">
                           {entry.name?.[0]}
                         </div>
                       )}
-                      <span className="flex-1 truncate text-sm text-white">{entry.name}</span>
-                      <span className="whitespace-nowrap text-xs font-bold text-[#ff4655]">
+                      <span className="truncate text-sm font-bold text-white">{entry.name}</span>
+                      <span className="whitespace-nowrap text-right text-xs font-bold tabular-nums text-[#ff4655]">
                         {fmtRankingTime(entry.seconds, entry.hours, entry.minutes)}
                       </span>
                     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 
 interface Announcement {
   id: string;
@@ -211,6 +211,15 @@ function VideoSection({
 
 function AnnouncementCard({ item }: { item: Announcement }) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function copyId(event: MouseEvent<HTMLSpanElement> | KeyboardEvent<HTMLSpanElement>) {
+    event.stopPropagation();
+    await navigator.clipboard.writeText(item.id);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
+
   return (
     <div className="val-card overflow-hidden">
       <button className="w-full p-5 text-left" onClick={() => setOpen((o) => !o)}>
@@ -220,8 +229,20 @@ function AnnouncementCard({ item }: { item: Announcement }) {
             <div className="font-bold text-white">{item.title}</div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#7b8a96]">
               <span>{formatDate(item.createdAt)}</span>
-              <span className="rounded border border-[#2a3540] bg-[#0f1923] px-1.5 py-0.5 font-mono text-[10px] text-[#c8d3db]">
-                ID: {item.id}
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={copyId}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    copyId(event);
+                  }
+                }}
+                title="공지 ID 복사"
+                className="cursor-copy rounded border border-[#2a3540] bg-[#0f1923] px-1.5 py-0.5 font-mono text-[10px] text-[#c8d3db] transition-colors hover:border-[#ff4655] hover:text-white"
+              >
+                ID: {copied ? "복사됨" : item.id}
               </span>
             </div>
           </div>

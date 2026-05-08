@@ -74,9 +74,9 @@ export default function AttendanceCalendar({
   return (
     <div className="w-full">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-lg font-black text-white">{monthLabel(visibleMonth)}</div>
-          <div className="text-xs text-[#7b8a96]">이번 달 출석 {monthAttendanceCount}일</div>
+        <div className="min-w-0">
+          <div className="text-lg font-black leading-tight text-white">{monthLabel(visibleMonth)}</div>
+          <div className="mt-1 text-xs font-semibold text-[#7b8a96]">이번 달 출석 {monthAttendanceCount}일</div>
         </div>
         <div className="flex items-center gap-1.5">
           <button
@@ -105,7 +105,7 @@ export default function AttendanceCalendar({
         </div>
       </div>
 
-      <div className="mb-3 border-l-2 border-[#ff4655] bg-[#ff4655]/10 px-3 py-2 text-xs font-semibold text-[#ece8e1]">
+      <div className="mb-3 border-l-2 border-[#ff4655] bg-[#ff4655]/10 px-3 py-2 text-xs font-semibold leading-relaxed text-[#ece8e1]">
         출석은 하루 음성 채널 활동 시간이 최소 {minAttendanceText} 이상일 때만 인정됩니다.
       </div>
 
@@ -140,7 +140,7 @@ export default function AttendanceCalendar({
                       : day.inMonth
                         ? "text-[#ece8e1]"
                         : "text-[#3a4a56]"
-                  }`}
+                  } tabular-nums`}
                 >
                   {day.day}
                 </span>
@@ -152,7 +152,7 @@ export default function AttendanceCalendar({
               </div>
 
               {duration && day.inMonth && (
-                <div className="mt-3 rounded border border-[#2a3540] bg-[#111c24] px-2 py-1 text-center text-[11px] font-bold text-[#ece8e1]">
+                <div className="mt-3 rounded border border-[#2a3540] bg-[#111c24] px-2 py-1 text-center text-[11px] font-bold tabular-nums text-[#ece8e1]">
                   {duration}
                 </div>
               )}
@@ -167,7 +167,7 @@ export default function AttendanceCalendar({
         })}
       </div>
 
-      <div className="mt-3 flex items-center gap-4 text-[11px] text-[#7b8a96]">
+      <div className="mt-3 grid grid-cols-[auto_auto_1fr] items-start gap-x-4 gap-y-1 text-[11px] leading-relaxed text-[#7b8a96]">
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm bg-[#ff4655]" />
           출석

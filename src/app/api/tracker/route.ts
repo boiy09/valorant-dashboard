@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import axios from "axios";
 import { getTrackerProfile, getTrackerAgents } from "@/lib/trackergg";
 import { apiCache, TTL } from "@/lib/apiCache";
+import { formatValorantSeasonLabel } from "@/lib/seasonLabel";
 
 // ──────────────────────────────────────────────
 // Henrik 클라이언트 (폴백용)
@@ -171,10 +172,9 @@ async function fetchFromHenrik(
   if (bySeason) {
     for (const [key, val] of Object.entries(bySeason) as [string, any][]) {
       if (!val || (val.number_of_games ?? 0) === 0) continue;
-      const m = key.match(/e(\d+)a(\d+)/);
       seasons.push({
         season: key,
-        label: m ? `E${m[1]} A${m[2]}` : key,
+        label: formatValorantSeasonLabel(key),
         rankName: val.final_rank_patched ?? null,
         tier: val.final_rank ?? 0,
         matchesPlayed: val.number_of_games ?? 0,

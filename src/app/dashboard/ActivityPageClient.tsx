@@ -74,6 +74,11 @@ function fmtDateRange(period: RankingPeriod | null) {
   return `${format(period.start)} - ${format(period.end)}`;
 }
 
+function rankingBasisText(type: "weekly" | "monthly") {
+  const period = type === "weekly" ? "최근 7일" : "이번 달 1일부터 현재";
+  return `${period} · 음성 채널 체류 시간 합산 · 겹친 기록 병합 · 잠수/AFK 채널 제외 · 단일 세션 최대 18시간`;
+}
+
 function getVisibleTiers(region: TierDistributionRegion) {
   const active = region.tiers.filter((tier) => tier.count > 0);
   return active.length > 0 ? active : region.tiers.slice(0, 1);
@@ -472,6 +477,9 @@ export default function ActivityPageClient() {
                 <div>
                   <div className="text-xs uppercase tracking-widest text-[#7b8a96]">Activity Ranking</div>
                   <div className="mt-1 text-[11px] font-semibold text-[#8da0ad]">{fmtDateRange(rankingPeriod)}</div>
+                  <div className="mt-1 max-w-[260px] text-[10px] leading-relaxed text-[#657482]">
+                    {rankingBasisText(rankType)}
+                  </div>
                 </div>
                 <div className="flex gap-1">
                   {(["weekly", "monthly"] as const).map((type) => (

@@ -218,7 +218,12 @@ function AnnouncementCard({ item }: { item: Announcement }) {
           {item.pinned ? <span className="mt-0.5 flex-shrink-0 text-xs text-[#ff4655]">고정</span> : null}
           <div className="min-w-0 flex-1">
             <div className="font-bold text-white">{item.title}</div>
-            <div className="mt-1 text-xs text-[#7b8a96]">{formatDate(item.createdAt)}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#7b8a96]">
+              <span>{formatDate(item.createdAt)}</span>
+              <span className="rounded border border-[#2a3540] bg-[#0f1923] px-1.5 py-0.5 font-mono text-[10px] text-[#c8d3db]">
+                ID: {item.id}
+              </span>
+            </div>
           </div>
           <span className="mt-0.5 flex-shrink-0 text-xs text-[#7b8a96]">{open ? "접기" : "보기"}</span>
         </div>

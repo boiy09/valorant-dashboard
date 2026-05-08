@@ -1,5 +1,6 @@
 import axios from "axios";
 import { apiCache, TTL } from "@/lib/apiCache";
+import { formatValorantSeasonLabel } from "@/lib/seasonLabel";
 import { getOpGgRankFallback } from "@/lib/opgg";
 
 const henrikClient = axios.create({
@@ -310,8 +311,7 @@ function getTeamScores(match: unknown, puuid: string) {
 }
 
 function seasonLabel(season: string) {
-  const match = season.match(/e(\d+)a(\d+)/i);
-  return match ? `E${match[1]} A${match[2]}` : season || "시즌 정보 없음";
+  return formatValorantSeasonLabel(season);
 }
 
 function getSeasonGames(record: Record<string, unknown>) {

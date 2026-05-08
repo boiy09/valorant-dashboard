@@ -1,3 +1,5 @@
+import { formatValorantSeasonLabel } from "@/lib/seasonLabel";
+
 /**
  * Tracker.gg Valorant API 클라이언트
  * Henrik API 대비 더 넉넉한 요청 한도와 사전 집계된 통계를 제공합니다.
@@ -72,9 +74,7 @@ export interface TggProfile {
 }
 
 function parseSeasonLabel(season: string): string {
-  const m = season.match(/e(\d+)a(\d+)/i);
-  if (m) return `E${m[1]} A${m[2]}`;
-  return season;
+  return formatValorantSeasonLabel(season);
 }
 
 export async function getTrackerProfile(

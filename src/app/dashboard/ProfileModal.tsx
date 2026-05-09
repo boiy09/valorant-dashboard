@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+
 export interface ProfileAccount {
   region: string;
   riotId: string;
@@ -19,12 +21,32 @@ export interface ProfileData {
   riotId?: string | null;
   riotAccounts?: ProfileAccount[];
   isOnline?: boolean;
+  valorantRole?: string | null;
+  favoriteAgents?: string[];
 }
 
 interface ProfileModalProps {
   title?: string;
   profile: ProfileData | null;
+  editable?: boolean;
   onClose: () => void;
+  onProfileSaved?: (data: Pick<ProfileData, "valorantRole" | "favoriteAgents">) => void;
+}
+
+interface AgentOption {
+  id: string;
+  name: string;
+  icon: string | null;
+  role: string;
+  roleLabel: string;
+  roleIcon: string | null;
+}
+
+interface RoleOption {
+  role: string;
+  label: string;
+  icon: string | null;
+  count: number;
 }
 
 function getInitial(name?: string | null) {
@@ -35,11 +57,84 @@ function regionLabel(region: string) {
   return region.toUpperCase() === "AP" ? "AP · 아섭" : "KR · 한섭";
 }
 
-export default function ProfileModal({ title = "프로필", profile, onClose }: ProfileModalProps) {
+export default function ProfileModal({ title = "프로필", profile, editable = false, onClose, onProfileSaved }: ProfileModalProps) {
+  const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [agents, setAgents] = useState<AgentOption[]>([]);
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!profile) return;
+    setSelectedRole(profile.valorantRole ?? null);
+    setSelectedAgents(profile.favoriteAgents ?? []);
+    setMessage(null);
+  }, [profile]);
+
+  useEffect(() => {
+    if (!profile) return;
+
+    let cancelled = false;
+
+    fetch("/api/valorant/agents", { cache: "force-cache" })
+      .then((response) => (response.ok ? response.json() : { roles: [], agents: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        setRoles(data.roles ?? []);
+        setAgents(data.agents ?? []);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile]);
+
   if (!profile) return null;
 
   const displayName = profile.name || "이름 없음";
   const accounts = profile.riotAccounts ?? [];
+  const favoriteAgentDetails = (editable ? selectedAgents : profile.favoriteAgents ?? [])
+    .map((name) => agents.find((agent) => agent.name === name) ?? { id: name, name, icon: null, role: "", roleLabel: "", roleIcon: null });
+  const currentRole = roles.find((role) => role.role === (editable ? selectedRole : profile.valorantRole));
+  const filteredAgents = selectedRole ? agents.filter((agent) => agent.role === selectedRole) : agents;
+  const canSave = editable && !saving;
+
+  function toggleAgent(name: string) {
+    if (!editable) return;
+    setSelectedAgents((current) => {
+      if (current.includes(name)) return current.filter((agent) => agent !== name);
+      if (current.length >= 3) {
+        setMessage("모스트 요원은 최대 3개까지 선택할 수 있습니다.");
+        return current;
+      }
+      setMessage(null);
+      return [...current, name];
+    });
+  }
+
+  async function saveProfile() {
+    if (!editable) return;
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/user/profile", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ valorantRole: selectedRole, favoriteAgents: selectedAgents }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "프로필 저장 실패");
+      onProfileSaved?.({ valorantRole: data.valorantRole, favoriteAgents: data.favoriteAgents ?? [] });
+      setMessage("프로필이 저장되었습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "프로필 저장에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div
@@ -48,7 +143,7 @@ export default function ProfileModal({ title = "프로필", profile, onClose }: 
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="val-card w-full max-w-lg overflow-hidden p-5 shadow-2xl shadow-black/50">
+      <div className="val-card max-h-[88vh] w-full max-w-2xl overflow-hidden p-5 shadow-2xl shadow-black/50">
         <div className="flex items-start justify-between gap-4 border-b border-[#2a3540] pb-4">
           <div className="flex min-w-0 items-center gap-3">
             {profile.image ? (
@@ -86,7 +181,7 @@ export default function ProfileModal({ title = "프로필", profile, onClose }: 
           </button>
         </div>
 
-        <div className="mt-4 space-y-4">
+        <div className="member-scroll mt-4 max-h-[calc(88vh-7.5rem)] space-y-4 overflow-y-auto pr-1">
           {profile.email && (
             <InfoBlock label="이메일" value={profile.email} />
           )}
@@ -143,8 +238,121 @@ export default function ProfileModal({ title = "프로필", profile, onClose }: 
               </div>
             )}
           </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">발로란트 역할군</p>
+              {currentRole && (
+                <span className="text-[10px] font-bold text-[#ff4655]">{currentRole.label}</span>
+              )}
+            </div>
+            {editable ? (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {roles.map((role) => (
+                  <button
+                    key={role.role}
+                    type="button"
+                    onClick={() => setSelectedRole((current) => current === role.role ? null : role.role)}
+                    className={`rounded border p-2 text-left transition-colors ${
+                      selectedRole === role.role
+                        ? "border-[#ff4655] bg-[#ff4655]/15 text-white"
+                        : "border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3] hover:border-[#ff4655]/55"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {role.icon && <img src={role.icon} alt="" className="h-5 w-5 object-contain" />}
+                      <span className="text-xs font-black">{role.label}</span>
+                    </div>
+                    <div className="mt-1 text-[10px] text-[#7b8a96]">{role.count}명 요원</div>
+                  </button>
+                ))}
+              </div>
+            ) : currentRole ? (
+              <div className="inline-flex items-center gap-2 rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-sm font-black text-white">
+                {currentRole.icon && <img src={currentRole.icon} alt="" className="h-5 w-5 object-contain" />}
+                {currentRole.label}
+              </div>
+            ) : (
+              <EmptyState text="선택된 역할군이 없습니다." />
+            )}
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">모스트 요원</p>
+              {editable && <span className="text-[10px] text-[#7b8a96]">{selectedAgents.length} / 3</span>}
+            </div>
+            {editable ? (
+              <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
+                {filteredAgents.map((agent) => {
+                  const selected = selectedAgents.includes(agent.name);
+
+                  return (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onClick={() => toggleAgent(agent.name)}
+                      className={`flex items-center gap-2 rounded border p-2 text-left transition-colors ${
+                        selected
+                          ? "border-[#0fffd0] bg-[#0fffd0]/10"
+                          : "border-[#2a3540] bg-[#0f1923]/70 hover:border-[#ff4655]/55"
+                      }`}
+                    >
+                      {agent.icon ? (
+                        <img src={agent.icon} alt="" className="h-8 w-8 rounded object-cover" />
+                      ) : (
+                        <div className="h-8 w-8 rounded bg-[#1a242d]" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-black text-white">{agent.name}</div>
+                        <div className="truncate text-[10px] text-[#7b8a96]">{agent.roleLabel}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : favoriteAgentDetails.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2">
+                {favoriteAgentDetails.map((agent) => (
+                  <div key={agent.name} className="rounded border border-[#2a3540] bg-[#0f1923]/70 p-2">
+                    {agent.icon ? (
+                      <img src={agent.icon} alt="" className="h-12 w-full rounded object-cover" />
+                    ) : (
+                      <div className="h-12 rounded bg-[#1a242d]" />
+                    )}
+                    <div className="mt-1 truncate text-xs font-black text-white">{agent.name}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState text="선택된 모스트 요원이 없습니다." />
+            )}
+          </div>
+
+          {message && <div className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-xs text-[#c8d3db]">{message}</div>}
+
+          {editable && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={saveProfile}
+                disabled={!canSave}
+                className="val-btn bg-[#ff4655] px-5 py-2 text-xs font-black text-white disabled:opacity-50"
+              >
+                {saving ? "저장 중" : "프로필 저장"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded border border-dashed border-[#2a3540] bg-[#0f1923]/45 px-3 py-4 text-center text-xs text-[#7b8a96]">
+      {text}
     </div>
   );
 }

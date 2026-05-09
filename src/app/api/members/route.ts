@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizeTierName } from "@/lib/tierName";
 import { getRankIconByTier } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank, fetchProfile } from "@/lib/rankFetcher";
+import { ensureProfileColumns } from "@/lib/profileColumns";
 
 function toRegionLabel(region: string) {
   return region.toUpperCase() === "AP" ? "AP" : "KR";
@@ -31,6 +32,8 @@ export async function GET(req: NextRequest) {
 
   if (!guild) return Response.json({ members: [], guildName: null });
 
+  await ensureProfileColumns();
+
   const members = await prisma.guildMember.findMany({
     where: { guildId: guild.id },
     include: {
@@ -41,6 +44,8 @@ export async function GET(req: NextRequest) {
           discordId: true,
           riotGameName: true,
           riotTagLine: true,
+          valorantRole: true,
+          favoriteAgents: true,
           riotAccounts: {
             select: {
               puuid: true,
@@ -145,6 +150,10 @@ export async function GET(req: NextRequest) {
       riotId: member.user.riotGameName
         ? `${member.user.riotGameName}#${member.user.riotTagLine}`
         : null,
+      valorantRole: member.user.valorantRole,
+      favoriteAgents: member.user.favoriteAgents
+        ? member.user.favoriteAgents.split(",").map((agent) => agent.trim()).filter(Boolean).slice(0, 3)
+        : [],
       riotAccounts: member.user.riotAccounts.map((account) => accountDetails.get(account.puuid) ?? {
         region: toRegionLabel(account.region),
         riotId: `${account.gameName}#${account.tagLine}`,

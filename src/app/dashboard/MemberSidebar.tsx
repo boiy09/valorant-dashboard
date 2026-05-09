@@ -12,6 +12,8 @@ interface Member {
   roles: string[];
   riotId: string | null;
   riotAccounts?: ProfileAccount[];
+  valorantRole?: string | null;
+  favoriteAgents?: string[];
   isOnline: boolean;
 }
 
@@ -171,6 +173,8 @@ export default function MemberSidebar() {
                 roles: selectedMember.roles,
                 riotId: selectedMember.riotId,
                 riotAccounts: selectedMember.riotAccounts ?? [],
+                valorantRole: selectedMember.valorantRole,
+                favoriteAgents: selectedMember.favoriteAgents ?? [],
                 isOnline: selectedMember.isOnline,
               }
             : null

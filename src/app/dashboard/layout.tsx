@@ -31,6 +31,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [navigating, setNavigating] = useState(false);
   const [showMyProfile, setShowMyProfile] = useState(false);
   const [myRiotAccounts, setMyRiotAccounts] = useState<ProfileAccount[]>([]);
+  const [myValorantRole, setMyValorantRole] = useState<string | null>(null);
+  const [myFavoriteAgents, setMyFavoriteAgents] = useState<string[]>([]);
   const prevPathname = useRef(pathname);
 
   useEffect(() => {
@@ -100,6 +102,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [status]);
 
   useEffect(() => {
+    if (status !== "authenticated") return;
+
+    let cancelled = false;
+
+    fetch("/api/user/profile", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : { favoriteAgents: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        setMyValorantRole(data.valorantRole ?? null);
+        setMyFavoriteAgents(data.favoriteAgents ?? []);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
+  useEffect(() => {
     if (riotLinked !== false) return;
     if (pathname === "/dashboard/riot-connect" || pathname.startsWith("/dashboard/riot-connect/")) return;
 
@@ -158,29 +179,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <div className="flex items-center gap-3">
             <HeaderRiotLink />
-            {session?.user?.image && (
-              <button
-                type="button"
-                onClick={() => setShowMyProfile(true)}
-                className="rounded-full transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#ff4655]/70"
-                aria-label="내 프로필 열기"
-              >
+            <button
+              type="button"
+              onClick={() => setShowMyProfile(true)}
+              className="flex items-center gap-2 rounded border border-[#2a3540]/75 bg-[#0f1923]/70 px-2.5 py-1.5 text-left transition-all hover:border-[#ff4655]/55 hover:bg-[#ff4655]/[0.07] focus:outline-none focus:ring-2 focus:ring-[#ff4655]/55"
+              aria-label="내 프로필 열기"
+            >
+              {session?.user?.image ? (
                 <img
                   src={session.user.image}
                   alt="avatar"
-                  className="h-8 w-8 rounded-full border border-[#ff4655]/40 object-cover shadow-[0_0_18px_rgba(255,70,85,0.18)]"
+                  className="h-7 w-7 rounded-full border border-[#ff4655]/40 object-cover shadow-[0_0_18px_rgba(255,70,85,0.18)]"
                 />
-              </button>
-            )}
-            {session?.user?.name && (
-              <button
-                type="button"
-                onClick={() => setShowMyProfile(true)}
-                className="hidden text-xs font-bold text-[#ece8e1] transition-colors hover:text-white sm:block"
-              >
-                {session.user.name}
-              </button>
-            )}
+              ) : (
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2a3540] text-[10px] font-black text-[#7b8a96]">
+                  {(session?.user?.name ?? "?").charAt(0)}
+                </span>
+              )}
+              {session?.user?.name && (
+                <span className="hidden max-w-32 truncate text-xs font-bold text-[#ece8e1] sm:block">{session.user.name}</span>
+              )}
+            </button>
             <button
               onClick={() => signOut({ callbackUrl: "/" })}
               className="val-mini-button"
@@ -265,6 +284,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             email: session?.user?.email ?? null,
             discordId: session?.user?.id ?? undefined,
             riotAccounts: myRiotAccounts,
+            valorantRole: myValorantRole,
+            favoriteAgents: myFavoriteAgents,
+          }}
+          editable
+          onProfileSaved={(data) => {
+            setMyValorantRole(data.valorantRole ?? null);
+            setMyFavoriteAgents(data.favoriteAgents ?? []);
           }}
           onClose={() => setShowMyProfile(false)}
         />

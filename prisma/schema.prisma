@@ -19,6 +19,8 @@ model User {
   riotPuuid    String?
   riotGameName String?
   riotTagLine  String?
+  valorantRole String?
+  favoriteAgents String @default("")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

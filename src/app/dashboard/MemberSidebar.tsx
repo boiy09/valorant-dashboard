@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 import BotStatus from "./BotStatus";
 import ProfileModal, { type ProfileAccount } from "./ProfileModal";
 
+interface VoiceActivitySummary {
+  isActive: boolean;
+  channelName: string;
+  joinedAt: string;
+  leftAt: string | null;
+  duration: number | null;
+}
+
 interface Member {
   id: string;
   discordId: string;
@@ -15,6 +23,7 @@ interface Member {
   valorantRole?: string | null;
   favoriteAgents?: string[];
   isOnline: boolean;
+  voiceActivity?: VoiceActivitySummary | null;
 }
 
 type RoleGroup = "admin" | "valonekki" | "member";
@@ -36,7 +45,7 @@ const SECTION_STYLES: Record<
   },
   valonekki: {
     label: "발로네끼",
-    emoji: "⚜️",
+    emoji: "🌟",
     dot: "bg-orange-400",
     text: "text-orange-400",
     ring: "ring-1 ring-orange-400/60",
@@ -50,7 +59,7 @@ const SECTION_STYLES: Record<
   },
   offline: {
     label: "오프라인",
-    emoji: "●",
+    emoji: "○",
     dot: "bg-[#3a4a56]",
     text: "text-[#4a5a68]",
     ring: "",
@@ -75,17 +84,67 @@ function getRoleGroup(roles: string[]): RoleGroup {
   return "member";
 }
 
+function formatDuration(seconds: number) {
+  const minutes = Math.max(1, Math.floor(seconds / 60));
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  if (hours > 0) return `${hours}시간 ${restMinutes}분`;
+  return `${minutes}분`;
+}
+
+function formatRelativeTime(dateValue: string | null | undefined) {
+  if (!dateValue) return "";
+  const diffMs = Date.now() - new Date(dateValue).getTime();
+  const minutes = Math.max(0, Math.floor(diffMs / 60000));
+  if (minutes < 1) return "방금 전";
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  return `${Math.floor(hours / 24)}일 전`;
+}
+
+function getVoiceText(activity?: VoiceActivitySummary | null) {
+  if (!activity) return null;
+  if (activity.isActive) {
+    const elapsed = Math.floor((Date.now() - new Date(activity.joinedAt).getTime()) / 1000);
+    return `진행 중 · ${activity.channelName} · ${formatDuration(elapsed)}`;
+  }
+
+  return `마지막 통화 · ${formatRelativeTime(activity.leftAt ?? activity.joinedAt)}`;
+}
+
+async function fetchMembers() {
+  const response = await fetch("/api/members", { cache: "no-store" });
+  if (!response.ok) return { members: [] as Member[] };
+  return response.json() as Promise<{ members?: Member[] }>;
+}
+
 export default function MemberSidebar() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
 
   useEffect(() => {
-    fetch("/api/members")
-      .then((response) => (response.ok ? response.json() : { members: [] }))
-      .then((data) => setMembers(data.members ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    let alive = true;
+
+    const load = async () => {
+      try {
+        const data = await fetchMembers();
+        if (alive) setMembers(data.members ?? []);
+      } catch {
+        // Keep the last successful member list if polling fails briefly.
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+
+    load();
+    const interval = window.setInterval(load, 30000);
+
+    return () => {
+      alive = false;
+      window.clearInterval(interval);
+    };
   }, []);
 
   const admins = members.filter((member) => getRoleGroup(member.roles) === "admin");
@@ -198,6 +257,7 @@ function MemberRow({
   const initial = displayName.charAt(0).toUpperCase();
   const style = SECTION_STYLES[sectionKey];
   const isOffline = sectionKey === "offline";
+  const voiceText = getVoiceText(member.voiceActivity);
 
   return (
     <button
@@ -221,7 +281,13 @@ function MemberRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs text-[#ece8e1]">{displayName}</div>
-        {member.riotId && <div className="truncate text-[9px] text-[#4a5a68]">{member.riotId}</div>}
+        {voiceText ? (
+          <div className={`truncate text-[9px] ${member.voiceActivity?.isActive ? "text-green-400" : "text-[#7b8a96]"}`}>
+            {voiceText}
+          </div>
+        ) : (
+          member.riotId && <div className="truncate text-[9px] text-[#4a5a68]">{member.riotId}</div>
+        )}
       </div>
     </button>
   );

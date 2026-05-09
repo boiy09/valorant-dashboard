@@ -93,6 +93,34 @@ export async function GET(req: NextRequest) {
   const RANK_CACHE_TTL = 2 * 60 * 60 * 1000;
   const now = Date.now();
 
+  const latestVoiceByUser = new Map<string, {
+    channelName: string;
+    joinedAt: Date;
+    leftAt: Date | null;
+    duration: number | null;
+  }>();
+  const memberUserIds = members.map((member) => member.userId);
+  if (memberUserIds.length > 0) {
+    const voiceActivities = await prisma.voiceActivity.findMany({
+      where: { guildId: guild.id, userId: { in: memberUserIds } },
+      orderBy: { joinedAt: "desc" },
+      take: Math.max(memberUserIds.length * 5, 50),
+      select: {
+        userId: true,
+        channelName: true,
+        joinedAt: true,
+        leftAt: true,
+        duration: true,
+      },
+    });
+
+    for (const activity of voiceActivities) {
+      if (!latestVoiceByUser.has(activity.userId)) {
+        latestVoiceByUser.set(activity.userId, activity);
+      }
+    }
+  }
+
   const allAccounts = members.flatMap((m) => m.user.riotAccounts);
 
   await settleInBatches(allAccounts, 5, async (account) => {
@@ -152,29 +180,41 @@ export async function GET(req: NextRequest) {
 
   return Response.json({
     guildName: guild.name,
-    members: members.map((member) => ({
-      id: member.id,
-      name: member.nickname ?? member.user.name,
-      image: member.user.image,
-      discordId: member.user.discordId,
-      roles: member.roles ? member.roles.split(",").filter(Boolean) : [],
-      riotId: member.user.riotGameName
-        ? `${member.user.riotGameName}#${member.user.riotTagLine}`
-        : null,
-      valorantRole: profileColumnsReady ? (member.user as any).valorantRole : null,
-      favoriteAgents: profileColumnsReady && (member.user as any).favoriteAgents
-        ? (member.user as any).favoriteAgents.split(",").map((agent: string) => agent.trim()).filter(Boolean).slice(0, 3)
-        : [],
-      riotAccounts: member.user.riotAccounts.map((account) => accountDetails.get(account.puuid) ?? {
-        region: toRegionLabel(account.region),
-        riotId: `${account.gameName}#${account.tagLine}`,
-        level: null,
-        card: null,
-        tier: "언랭크",
-        rankIcon: null,
-      }),
-      isOnline: member.isOnline,
-      joinedAt: member.joinedAt,
-    })),
+    members: members.map((member) => {
+      const latestVoice = latestVoiceByUser.get(member.userId);
+      const voiceActive = Boolean(latestVoice && !latestVoice.leftAt);
+
+      return {
+        id: member.id,
+        name: member.nickname ?? member.user.name,
+        image: member.user.image,
+        discordId: member.user.discordId,
+        roles: member.roles ? member.roles.split(",").filter(Boolean) : [],
+        riotId: member.user.riotGameName
+          ? `${member.user.riotGameName}#${member.user.riotTagLine}`
+          : null,
+        valorantRole: profileColumnsReady ? (member.user as any).valorantRole : null,
+        favoriteAgents: profileColumnsReady && (member.user as any).favoriteAgents
+          ? (member.user as any).favoriteAgents.split(",").map((agent: string) => agent.trim()).filter(Boolean).slice(0, 3)
+          : [],
+        riotAccounts: member.user.riotAccounts.map((account) => accountDetails.get(account.puuid) ?? {
+          region: toRegionLabel(account.region),
+          riotId: `${account.gameName}#${account.tagLine}`,
+          level: null,
+          card: null,
+          tier: "언랭크",
+          rankIcon: null,
+        }),
+        isOnline: member.isOnline,
+        joinedAt: member.joinedAt,
+        voiceActivity: latestVoice ? {
+          isActive: voiceActive,
+          channelName: latestVoice.channelName,
+          joinedAt: latestVoice.joinedAt.toISOString(),
+          leftAt: latestVoice.leftAt?.toISOString() ?? null,
+          duration: latestVoice.duration,
+        } : null,
+      };
+    }),
   });
 }

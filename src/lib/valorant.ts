@@ -316,7 +316,7 @@ function seasonLabel(season: string) {
 }
 
 function getSeasonGames(record: Record<string, unknown>) {
-  return toNumber(record.games ?? record.number_of_games ?? record.numberOfGames);
+  return toNumber(record.games ?? record.number_of_games ?? record.numberOfGames ?? record.matches_played ?? record.matchesPlayed);
 }
 
 function getSeasonWins(record: Record<string, unknown>) {
@@ -324,12 +324,18 @@ function getSeasonWins(record: Record<string, unknown>) {
 }
 
 function getSeasonTierId(record: Record<string, unknown>) {
-  return toNumber(record.final_rank ?? record.finalRank ?? record.tier ?? record.rank);
+  const endTier = asRecord(record.end_tier ?? record.endTier);
+  const finalTier = asRecord(record.final_rank ?? record.finalRank);
+  return toNumber(endTier.id ?? finalTier.id ?? record.final_rank ?? record.finalRank ?? record.tier ?? record.rank);
 }
 
 function getSeasonTierName(record: Record<string, unknown>, tierId: number) {
+  const endTier = asRecord(record.end_tier ?? record.endTier);
+  const finalTier = asRecord(record.final_rank ?? record.finalRank);
   const name = toString(
-    record.final_rank_patched ??
+    endTier.name ??
+      finalTier.name ??
+      record.final_rank_patched ??
       record.finalRankPatched ??
       record.rank_patched ??
       record.rankName ??
@@ -339,12 +345,29 @@ function getSeasonTierName(record: Record<string, unknown>, tierId: number) {
   return normalizeTierName(name, tierId);
 }
 
+function getSeasonKey(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    const record = asRecord(value);
+    const direct = firstString(
+      record.short,
+      record.id,
+      record.uuid,
+      record.season,
+      record.season_id,
+      record.seasonId
+    );
+    if (direct) return direct;
+  }
+  return "";
+}
+
 function getSeasonEntries(bySeason: unknown) {
   if (Array.isArray(bySeason)) {
     return bySeason
       .map((value, index) => {
         const record = asRecord(value);
-        const season = firstString(record.season, record.season_id, record.seasonId) || `season-${index}`;
+        const season = getSeasonKey(record.season, record.act, record.season_id, record.seasonId) || `season-${index}`;
         return { season, record };
       })
       .filter(({ record }) => getSeasonGames(record) > 0)
@@ -382,11 +405,13 @@ function pickCurrentSeasonSummary(
   current: Record<string, unknown>,
   data: Record<string, unknown>
 ) {
-  const currentSeasonKey = firstString(
+  const currentSeasonKey = getSeasonKey(
     current.season,
+    current.act,
     current.season_id,
     current.seasonId,
     data.season,
+    data.act,
     data.season_id,
     data.seasonId
   );
@@ -404,6 +429,32 @@ function pickPreviousSeasonSummary(
 ) {
   if (!currentSeason) return summaries[1] ?? null;
   return summaries.find((item) => item.season !== currentSeason.season) ?? null;
+}
+
+function pickPeakSeasonSummary(
+  summaries: RankSeasonSummary[],
+  peak: Record<string, unknown>,
+  peakTierId: number
+) {
+  const peakSeasonKey = getSeasonKey(
+    peak.season,
+    peak.act,
+    peak.season_id,
+    peak.seasonId,
+    peak.act_id,
+    peak.actId
+  );
+
+  if (peakSeasonKey) {
+    const explicitPeak = summaries.find((item) => item.season === peakSeasonKey);
+    if (explicitPeak) return explicitPeak;
+  }
+
+  return summaries.reduce<RankSeasonSummary | null>((best, item) => {
+    if (!best) return item;
+    if (item.tierId !== best.tierId) return item.tierId > best.tierId ? item : best;
+    return compareValorantSeasonDesc(item.season, best.season) < 0 ? item : best;
+  }, null);
 }
 
 function getPlayerCardIcon(player: Record<string, unknown>) {
@@ -611,10 +662,7 @@ export async function getRankByPuuid(
     ), tierId);
     const rr = currentTierId > 0 ? toNumber(current.rr ?? current.ranking_in_tier) : null;
     const rrChange = currentTierId > 0 ? toNumber(current.last_change ?? current.mmr_change_to_last_game) : null;
-    const peakSeason = seasonSummaries.reduce<RankSeasonSummary | null>(
-      (best, item) => (!best || item.tierId > best.tierId ? item : best),
-      null
-    );
+    const peakSeason = pickPeakSeasonSummary(seasonSummaries, peak, peakTierId);
 
     return {
       tier: tierName,

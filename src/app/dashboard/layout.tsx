@@ -6,6 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 import HeaderRiotLink from "./HeaderRiotLink";
 import MemberSidebar from "./MemberSidebar";
+import ProfileModal, { type ProfileAccount } from "./ProfileModal";
 
 const BASE_TABS = [
   { href: "/dashboard", label: "대시보드", icon: "⌂" },
@@ -28,6 +29,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [riotLinked, setRiotLinked] = useState<boolean | null>(null);
   const [showRiotRequired, setShowRiotRequired] = useState(false);
   const [navigating, setNavigating] = useState(false);
+  const [showMyProfile, setShowMyProfile] = useState(false);
+  const [myRiotAccounts, setMyRiotAccounts] = useState<ProfileAccount[]>([]);
   const prevPathname = useRef(pathname);
 
   useEffect(() => {
@@ -69,6 +72,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => {
       cancelled = true;
       window.removeEventListener("riot-accounts-updated", refreshRiotLinked);
+    };
+  }, [status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    let cancelled = false;
+
+    async function loadMyAccounts() {
+      try {
+        const response = await fetch("/api/user/riot", { cache: "no-store" });
+        const data = response.ok ? await response.json() : { accounts: [] };
+        if (!cancelled) setMyRiotAccounts(data.accounts ?? []);
+      } catch {
+        if (!cancelled) setMyRiotAccounts([]);
+      }
+    }
+
+    loadMyAccounts();
+    window.addEventListener("riot-accounts-updated", loadMyAccounts);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("riot-accounts-updated", loadMyAccounts);
     };
   }, [status]);
 
@@ -132,14 +159,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-3">
             <HeaderRiotLink />
             {session?.user?.image && (
-              <img
-                src={session.user.image}
-                alt="avatar"
-                className="w-8 h-8 rounded-full border border-[#ff4655]/40 shadow-[0_0_18px_rgba(255,70,85,0.18)]"
-              />
+              <button
+                type="button"
+                onClick={() => setShowMyProfile(true)}
+                className="rounded-full transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#ff4655]/70"
+                aria-label="내 프로필 열기"
+              >
+                <img
+                  src={session.user.image}
+                  alt="avatar"
+                  className="h-8 w-8 rounded-full border border-[#ff4655]/40 object-cover shadow-[0_0_18px_rgba(255,70,85,0.18)]"
+                />
+              </button>
             )}
             {session?.user?.name && (
-              <span className="text-[#ece8e1] text-xs font-bold hidden sm:block">{session.user.name}</span>
+              <button
+                type="button"
+                onClick={() => setShowMyProfile(true)}
+                className="hidden text-xs font-bold text-[#ece8e1] transition-colors hover:text-white sm:block"
+              >
+                {session.user.name}
+              </button>
             )}
             <button
               onClick={() => signOut({ callbackUrl: "/" })}
@@ -214,6 +254,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
           </div>
         </div>
+      )}
+
+      {showMyProfile && (
+        <ProfileModal
+          title="내 프로필"
+          profile={{
+            name: session?.user?.name ?? null,
+            image: session?.user?.image ?? null,
+            email: session?.user?.email ?? null,
+            discordId: session?.user?.id ?? undefined,
+            riotAccounts: myRiotAccounts,
+          }}
+          onClose={() => setShowMyProfile(false)}
+        />
       )}
     </div>
   );

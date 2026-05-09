@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import BotStatus from "./BotStatus";
+import ProfileModal, { type ProfileAccount } from "./ProfileModal";
 
 interface Member {
   id: string;
@@ -10,6 +11,7 @@ interface Member {
   image: string | null;
   roles: string[];
   riotId: string | null;
+  riotAccounts?: ProfileAccount[];
   isOnline: boolean;
 }
 
@@ -74,6 +76,7 @@ function getRoleGroup(roles: string[]): RoleGroup {
 export default function MemberSidebar() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
 
   useEffect(() => {
     fetch("/api/members")
@@ -98,7 +101,7 @@ export default function MemberSidebar() {
 
   return (
     <aside className="w-56 flex-shrink-0">
-      <div className="sticky top-6 overflow-hidden rounded border border-[#2a3540] bg-[#111c24]">
+      <div className="sticky top-[7.25rem] overflow-hidden rounded border border-[#2a3540] bg-[#111c24]">
         <div className="flex items-center justify-between border-b border-[#2a3540] px-3 py-2.5">
           <span className="text-[10px] uppercase tracking-widest text-[#7b8a96]">서버 멤버</span>
           {!loading && (
@@ -140,7 +143,12 @@ export default function MemberSidebar() {
                       </span>
                     </div>
                     {sectionMembers.map((member) => (
-                      <MemberRow key={member.id} member={member} sectionKey={key} />
+                      <MemberRow
+                        key={member.id}
+                        member={member}
+                        sectionKey={key}
+                        onSelect={() => setSelectedMember(member)}
+                      />
                     ))}
                   </div>
                 );
@@ -151,19 +159,47 @@ export default function MemberSidebar() {
 
         <BotStatus compact />
       </div>
+
+      <ProfileModal
+        title="멤버 프로필"
+        profile={
+          selectedMember
+            ? {
+                name: selectedMember.name,
+                image: selectedMember.image,
+                discordId: selectedMember.discordId,
+                roles: selectedMember.roles,
+                riotId: selectedMember.riotId,
+                riotAccounts: selectedMember.riotAccounts ?? [],
+                isOnline: selectedMember.isOnline,
+              }
+            : null
+        }
+        onClose={() => setSelectedMember(null)}
+      />
     </aside>
   );
 }
 
-function MemberRow({ member, sectionKey }: { member: Member; sectionKey: SectionKey }) {
+function MemberRow({
+  member,
+  sectionKey,
+  onSelect,
+}: {
+  member: Member;
+  sectionKey: SectionKey;
+  onSelect: () => void;
+}) {
   const displayName = member.name || "이름 없음";
   const initial = displayName.charAt(0).toUpperCase();
   const style = SECTION_STYLES[sectionKey];
   const isOffline = sectionKey === "offline";
 
   return (
-    <div
-      className={`flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-white/[0.03] ${
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`mx-2 mb-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded border border-[#2a3540]/75 bg-[#0f1923]/55 px-2.5 py-2 text-left transition-all hover:border-[#ff4655]/55 hover:bg-[#ff4655]/[0.07] ${
         isOffline ? "opacity-40" : ""
       }`}
     >
@@ -183,6 +219,6 @@ function MemberRow({ member, sectionKey }: { member: Member; sectionKey: Section
         <div className="truncate text-xs text-[#ece8e1]">{displayName}</div>
         {member.riotId && <div className="truncate text-[9px] text-[#4a5a68]">{member.riotId}</div>}
       </div>
-    </div>
+    </button>
   );
 }

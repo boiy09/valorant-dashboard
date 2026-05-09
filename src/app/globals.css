@@ -307,7 +307,7 @@ body {
 .val-topbar {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 70;
   background:
     linear-gradient(90deg, rgba(255, 70, 85, 0.1), transparent 26%),
     rgba(12, 24, 34, 0.92);
@@ -329,7 +329,7 @@ body {
 .val-nav {
   position: sticky;
   top: 56px;
-  z-index: 20;
+  z-index: 69;
   background: rgba(8, 17, 25, 0.9);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.26);

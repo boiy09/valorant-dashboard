@@ -46,10 +46,10 @@ async function fetchFromChannelPage(channel: keyof typeof CHANNELS) {
   const html = decodeXml(await response.text());
   const videos = new Map<string, { id: string; title: string }>();
 
-  for (const match of html.matchAll(/"videoRenderer":\{([\s\S]*?),"trackingParams"/g)) {
+  for (const match of html.matchAll(/"lockupViewModel":\{([\s\S]*?)"contentId":"([^"]+)"/g)) {
     const block = match[1];
-    const id = block.match(/"videoId":"([^"]+)"/)?.[1];
-    const title = block.match(/"title":\{"runs":\[\{"text":"((?:\\.|[^"\\])*)"/)?.[1];
+    const id = match[2];
+    const title = block.match(/"title":\{"content":"((?:\\.|[^"\\])*)"/)?.[1];
     if (!id || !title || videos.has(id)) continue;
     videos.set(id, { id, title: decodeJsonString(title) });
     if (videos.size >= 4) break;

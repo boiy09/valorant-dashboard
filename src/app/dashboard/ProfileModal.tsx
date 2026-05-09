@@ -50,6 +50,15 @@ interface RoleOption {
   count: number;
 }
 
+const PROFILE_SAVED_MESSAGE = "프로필이 저장되었습니다.";
+
+function parseProfileRoles(value?: string | null) {
+  return (value ?? "")
+    .split(",")
+    .map((role) => role.trim())
+    .filter(Boolean);
+}
+
 function getInitial(name?: string | null) {
   return (name || "?").trim().charAt(0).toUpperCase() || "?";
 }
@@ -61,14 +70,14 @@ function regionLabel(region: string) {
 export default function ProfileModal({ title = "프로필", profile, editable = false, onClose, onProfileSaved }: ProfileModalProps) {
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [agents, setAgents] = useState<AgentOption[]>([]);
-  const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!profile) return;
-    setSelectedRole(profile.valorantRole ?? null);
+    setSelectedRoles(parseProfileRoles(profile.valorantRole));
     setSelectedAgents(profile.favoriteAgents ?? []);
     setMessage(null);
   }, [profile?.discordId, profile?.email, profile?.name]);
@@ -98,10 +107,19 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
   const accounts = profile.riotAccounts ?? [];
   const favoriteAgentDetails = (editable ? selectedAgents : profile.favoriteAgents ?? [])
     .map((name) => agents.find((agent) => agent.name === name) ?? { id: name, name, icon: null, role: "", roleLabel: "", roleIcon: null });
-  const currentRole = roles.find((role) => role.role === (editable ? selectedRole : profile.valorantRole));
-  const filteredAgents = selectedRole ? agents.filter((agent) => agent.role === selectedRole) : agents;
+  const activeRoleValues = editable ? selectedRoles : parseProfileRoles(profile.valorantRole);
+  const currentRoles = roles.filter((role) => activeRoleValues.includes(role.role));
   const canSave = editable && !saving;
   const saved = message === "프로필이 저장되었습니다.";
+
+  function toggleRole(role: string) {
+    if (!editable) return;
+    setSelectedRoles((current) => (
+      current.includes(role)
+        ? current.filter((item) => item !== role)
+        : [...current, role]
+    ));
+  }
 
   function toggleAgent(name: string) {
     if (!editable) return;
@@ -125,7 +143,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
       const response = await fetch("/api/user/profile", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ valorantRole: selectedRole, favoriteAgents: selectedAgents }),
+        body: JSON.stringify({ valorantRole: selectedRoles, favoriteAgents: selectedAgents }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "프로필 저장 실패");
@@ -244,8 +262,8 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
           <div>
             <div className="mb-2 flex items-center justify-between gap-3">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">발로란트 역할군</p>
-              {currentRole && (
-                <span className="text-[10px] font-bold text-[#ff4655]">{currentRole.label}</span>
+              {currentRoles.length > 0 && (
+                <span className="text-[10px] font-bold text-[#ff4655]">{currentRoles.map((role) => role.label).join(" / ")}</span>
               )}
             </div>
             {editable ? (
@@ -254,9 +272,9 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
                   <button
                     key={role.role}
                     type="button"
-                    onClick={() => setSelectedRole((current) => current === role.role ? null : role.role)}
+                    onClick={() => toggleRole(role.role)}
                     className={`rounded border p-2 text-left transition-colors ${
-                      selectedRole === role.role
+                      selectedRoles.includes(role.role)
                         ? "border-[#ff4655] bg-[#ff4655]/15 text-white"
                         : "border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3] hover:border-[#ff4655]/55"
                     }`}
@@ -269,10 +287,14 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
                   </button>
                 ))}
               </div>
-            ) : currentRole ? (
-              <div className="inline-flex items-center gap-2 rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-sm font-black text-white">
-                {currentRole.icon && <img src={currentRole.icon} alt="" className="h-5 w-5 object-contain" />}
-                {currentRole.label}
+            ) : currentRoles.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {currentRoles.map((role) => (
+                  <span key={role.role} className="inline-flex items-center gap-2 rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-sm font-black text-white">
+                    {role.icon && <img src={role.icon} alt="" className="h-5 w-5 object-contain" />}
+                    {role.label}
+                  </span>
+                ))}
               </div>
             ) : (
               <EmptyState text="선택된 역할군이 없습니다." />
@@ -286,7 +308,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
             </div>
             {editable ? (
               <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
-                {filteredAgents.map((agent) => {
+                {agents.map((agent) => {
                   const selected = selectedAgents.includes(agent.name);
 
                   return (

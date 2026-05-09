@@ -1,4 +1,4 @@
-import { formatValorantSeasonLabel } from "@/lib/seasonLabel";
+import { compareValorantSeasonDesc, formatValorantSeasonLabel } from "@/lib/seasonLabel";
 import { normalizeTierName } from "@/lib/tierName";
 
 /**
@@ -144,7 +144,7 @@ export async function getTrackerProfile(
       };
     })
     .filter((s) => s.matchesPlayed > 0)
-    .sort((a, b) => b.season.localeCompare(a.season));
+    .sort((a, b) => compareValorantSeasonDesc(a.season, b.season));
 
   return {
     gameName,

@@ -27,6 +27,13 @@ interface RankingPeriod {
   end: string;
 }
 
+interface TierDistributionMember {
+  name: string;
+  riotId: string;
+  image: string | null;
+  discordId: string | null;
+}
+
 interface TierDistributionItem {
   key: string;
   label: string;
@@ -34,6 +41,7 @@ interface TierDistributionItem {
   count: number;
   percent: number;
   icon: string | null;
+  members?: TierDistributionMember[];
 }
 
 interface TierDistributionRegion {
@@ -71,6 +79,12 @@ function fmtDateRange(period: RankingPeriod | null) {
 
   const format = (date: string) => date.replaceAll("-", ".");
   return `${format(period.start)} - ${format(period.end)}`;
+}
+
+interface SelectedTierMembers {
+  regionLabel: string;
+  region: "KR" | "AP";
+  tier: TierDistributionItem;
 }
 
 function rankingRowClass(rank: number) {
@@ -191,11 +205,13 @@ function TierDistributionPanel({
   ready,
   chartType,
   onChartTypeChange,
+  onTierClick,
 }: {
   data: TierDistributionData | null;
   ready: boolean;
   chartType: "bar" | "pie";
   onChartTypeChange: (type: "bar" | "pie") => void;
+  onTierClick: (region: TierDistributionRegion, tier: TierDistributionItem) => void;
 }) {
   return (
     <div className="val-card p-5">
@@ -225,8 +241,8 @@ function TierDistributionPanel({
         <div className="py-10 text-center text-sm text-[#7b8a96]">티어 정보를 불러오지 못했습니다.</div>
       ) : (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <TierDistributionChart region={data.regions.KR} chartType={chartType} />
-          <TierDistributionChart region={data.regions.AP} chartType={chartType} />
+          <TierDistributionChart region={data.regions.KR} chartType={chartType} onTierClick={onTierClick} />
+          <TierDistributionChart region={data.regions.AP} chartType={chartType} onTierClick={onTierClick} />
         </div>
       )}
     </div>
@@ -236,9 +252,11 @@ function TierDistributionPanel({
 function TierDistributionChart({
   region,
   chartType,
+  onTierClick,
 }: {
   region: TierDistributionRegion;
   chartType: "bar" | "pie";
+  onTierClick: (region: TierDistributionRegion, tier: TierDistributionItem) => void;
 }) {
   const visibleGroups = getVisibleTierGroups(region);
 
@@ -277,9 +295,11 @@ function TierDistributionChart({
                   style={{ width: `${Math.max(group.percent, 3)}%` }}
                 >
                   {group.tiers.map((tier) => (
-                    <div
+                    <button
                       key={tier.key}
-                      className="h-full border-r border-[#0b1721]/50 last:border-r-0"
+                      type="button"
+                      onClick={() => onTierClick(region, tier)}
+                      className="h-full border-r border-[#0b1721]/50 transition-opacity last:border-r-0 hover:opacity-80"
                       title={`${tier.label} ${tier.count}명`}
                       style={{
                         width: `${Math.max((tier.count / group.count) * 100, 6)}%`,
@@ -292,7 +312,12 @@ function TierDistributionChart({
               {hasDivisionTiers(group) ? (
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                   {group.tiers.map((tier) => (
-                    <span key={tier.key} className="inline-flex items-center gap-1 text-[10px] font-bold text-[#8da0ad]">
+                    <button
+                      key={tier.key}
+                      type="button"
+                      onClick={() => onTierClick(region, tier)}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-[#8da0ad] transition-colors hover:text-white"
+                    >
                       {tier.icon ? (
                         <img src={tier.icon} alt={tier.label} className="h-3.5 w-3.5 object-contain" />
                       ) : (
@@ -302,7 +327,7 @@ function TierDistributionChart({
                         />
                       )}
                       {tier.label} {tier.count}명
-                    </span>
+                    </button>
                   ))}
                 </div>
               ) : null}
@@ -335,7 +360,12 @@ function TierDistributionChart({
                 {hasDivisionTiers(group) && (
                   <div className="mt-0.5 ml-7 flex flex-col gap-0.5">
                     {group.tiers.map((tier) => (
-                      <div key={tier.key} className="flex items-center gap-1.5 text-[10px] text-[#8da0ad]">
+                      <button
+                        key={tier.key}
+                        type="button"
+                        onClick={() => onTierClick(region, tier)}
+                        className="flex w-full items-center gap-1.5 text-left text-[10px] text-[#8da0ad] transition-colors hover:text-white"
+                      >
                         {tier.icon ? (
                           <img src={tier.icon} alt={tier.label} className="h-3.5 w-3.5 flex-shrink-0 object-contain" />
                         ) : (
@@ -346,7 +376,7 @@ function TierDistributionChart({
                         )}
                         <span className="flex-1">{tier.label}</span>
                         <span>{tier.count}명</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -405,6 +435,7 @@ export default function ActivityPageClient() {
   const [tierDistribution, setTierDistribution] = useState<TierDistributionData | null>(null);
   const [tierDistributionReady, setTierDistributionReady] = useState(false);
   const [chartType, setChartType] = useState<"bar" | "pie">("bar");
+  const [selectedTierMembers, setSelectedTierMembers] = useState<SelectedTierMembers | null>(null);
 
   useEffect(() => {
     fetch("/api/activity")
@@ -432,7 +463,7 @@ export default function ActivityPageClient() {
   }, [rankType]);
 
   useEffect(() => {
-    const cacheKey = "valorant-dashboard:tier-distribution";
+    const cacheKey = "valorant-dashboard:tier-distribution:v2";
     const cached = readSessionCache<TierDistributionData>(cacheKey, 10 * 60 * 1000);
     if (cached?.regions?.KR && cached?.regions?.AP) {
       setTierDistribution(cached);
@@ -470,6 +501,7 @@ export default function ActivityPageClient() {
           ready={tierDistributionReady}
           chartType={chartType}
           onChartTypeChange={setChartType}
+          onTierClick={(region, tier) => setSelectedTierMembers({ region: region.region, regionLabel: region.label, tier })}
         />
 
         {/* 하단: 캘린더+랭킹 (좌) / BotStatus (우) */}
@@ -561,6 +593,67 @@ export default function ActivityPageClient() {
 
           {/* BotStatus — 우 1열 */}
         </div>
+      </div>
+      {selectedTierMembers && (
+        <TierMemberModal data={selectedTierMembers} onClose={() => setSelectedTierMembers(null)} />
+      )}
+    </div>
+  );
+}
+
+function TierMemberModal({ data, onClose }: { data: SelectedTierMembers; onClose: () => void }) {
+  const members = data.tier.members ?? [];
+
+  return (
+    <div
+      className="fixed inset-0 z-[190] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="val-card w-full max-w-md p-5 shadow-2xl shadow-black/50">
+        <div className="mb-4 flex items-start justify-between gap-3 border-b border-[#263442] pb-3">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ff4655]">
+              {data.regionLabel} · {data.region}
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              {data.tier.icon ? <img src={data.tier.icon} alt="" className="h-7 w-7 object-contain" /> : null}
+              <h3 className="text-lg font-black text-white">{data.tier.label}</h3>
+              <span className="text-xs font-bold text-[#8da0ad]">{data.tier.count}명</span>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="val-mini-button px-3 py-1 text-xs">
+            닫기
+          </button>
+        </div>
+
+        {members.length === 0 ? (
+          <div className="rounded border border-dashed border-[#263442] bg-[#0f1923]/60 px-3 py-8 text-center text-sm text-[#7b8a96]">
+            해당 세부 티어 멤버가 없습니다.
+          </div>
+        ) : (
+          <div className="member-scroll max-h-80 space-y-2 overflow-y-auto pr-1">
+            {members.map((member) => (
+              <div
+                key={`${member.discordId ?? member.riotId}-${member.riotId}`}
+                className="flex items-center gap-3 rounded border border-[#263442] bg-[#0f1923]/70 px-3 py-2"
+              >
+                {member.image ? (
+                  <img src={member.image} alt={member.name} className="h-9 w-9 rounded-full object-cover" />
+                ) : (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#253241] text-xs font-black text-[#8da0ad]">
+                    {member.name[0] ?? "?"}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-black text-white">{member.name}</div>
+                  <div className="truncate text-xs text-[#8da0ad]">{member.riotId}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

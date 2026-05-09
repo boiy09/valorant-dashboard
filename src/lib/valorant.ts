@@ -1,7 +1,7 @@
 import axios from "axios";
 import { apiCache, TTL } from "@/lib/apiCache";
 import { normalizeTierName } from "@/lib/tierName";
-import { formatValorantSeasonLabel } from "@/lib/seasonLabel";
+import { compareValorantSeasonDesc, formatValorantSeasonLabel } from "@/lib/seasonLabel";
 import { getOpGgProfileFallback, getOpGgRankFallback } from "@/lib/opgg";
 
 const henrikClient = axios.create({
@@ -348,13 +348,13 @@ function getSeasonEntries(bySeason: unknown) {
         return { season, record };
       })
       .filter(({ record }) => getSeasonGames(record) > 0)
-      .sort((a, b) => b.season.localeCompare(a.season));
+      .sort((a, b) => compareValorantSeasonDesc(a.season, b.season));
   }
 
   return Object.entries(asRecord(bySeason))
     .map(([season, value]) => ({ season, record: asRecord(value) }))
     .filter(({ record }) => getSeasonGames(record) > 0)
-    .sort((a, b) => b.season.localeCompare(a.season));
+    .sort((a, b) => compareValorantSeasonDesc(a.season, b.season));
 }
 
 function getLatestSeasonWithGames(bySeason: unknown) {

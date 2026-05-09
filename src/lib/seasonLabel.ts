@@ -7,12 +7,33 @@ const ROMAN_ACTS: Record<number, string> = {
   6: "VI",
 };
 
-export function formatValorantSeasonLabel(season: string) {
+export function parseValorantSeason(season: string) {
   const match = season.match(/e(\d+)a(\d+)/i);
-  if (!match) return season || "시즌 정보 없음";
+  if (!match) return null;
 
-  const episode = Number(match[1]);
-  const act = Number(match[2]);
+  return {
+    episode: Number(match[1]),
+    act: Number(match[2]),
+  };
+}
+
+export function compareValorantSeasonDesc(a: string, b: string) {
+  const left = parseValorantSeason(a);
+  const right = parseValorantSeason(b);
+
+  if (left && right) {
+    if (left.episode !== right.episode) return right.episode - left.episode;
+    return right.act - left.act;
+  }
+
+  return b.localeCompare(a);
+}
+
+export function formatValorantSeasonLabel(season: string) {
+  const parsed = parseValorantSeason(season);
+  if (!parsed) return season || "시즌 정보 없음";
+
+  const { episode, act } = parsed;
 
   if (episode >= 10) {
     const version = 25 + Math.floor((episode - 10) / 2);

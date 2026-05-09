@@ -27,6 +27,15 @@ function parseAgents(value: string | null | undefined) {
     .slice(0, 3);
 }
 
+function parseRoles(value: string | null | undefined) {
+  return Array.from(new Set(
+    (value ?? "")
+      .split(",")
+      .map((role) => role.trim())
+      .filter((role) => ALLOWED_ROLES.has(role))
+  ));
+}
+
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id) {
@@ -63,12 +72,21 @@ export async function PATCH(req: NextRequest) {
     favoriteAgents?: unknown;
   } | null;
 
-  const valorantRole = typeof body?.valorantRole === "string" ? body.valorantRole : null;
+  const valorantRoles = Array.isArray(body?.valorantRole)
+    ? Array.from(new Set(
+        body.valorantRole
+          .filter((role): role is string => typeof role === "string")
+          .map((role) => role.trim())
+          .filter(Boolean)
+      ))
+    : typeof body?.valorantRole === "string"
+      ? parseRoles(body.valorantRole)
+      : [];
   const favoriteAgents = Array.isArray(body?.favoriteAgents)
     ? body.favoriteAgents.filter((agent): agent is string => typeof agent === "string").map((agent) => agent.trim()).filter(Boolean).slice(0, 3)
     : [];
 
-  if (valorantRole && !ALLOWED_ROLES.has(valorantRole)) {
+  if (valorantRoles.some((role) => !ALLOWED_ROLES.has(role))) {
     return Response.json({ error: "지원하지 않는 역할군입니다." }, { status: 400 });
   }
 
@@ -93,7 +111,7 @@ export async function PATCH(req: NextRequest) {
     updated = await prisma.user.update({
       where: { id: user.id },
       data: {
-        valorantRole,
+        valorantRole: valorantRoles.join(",") || null,
         favoriteAgents: favoriteAgents.join(","),
       },
     });

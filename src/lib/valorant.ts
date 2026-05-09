@@ -377,6 +377,35 @@ async function buildSeasonSummary(season: string, record: Record<string, unknown
   };
 }
 
+function pickCurrentSeasonSummary(
+  summaries: RankSeasonSummary[],
+  current: Record<string, unknown>,
+  data: Record<string, unknown>
+) {
+  const currentSeasonKey = firstString(
+    current.season,
+    current.season_id,
+    current.seasonId,
+    data.season,
+    data.season_id,
+    data.seasonId
+  );
+
+  if (currentSeasonKey) {
+    return summaries.find((item) => item.season === currentSeasonKey) ?? summaries[0] ?? null;
+  }
+
+  return summaries[0] ?? null;
+}
+
+function pickPreviousSeasonSummary(
+  summaries: RankSeasonSummary[],
+  currentSeason: RankSeasonSummary | null
+) {
+  if (!currentSeason) return summaries[1] ?? null;
+  return summaries.find((item) => item.season !== currentSeason.season) ?? null;
+}
+
 function getPlayerCardIcon(player: Record<string, unknown>) {
   const assets = asRecord(player.assets);
   const card = asRecord(player.card ?? player.player_card ?? assets.card);
@@ -563,8 +592,8 @@ export async function getRankByPuuid(
     const seasonSummaries = (
       await Promise.all(getSeasonEntries(seasonalSource).map(({ season, record }) => buildSeasonSummary(season, record)))
     ).filter((item): item is RankSeasonSummary => Boolean(item));
-    const currentSeason = seasonSummaries[0] ?? null;
-    const previousSeason = seasonSummaries[1] ?? null;
+    const currentSeason = pickCurrentSeasonSummary(seasonSummaries, current, asRecord(data));
+    const previousSeason = pickPreviousSeasonSummary(seasonSummaries, currentSeason);
     const wins = toNumber(latestSeason.wins ?? data?.wins);
     const games = latestSeason.games || latestSeason.number_of_games
       ? toNumber(latestSeason.games ?? latestSeason.number_of_games)

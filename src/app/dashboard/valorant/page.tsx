@@ -63,24 +63,27 @@ function RankSummaryCard({
   const safeGames = games ?? 0;
   const safeWins = wins ?? 0;
   const losses = Math.max(safeGames - safeWins, 0);
+  const tierLabel = normalizeTierName(rankName) || "정보 없음";
+  const seasonLabel = season || "시즌 정보 없음";
+  const recordLabel = safeGames > 0 ? `${safeWins}승 ${losses}패` : "승패 정보 없음";
   return (
-    <div className="val-card min-w-0 overflow-hidden p-4">
-      <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">{title}</div>
-      <div className="flex items-center gap-3">
+    <div className="val-card min-w-0 overflow-hidden p-3">
+      <div className="mb-2 text-[10px] uppercase tracking-widest text-[#7b8a96]">{title}</div>
+      <div className="flex items-center gap-2">
         {icon ? (
-          <img src={icon} alt={rankName ?? title} className="h-10 w-10 flex-shrink-0 object-contain drop-shadow-lg" />
+          <img src={icon} alt={rankName ?? title} className="h-9 w-9 flex-shrink-0 object-contain drop-shadow-lg" />
         ) : (
-          <div className="h-10 w-10 flex-shrink-0 rounded bg-[#111c24] ring-1 ring-[#2a3540]" />
+          <div className="h-9 w-9 flex-shrink-0 rounded bg-[#111c24] ring-1 ring-[#2a3540]" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="truncate break-keep text-base font-black leading-tight text-white" title={normalizeTierName(rankName) || "정보 없음"}>
-            {normalizeTierName(rankName) || "정보 없음"}
+          <div className="val-hover-marquee text-sm font-black leading-tight text-white" title={tierLabel}>
+            <span>{tierLabel}</span>
           </div>
-          <div className="mt-0.5 truncate break-keep text-[11px] font-bold leading-tight text-[#8da0ad]" title={season || "시즌 정보 없음"}>
-            {season || "시즌 정보 없음"}
+          <div className="val-hover-marquee mt-0.5 text-[10px] font-bold leading-tight text-[#8da0ad]" title={seasonLabel}>
+            <span>{seasonLabel}</span>
           </div>
-          <div className="mt-1 truncate break-keep text-[11px] text-[#7b8a96]">
-            {safeGames > 0 ? `${safeWins}승 ${losses}패` : "승패 정보 없음"}
+          <div className="val-hover-marquee mt-1 text-[10px] leading-tight text-[#7b8a96]" title={`${recordLabel}${typeof rr === "number" ? ` ${rr} RR` : ""}`}>
+            <span>{recordLabel}</span>
             {typeof rr === "number" ? <span className="ml-2 text-[#ff4655]">{rr} RR</span> : null}
           </div>
         </div>
@@ -344,7 +347,7 @@ function RegionSection({ data }: { data: RegionStats }) {
         <a href={trackerUrl} target="_blank" rel="noopener noreferrer" className="text-[#7b8a96] text-xs hover:text-[#ff4655] transition-colors flex-shrink-0">tracker.gg</a>
       </div>
 
-      <div className="mb-5 grid grid-cols-1 gap-3 xl:grid-cols-3">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <RankSummaryCard title="현재 티어" rankName={rank?.tierName} icon={rank?.rankIcon} season={rank?.currentSeason?.label} wins={rank?.currentSeason?.wins ?? rank?.wins} games={rank?.currentSeason?.games ?? rank?.games} rr={rank?.rr} />
         <RankSummaryCard title="전 티어" rankName={rank?.previousSeason?.tierName} icon={rank?.previousSeason?.rankIcon} season={rank?.previousSeason?.label} wins={rank?.previousSeason?.wins} games={rank?.previousSeason?.games} />
         <RankSummaryCard title="최고 티어" rankName={rank?.peakTierName ?? rank?.peakSeason?.tierName} icon={rank?.peakRankIcon ?? rank?.peakSeason?.rankIcon} season={rank?.peakSeason?.label} wins={rank?.peakSeason?.wins} games={rank?.peakSeason?.games} />

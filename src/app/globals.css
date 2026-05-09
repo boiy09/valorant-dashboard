@@ -530,6 +530,33 @@ body {
   to { opacity: 1; }
 }
 
+.val-hover-marquee {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.val-hover-marquee > span {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.val-card:hover .val-hover-marquee > span {
+  max-width: none;
+  min-width: 100%;
+  animation: val-marquee 4.5s linear infinite alternate;
+}
+
+@keyframes val-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-45%); }
+}
+
 
 @media (max-width: 900px) {
   .val-dashboard-frame {

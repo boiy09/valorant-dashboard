@@ -549,7 +549,7 @@ body {
 .val-card:hover .val-hover-marquee > span {
   max-width: none;
   min-width: 100%;
-  animation: val-marquee 4.5s linear infinite alternate;
+  animation: val-marquee 2.8s linear infinite alternate;
 }
 
 @keyframes val-marquee {

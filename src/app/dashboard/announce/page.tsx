@@ -148,9 +148,8 @@ export default function AnnouncePage() {
         <p className="mt-0.5 text-sm text-[#7b8a96]">서버 공지와 발로란트 공식 소식을 한 화면에서 확인합니다.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <div className="grid min-w-0 gap-5">
-          <section>
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
+          <section className="min-w-0">
             <div className="mb-3 flex items-end justify-between gap-3">
               <SectionHeader eyebrow="SERVER NOTICE" title="서버 공지" description="운영진이 등록한 서버 공지입니다." compact />
               {isAdmin ? (
@@ -180,16 +179,14 @@ export default function AnnouncePage() {
             )}
           </section>
 
-          <section>
+          <VideoSection title="발로란트 KR 공식 영상" description="@VALORANTkr 최신 영상 4개" videos={krVideos} loading={loading} />
+
+          <section className="min-w-0">
             <SectionHeader eyebrow="OFFICIAL PATCH" title="발로란트 패치 노트" description="playvalorant.com 최신 패치노트 4개" />
             <NewsGrid items={patchNotes} loading={loading} />
           </section>
-        </div>
 
-        <div className="grid min-w-0 gap-5">
-          <VideoSection title="발로란트 KR 공식 영상" description="@VALORANTkr 최신 영상 4개" videos={krVideos} loading={loading} />
           <VideoSection title="VALORANT 글로벌 공식 영상" description="@valorant 최신 영상 4개" videos={globalVideos} loading={loading} />
-        </div>
       </div>
 
       {writerOpen ? (

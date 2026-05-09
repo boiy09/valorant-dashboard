@@ -167,6 +167,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
       <div className="val-top-scan" aria-hidden="true" />
 
+      <div className="val-sticky-header flex-shrink-0">
       <header className="val-topbar flex-shrink-0">
         <div className="max-w-screen-2xl mx-auto px-4 h-14 flex items-center justify-between">
           <Link href="/dashboard" className="group flex items-center">
@@ -241,6 +242,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </div>
       </nav>
+      </div>
 
       <div className="val-dashboard-frame relative z-10 flex-1 w-full mx-auto px-4 py-6 flex gap-5 items-start">
         <main className="flex-1 min-w-0">{children}</main>

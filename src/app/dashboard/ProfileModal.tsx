@@ -37,6 +37,7 @@ interface AgentOption {
   id: string;
   name: string;
   icon: string | null;
+  portrait?: string | null;
   role: string;
   roleLabel: string;
   roleIcon: string | null;
@@ -70,7 +71,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
     setSelectedRole(profile.valorantRole ?? null);
     setSelectedAgents(profile.favoriteAgents ?? []);
     setMessage(null);
-  }, [profile]);
+  }, [profile?.discordId, profile?.email, profile?.name]);
 
   useEffect(() => {
     if (!profile) return;
@@ -89,7 +90,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
     return () => {
       cancelled = true;
     };
-  }, [profile]);
+  }, [Boolean(profile)]);
 
   if (!profile) return null;
 
@@ -100,6 +101,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
   const currentRole = roles.find((role) => role.role === (editable ? selectedRole : profile.valorantRole));
   const filteredAgents = selectedRole ? agents.filter((agent) => agent.role === selectedRole) : agents;
   const canSave = editable && !saving;
+  const saved = message === "프로필이 저장되었습니다.";
 
   function toggleAgent(name: string) {
     if (!editable) return;
@@ -299,7 +301,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
                       }`}
                     >
                       {agent.icon ? (
-                        <img src={agent.icon} alt="" className="h-8 w-8 rounded object-cover" />
+                        <img src={agent.icon} alt="" className="h-8 w-8 rounded bg-[#08111a] object-contain object-bottom" />
                       ) : (
                         <div className="h-8 w-8 rounded bg-[#1a242d]" />
                       )}
@@ -315,10 +317,10 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
               <div className="grid grid-cols-3 gap-2">
                 {favoriteAgentDetails.map((agent) => (
                   <div key={agent.name} className="rounded border border-[#2a3540] bg-[#0f1923]/70 p-2">
-                    {agent.icon ? (
-                      <img src={agent.icon} alt="" className="h-12 w-full rounded object-cover" />
+                    {agent.portrait || agent.icon ? (
+                      <img src={agent.portrait ?? agent.icon ?? ""} alt="" className="h-24 w-full rounded bg-[#08111a] object-contain object-bottom" />
                     ) : (
-                      <div className="h-12 rounded bg-[#1a242d]" />
+                      <div className="h-24 rounded bg-[#1a242d]" />
                     )}
                     <div className="mt-1 truncate text-xs font-black text-white">{agent.name}</div>
                   </div>
@@ -329,7 +331,15 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
             )}
           </div>
 
-          {message && <div className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-xs text-[#c8d3db]">{message}</div>}
+          {message && (
+            <div className={`rounded border px-3 py-2 text-xs font-bold ${
+              saved
+                ? "border-[#0fffd0]/35 bg-[#0fffd0]/10 text-[#0fffd0]"
+                : "border-[#2a3540] bg-[#0f1923]/70 text-[#c8d3db]"
+            }`}>
+              {message}
+            </div>
+          )}
 
           {editable && (
             <div className="flex justify-end">

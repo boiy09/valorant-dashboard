@@ -2,6 +2,7 @@ interface ValorantApiAgent {
   uuid: string;
   displayName: string;
   displayIcon: string | null;
+  fullPortrait: string | null;
   role: {
     uuid: string;
     displayName: string;
@@ -46,6 +47,7 @@ export async function GET() {
         id: agent.uuid,
         name: localized?.displayName ?? agent.displayName,
         icon: agent.displayIcon,
+        portrait: localized?.fullPortrait ?? agent.fullPortrait,
         role: roleKey,
         roleLabel: ROLE_LABELS[roleKey] ?? roleKey,
         roleIcon: agent.role?.displayIcon ?? null,

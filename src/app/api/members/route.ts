@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { normalizeTierName } from "@/lib/tierName";
 import { getRankIconByTier } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank, fetchProfile } from "@/lib/rankFetcher";
-import { ensureProfileColumns } from "@/lib/profileColumns";
 
 function toRegionLabel(region: string) {
   return region.toUpperCase() === "AP" ? "AP" : "KR";
@@ -17,6 +16,19 @@ async function settleInBatches<T, R>(items: T[], size: number, task: (item: T) =
     results.push(...(await Promise.all(chunk.map(task))));
   }
   return results;
+}
+
+async function hasProfileColumns() {
+  const rows = await prisma.$queryRaw<{ exists: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'User'
+        AND column_name = 'valorantRole'
+    ) AS "exists"
+  `;
+  return Boolean(rows[0]?.exists);
 }
 
 export async function GET(req: NextRequest) {
@@ -32,7 +44,7 @@ export async function GET(req: NextRequest) {
 
   if (!guild) return Response.json({ members: [], guildName: null });
 
-  await ensureProfileColumns();
+  const profileColumnsReady = await hasProfileColumns();
 
   const members = await prisma.guildMember.findMany({
     where: { guildId: guild.id },
@@ -44,8 +56,7 @@ export async function GET(req: NextRequest) {
           discordId: true,
           riotGameName: true,
           riotTagLine: true,
-          valorantRole: true,
-          favoriteAgents: true,
+          ...(profileColumnsReady ? { valorantRole: true, favoriteAgents: true } : {}),
           riotAccounts: {
             select: {
               puuid: true,
@@ -150,9 +161,9 @@ export async function GET(req: NextRequest) {
       riotId: member.user.riotGameName
         ? `${member.user.riotGameName}#${member.user.riotTagLine}`
         : null,
-      valorantRole: member.user.valorantRole,
-      favoriteAgents: member.user.favoriteAgents
-        ? member.user.favoriteAgents.split(",").map((agent) => agent.trim()).filter(Boolean).slice(0, 3)
+      valorantRole: profileColumnsReady ? (member.user as any).valorantRole : null,
+      favoriteAgents: profileColumnsReady && (member.user as any).favoriteAgents
+        ? (member.user as any).favoriteAgents.split(",").map((agent: string) => agent.trim()).filter(Boolean).slice(0, 3)
         : [],
       riotAccounts: member.user.riotAccounts.map((account) => accountDetails.get(account.puuid) ?? {
         region: toRegionLabel(account.region),

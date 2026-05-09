@@ -106,7 +106,7 @@ export default function AttendanceCalendar({
       </div>
 
       <div className="mb-3 border-l-2 border-[#ff4655] bg-[#ff4655]/10 px-3 py-2 text-xs font-semibold leading-relaxed text-[#ece8e1]">
-        출석은 하루 음성 채널 활동 시간이 최소 {minAttendanceText} 이상일 때만 인정됩니다.
+        표시 시간은 웹 접속 시간이 아니라 해당 날짜의 디스코드 음성 채널 누적 시간입니다. 출석은 하루 음성 채널 활동 시간이 최소 {minAttendanceText} 이상일 때만 인정됩니다.
       </div>
 
       <div className="grid grid-cols-7 overflow-hidden rounded border border-[#2a3540] bg-[#0f1923]">
@@ -127,7 +127,7 @@ export default function AttendanceCalendar({
           return (
             <div
               key={day.key}
-              title={`${day.key}${attended ? " 출석" : " 미출석"}${duration ? ` · ${duration}` : ""}`}
+              title={`${day.key}${attended ? " 출석" : " 미출석"}${duration ? ` · 음성 ${duration}` : ""}`}
               className={`relative min-h-20 border-b border-r border-[#1f2a33] p-2 transition-colors ${
                 day.inMonth ? "bg-[#0f1923]" : "bg-[#0b141c] text-[#3a4a56]"
               }`}
@@ -144,18 +144,18 @@ export default function AttendanceCalendar({
                 >
                   {day.day}
                 </span>
-                {attended && (
+                {attended ? (
                   <span className="whitespace-nowrap break-keep rounded bg-green-400/10 px-1.5 py-0.5 text-[10px] font-bold leading-none text-green-400">
                     출석
                   </span>
-                )}
+                ) : null}
               </div>
 
-              {duration && day.inMonth && (
+              {duration && day.inMonth ? (
                 <div className="mt-3 whitespace-nowrap rounded border border-[#2a3540] bg-[#111c24] px-1 py-1 text-center text-[10px] font-bold tabular-nums text-[#ece8e1] sm:text-[11px]">
                   {duration}
                 </div>
-              )}
+              ) : null}
 
               {attended ? (
                 <div className="absolute inset-x-2 bottom-2 h-1 rounded-full bg-[#ff4655]" />
@@ -176,7 +176,9 @@ export default function AttendanceCalendar({
           <span className="h-2.5 w-2.5 rounded-sm bg-[#1a242d]" />
           미출석
         </span>
-        <span className="text-[#4a5a68]">날짜 칸의 시간은 해당일 음성 채널 접속 시간이며, {minAttendanceText} 미만은 미출석입니다.</span>
+        <span className="text-[#4a5a68]">
+          날짜 칸의 시간은 디스코드 음성 채널 체류 시간입니다. 겹친 기록은 합쳐 계산하고, {minAttendanceText} 미만은 미출석입니다.
+        </span>
       </div>
     </div>
   );

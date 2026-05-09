@@ -25,6 +25,14 @@ function firstMatch(value: string, pattern: RegExp) {
   return decodeXml(value.match(pattern)?.[1]?.trim() ?? "");
 }
 
+function decodeJsonString(value: string) {
+  try {
+    return JSON.parse(`"${value.replace(/"/g, '\\"')}"`);
+  } catch {
+    return value.replace(/\\u0026/g, "&");
+  }
+}
+
 async function fetchFromChannelPage(channel: keyof typeof CHANNELS) {
   const response = await fetch(`https://www.youtube.com/${HANDLES[channel]}/videos`, {
     cache: "no-store",
@@ -35,23 +43,23 @@ async function fetchFromChannelPage(channel: keyof typeof CHANNELS) {
   });
   if (!response.ok) return [];
 
-  const html = decodeXml(await response.text()).replace(/\\u0026/g, "&");
-  const ids = [...html.matchAll(/"videoId":"([^"]+)"/g)]
-    .map((match) => match[1])
-    .filter((id, index, list) => list.indexOf(id) === index)
-    .slice(0, 4);
+  const html = decodeXml(await response.text());
+  const videos = new Map<string, { id: string; title: string }>();
 
-  const ignored = /^(조회수|views|현재 재생|재생목록|공유|나중에|Shorts|출처|동영상|홈$|재생$|일반$|자막$)/i;
-  const titles = [...html.matchAll(/"content":"([^"]+)"/g)]
-    .map((match) => decodeXml(match[1]))
-    .filter((title) => title.length > 4 && !ignored.test(title))
-    .slice(0, ids.length);
+  for (const match of html.matchAll(/"videoRenderer":\{([\s\S]*?),"trackingParams"/g)) {
+    const block = match[1];
+    const id = block.match(/"videoId":"([^"]+)"/)?.[1];
+    const title = block.match(/"title":\{"runs":\[\{"text":"((?:\\.|[^"\\])*)"/)?.[1];
+    if (!id || !title || videos.has(id)) continue;
+    videos.set(id, { id, title: decodeJsonString(title) });
+    if (videos.size >= 4) break;
+  }
 
-  return ids.map((id, index) => ({
-    id,
-    title: titles[index] ?? "VALORANT Official Video",
-    url: `https://www.youtube.com/watch?v=${id}`,
-    thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+  return [...videos.values()].map((video) => ({
+    id: video.id,
+    title: video.title,
+    url: `https://www.youtube.com/watch?v=${video.id}`,
+    thumbnail: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`,
     publishedAt: new Date().toISOString(),
     channel,
   }));

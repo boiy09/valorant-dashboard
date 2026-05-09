@@ -300,10 +300,10 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
                           : "border-[#2a3540] bg-[#0f1923]/70 hover:border-[#ff4655]/55"
                       }`}
                     >
-                      {agent.icon ? (
-                        <img src={agent.icon} alt="" className="h-8 w-8 rounded bg-[#08111a] object-contain object-bottom" />
+                      {agent.portrait || agent.icon ? (
+                        <img src={agent.portrait ?? agent.icon ?? ""} alt="" className="h-10 w-10 rounded object-contain object-bottom" />
                       ) : (
-                        <div className="h-8 w-8 rounded bg-[#1a242d]" />
+                        <div className="h-10 w-10 rounded bg-[#1a242d]" />
                       )}
                       <div className="min-w-0">
                         <div className="truncate text-xs font-black text-white">{agent.name}</div>
@@ -318,7 +318,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
                 {favoriteAgentDetails.map((agent) => (
                   <div key={agent.name} className="rounded border border-[#2a3540] bg-[#0f1923]/70 p-2">
                     {agent.portrait || agent.icon ? (
-                      <img src={agent.portrait ?? agent.icon ?? ""} alt="" className="h-24 w-full rounded bg-[#08111a] object-contain object-bottom" />
+                      <img src={agent.portrait ?? agent.icon ?? ""} alt="" className="h-24 w-full rounded object-contain object-bottom" />
                     ) : (
                       <div className="h-24 rounded bg-[#1a242d]" />
                     )}

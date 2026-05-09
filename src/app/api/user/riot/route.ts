@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { normalizeTierName } from "@/lib/tierName";
+import { getRankIconByTier } from "@/lib/valorant";
+import { ensureValidTokens, fetchProfile, fetchRank } from "@/lib/rankFetcher";
 
 const ALLOWED_REGIONS = ["KR", "AP"] as const;
 
@@ -48,12 +51,68 @@ function toAccountResponse(account: {
   tagLine: string;
   region: string;
   isVerified: boolean;
+  puuid: string;
+  accessToken: string | null;
+  entitlementsToken: string | null;
+  ssid: string | null;
+  tokenExpiresAt: Date | null;
+  cachedTierId: number | null;
+  cachedTierName: string | null;
+  cachedLevel: number | null;
+  cachedCard: string | null;
+  rankCachedAt: Date | null;
 }) {
   return {
     id: account.id,
     region: account.region,
     riotId: `${account.gameName}#${account.tagLine}`,
     isVerified: account.isVerified,
+  };
+}
+
+async function toDetailedAccountResponse(account: Parameters<typeof toAccountResponse>[0]) {
+  const cacheAge = account.rankCachedAt ? Date.now() - account.rankCachedAt.getTime() : Infinity;
+  const isFresh = cacheAge < 2 * 60 * 60 * 1000 && account.cachedTierId !== null && (account.cachedLevel !== null || account.cachedCard !== null);
+
+  if (isFresh) {
+    return {
+      ...toAccountResponse(account),
+      level: account.cachedLevel,
+      card: account.cachedCard,
+      tier: normalizeTierName(account.cachedTierName, account.cachedTierId),
+      rankIcon: account.cachedTierId ? await getRankIconByTier(account.cachedTierId).catch(() => null) : null,
+    };
+  }
+
+  const tokens = await ensureValidTokens(
+    account.puuid,
+    account.accessToken,
+    account.entitlementsToken,
+    account.ssid,
+    account.tokenExpiresAt
+  );
+  const [rank, profile] = await Promise.all([
+    fetchRank(account.puuid, account.region, account.gameName, account.tagLine, tokens),
+    fetchProfile(account.puuid, account.region, account.gameName, account.tagLine, tokens),
+  ]);
+
+  prisma.riotAccount.update({
+    where: { puuid: account.puuid },
+    data: {
+      cachedTierId: rank.tierId,
+      cachedTierName: rank.tierName,
+      cachedLevel: profile.level,
+      cachedCard: profile.card,
+      rankCachedAt: new Date(),
+    },
+  }).catch(() => {});
+
+  return {
+    ...toAccountResponse(account),
+    level: profile.level,
+    card: profile.card,
+    tier: rank.tierName,
+    rankIcon: rank.rankIcon,
   };
 }
 
@@ -75,7 +134,7 @@ export async function GET() {
 
   return Response.json({
     linked: accounts.length > 0,
-    accounts: accounts.map(toAccountResponse),
+    accounts: await Promise.all(accounts.map(toDetailedAccountResponse)),
     availableRegions: ALLOWED_REGIONS,
   });
 }

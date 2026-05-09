@@ -33,13 +33,28 @@ export default function AnnouncePage() {
   const [krVideos, setKrVideos] = useState<VideoItem[]>([]);
   const [globalVideos, setGlobalVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [pinNewAnnouncement, setPinNewAnnouncement] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  function loadAnnouncements() {
+    return fetch("/api/announcements")
+      .then((r) => r.json())
+      .then((d) => setItems(d.announcements ?? []))
+      .catch(() => setItems([]));
+  }
 
   useEffect(() => {
+    fetch("/api/me/roles")
+      .then((r) => r.json())
+      .then((d) => setIsAdmin(Boolean(d.isAdmin)))
+      .catch(() => setIsAdmin(false));
+
     Promise.all([
-      fetch("/api/announcements")
-        .then((r) => r.json())
-        .then((d) => setItems(d.announcements ?? []))
-        .catch(() => setItems([])),
+      loadAnnouncements(),
       fetch("/api/valorant/news")
         .then((r) => r.json())
         .then((d) => setPatchNotes(d.patchNotes ?? []))
@@ -54,6 +69,37 @@ export default function AnnouncePage() {
         .catch(() => setGlobalVideos([])),
     ]).finally(() => setLoading(false));
   }, []);
+
+  async function submitAnnouncement() {
+    if (!title.trim() || !content.trim()) {
+      setMessage("제목과 내용을 입력해 주세요.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/announcements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, content, pinned: pinNewAnnouncement }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(data.error ?? "공지 등록에 실패했습니다.");
+        return;
+      }
+      setTitle("");
+      setContent("");
+      setPinNewAnnouncement(false);
+      setMessage("공지 등록 완료");
+      await loadAnnouncements();
+    } catch {
+      setMessage("공지 등록 중 오류가 발생했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const pinned = items.filter((i) => i.pinned);
   const rest = items.filter((i) => !i.pinned);
@@ -70,6 +116,51 @@ export default function AnnouncePage() {
         <div className="grid min-w-0 grid-rows-2 gap-5">
           <section className="min-h-[360px]">
             <SectionHeader eyebrow="SERVER NOTICE" title="서버 공지" description="운영진이 등록한 서버 공지입니다." />
+            {isAdmin ? (
+              <div className="val-card mb-3 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-black text-white">공지 작성</div>
+                    <div className="text-xs text-[#7b8a96]">줄바꿈은 내용 입력창에서 Enter로 그대로 작성하면 됩니다.</div>
+                  </div>
+                  <label className="flex flex-shrink-0 items-center gap-2 text-xs font-bold text-[#c8d3db]">
+                    <input
+                      type="checkbox"
+                      checked={pinNewAnnouncement}
+                      onChange={(event) => setPinNewAnnouncement(event.target.checked)}
+                      className="h-4 w-4 accent-[#ff4655]"
+                    />
+                    상단 고정
+                  </label>
+                </div>
+                <input
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="공지 제목"
+                  maxLength={80}
+                  className="mb-2 w-full rounded border border-[#2a3540] bg-[#07131e] px-3 py-2 text-sm font-bold text-white outline-none transition-colors placeholder:text-[#4a5a68] focus:border-[#ff4655]"
+                />
+                <textarea
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  placeholder="공지 내용을 입력하세요."
+                  rows={4}
+                  maxLength={2000}
+                  className="w-full resize-y rounded border border-[#2a3540] bg-[#07131e] px-3 py-2 text-sm leading-relaxed text-white outline-none transition-colors placeholder:text-[#4a5a68] focus:border-[#ff4655]"
+                />
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-[#7b8a96]">{message}</div>
+                  <button
+                    type="button"
+                    onClick={submitAnnouncement}
+                    disabled={saving}
+                    className="rounded bg-[#ff4655] px-4 py-2 text-xs font-black text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {saving ? "등록 중..." : "공지 등록"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {loading ? (
               <EmptyCard text="공지 불러오는 중..." />
             ) : items.length === 0 ? (

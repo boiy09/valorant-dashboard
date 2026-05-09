@@ -17,6 +17,9 @@ export interface OpGgProfileSnapshot {
   title: string | null;
   description: string | null;
   rank: OpGgRankFallback | null;
+  level: number | null;
+  playerCardId: string | null;
+  playerCardIcon: string | null;
   snippet: string;
 }
 
@@ -65,6 +68,20 @@ function parseRank(html: string): OpGgRankFallback | null {
   };
 }
 
+function parseProfileDetails(html: string) {
+  const decoded = decodeHtml(html);
+  const level = Number(decoded.match(/"level":(\d+)/)?.[1] ?? 0);
+  const playerCardId = decoded.match(/"playerCardId":"([0-9a-f-]{36})"/i)?.[1] ?? null;
+
+  return {
+    level: level > 0 ? level : null,
+    playerCardId,
+    playerCardIcon: playerCardId
+      ? `https://media.valorant-api.com/playercards/${playerCardId.toLowerCase()}/smallart.png`
+      : null,
+  };
+}
+
 export function buildOpGgValorantProfileUrls(gameName: string, tagLine: string) {
   const slug = `${gameName.trim()}-${tagLine.trim()}`;
   const encodedSlug = encodeURIComponent(slug);
@@ -98,6 +115,7 @@ export async function fetchOpGgValorantProfile(
       if (!response.ok) continue;
 
       const decoded = decodeHtml(html);
+      const profileDetails = parseProfileDetails(decoded);
       return {
         requestedUrl: url,
         finalUrl: response.url,
@@ -107,6 +125,7 @@ export async function fetchOpGgValorantProfile(
         title: decoded.match(/<title>(.*?)<\/title>/i)?.[1] ?? null,
         description: getMetaContent(decoded, "description"),
         rank: parseRank(decoded),
+        ...profileDetails,
         snippet: decoded.slice(0, 600),
       };
     }
@@ -120,4 +139,15 @@ export async function fetchOpGgValorantProfile(
 export async function getOpGgRankFallback(gameName: string, tagLine: string) {
   const profile = await fetchOpGgValorantProfile(gameName, tagLine);
   return profile?.rank ?? null;
+}
+
+export async function getOpGgProfileFallback(gameName: string, tagLine: string) {
+  const profile = await fetchOpGgValorantProfile(gameName, tagLine);
+  if (!profile) return null;
+
+  return {
+    rank: profile.rank,
+    level: profile.level,
+    playerCardIcon: profile.playerCardIcon,
+  };
 }

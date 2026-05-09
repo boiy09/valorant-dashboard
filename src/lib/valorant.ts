@@ -2,7 +2,7 @@ import axios from "axios";
 import { apiCache, TTL } from "@/lib/apiCache";
 import { normalizeTierName } from "@/lib/tierName";
 import { formatValorantSeasonLabel } from "@/lib/seasonLabel";
-import { getOpGgRankFallback } from "@/lib/opgg";
+import { getOpGgProfileFallback, getOpGgRankFallback } from "@/lib/opgg";
 
 const henrikClient = axios.create({
   baseURL: "https://api.henrikdev.xyz/valorant",
@@ -524,17 +524,18 @@ export async function getPlayerByRiotId(
   });
   const account = asRecord(data);
   const fallback = account?.puuid ? await getAccountByPuuid(toString(account.puuid, "")).catch(() => null) : null;
+  const opGgFallback = await getOpGgProfileFallback(gameName, tagLine).catch(() => null);
   const fallbackCard = asRecord(fallback?.card);
   const card =
     getPlayerCardIcon(account) ||
-    firstString(fallbackCard.small, fallbackCard.smallArt, fallbackCard.wide, fallbackCard.large);
+    firstString(fallbackCard.small, fallbackCard.smallArt, fallbackCard.wide, fallbackCard.large, opGgFallback?.playerCardIcon);
 
   return {
     puuid: toString(account.puuid, ""),
     gameName: toString(account.name ?? account.gameName ?? account.game_name, gameName),
     tagLine: toString(account.tag ?? account.tagLine ?? account.tag_line, tagLine),
     accountLevel: toNumber(
-      account.account_level ?? account.accountLevel ?? account.level ?? fallback?.account_level ?? fallback?.accountLevel,
+      account.account_level ?? account.accountLevel ?? account.level ?? fallback?.account_level ?? fallback?.accountLevel ?? opGgFallback?.level,
       -1
     ),
     card: card || undefined,
@@ -791,14 +792,20 @@ export async function getRecentMatches(
       const pTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
       const isPrivate = !pName && !rawNameIsUsable;
       const displayName = pName || rawName;
-      const pCardIcon = localCardIcon || firstString(fallbackCard.small, fallbackCard.wide, fallbackCard.large);
+      const opGgFallback = !isPrivate && pName && pTag && (!localCardIcon || toNumber(p.level ?? p.account_level, -1) < 0)
+        ? await getOpGgProfileFallback(pName, pTag).catch(() => null)
+        : null;
+      const pCardIcon = localCardIcon || firstString(fallbackCard.small, fallbackCard.wide, fallbackCard.large, opGgFallback?.playerCardIcon);
       const pTeamId = normalizeTeamId(p.team_id ?? p.teamId ?? p.team);
       const pTierId = toNumber(pTier.id);
       const mappedRank = pTierId <= 0 ? (options?.puuidRankMap?.get(pPuuid) ?? null) : null;
       const fallbackRank = pTierId <= 0 && !mappedRank && !options?.skipRankFallback
         ? await getScoreboardRankByPuuid(pPuuid, region).catch(() => null)
         : null;
-      const rankData = mappedRank ?? fallbackRank;
+      const opGgRank = pTierId <= 0 && !mappedRank && !fallbackRank && opGgFallback?.rank
+        ? { tierId: opGgFallback.rank.tierId, tierName: opGgFallback.rank.tierName, tierIcon: opGgFallback.rank.rankIcon }
+        : null;
+      const rankData = mappedRank ?? fallbackRank ?? opGgRank;
       const finalTierId = pTierId || rankData?.tierId || 0;
       const finalTierName = normalizeTierName(
         pTierId > 0 ? toString(pTier.name, "Unranked") : rankData?.tierName ?? "Unranked",
@@ -810,7 +817,7 @@ export async function getRecentMatches(
         tag: isPrivate ? "" : pTag,
         isPrivate,
         teamId: pTeamId,
-        level: toNumber(p.level ?? p.account_level, -1) >= 0 ? toNumber(p.level ?? p.account_level) : null,
+        level: toNumber(p.level ?? p.account_level, -1) >= 0 ? toNumber(p.level ?? p.account_level) : opGgFallback?.level ?? null,
         cardIcon: pCardIcon,
         agent: pAgentName,
         agentIcon: pIcon,

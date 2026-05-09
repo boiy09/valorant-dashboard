@@ -64,22 +64,22 @@ function RankSummaryCard({
   const safeWins = wins ?? 0;
   const losses = Math.max(safeGames - safeWins, 0);
   return (
-    <div className="val-card p-4">
+    <div className="val-card min-w-0 overflow-hidden p-4">
       <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">{title}</div>
       <div className="flex items-center gap-3">
         {icon ? (
-          <img src={icon} alt={rankName ?? title} className="h-11 w-11 flex-shrink-0 object-contain drop-shadow-lg" />
+          <img src={icon} alt={rankName ?? title} className="h-10 w-10 flex-shrink-0 object-contain drop-shadow-lg" />
         ) : (
-          <div className="h-11 w-11 flex-shrink-0 rounded bg-[#111c24] ring-1 ring-[#2a3540]" />
+          <div className="h-10 w-10 flex-shrink-0 rounded bg-[#111c24] ring-1 ring-[#2a3540]" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="whitespace-nowrap break-keep text-base font-black leading-tight text-white xl:text-lg">
+          <div className="truncate break-keep text-base font-black leading-tight text-white" title={normalizeTierName(rankName) || "정보 없음"}>
             {normalizeTierName(rankName) || "정보 없음"}
           </div>
-          <div className="mt-0.5 whitespace-nowrap break-keep text-[11px] font-bold leading-tight text-[#8da0ad]">
+          <div className="mt-0.5 truncate break-keep text-[11px] font-bold leading-tight text-[#8da0ad]" title={season || "시즌 정보 없음"}>
             {season || "시즌 정보 없음"}
           </div>
-          <div className="mt-1 whitespace-nowrap break-keep text-[11px] text-[#7b8a96]">
+          <div className="mt-1 truncate break-keep text-[11px] text-[#7b8a96]">
             {safeGames > 0 ? `${safeWins}승 ${losses}패` : "승패 정보 없음"}
             {typeof rr === "number" ? <span className="ml-2 text-[#ff4655]">{rr} RR</span> : null}
           </div>

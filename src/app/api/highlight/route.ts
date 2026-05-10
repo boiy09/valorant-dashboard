@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
+import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
 async function getUser(session: any) {
@@ -10,6 +11,33 @@ async function getUser(session: any) {
   return user;
 }
 
+function isDiscordAttachmentUrl(url: string) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "cdn.discordapp.com" || host === "media.discordapp.net" || host.endsWith(".discordapp.com");
+  } catch {
+    return false;
+  }
+}
+
+async function isUrlReachable(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2500);
+
+  try {
+    const response = await fetch(url, {
+      method: "HEAD",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get("type") ?? "clip";
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "20", 10);
@@ -18,10 +46,30 @@ export async function GET(req: NextRequest) {
     where: { type },
     include: { user: { select: { name: true, image: true, discordId: true } } },
     orderBy: { createdAt: "desc" },
-    take: limit,
+    take: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 50) : 20,
   });
 
-  return Response.json({ highlights });
+  const checkedHighlights = await Promise.all(
+    highlights.map(async (highlight) => ({
+      highlight,
+      reachable: isDiscordAttachmentUrl(highlight.url) ? await isUrlReachable(highlight.url) : true,
+    }))
+  );
+
+  const staleHighlightIds = checkedHighlights
+    .filter((item) => !item.reachable)
+    .map((item) => item.highlight.id);
+  const visibleHighlights = checkedHighlights
+    .filter((item) => item.reachable)
+    .map((item) => item.highlight);
+
+  if (staleHighlightIds.length > 0) {
+    await prisma.highlight.deleteMany({
+      where: { id: { in: staleHighlightIds } },
+    });
+  }
+
+  return Response.json({ highlights: visibleHighlights });
 }
 
 export async function POST(req: NextRequest) {
@@ -33,7 +81,7 @@ export async function POST(req: NextRequest) {
 
   const { title, description, url, type, guildDiscordId } = await req.json();
   if (!title?.trim() || !url?.trim()) {
-    return Response.json({ error: "제목과 URL을 입력해주세요." }, { status: 400 });
+    return Response.json({ error: "제목과 URL을 입력해 주세요." }, { status: 400 });
   }
 
   const guild = guildDiscordId
@@ -57,6 +105,28 @@ export async function PATCH(req: NextRequest) {
     where: { id: targetId },
     data: { likes: { increment: 1 } },
   });
+
+  return Response.json({ success: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const { session, isAdmin, guild } = await getAdminSession();
+  if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+
+  const id = req.nextUrl.searchParams.get("id");
+  if (!id) return Response.json({ error: "하이라이트 ID가 필요합니다." }, { status: 400 });
+
+  const deleted = await prisma.highlight.deleteMany({
+    where: {
+      id,
+      ...(guild ? { guildId: guild.id } : {}),
+    },
+  });
+
+  if (deleted.count === 0) {
+    return Response.json({ error: "삭제할 하이라이트를 찾을 수 없습니다." }, { status: 404 });
+  }
 
   return Response.json({ success: true });
 }

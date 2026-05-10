@@ -88,7 +88,6 @@ export default function ProfileModal({
     setSelectedRoles(parseProfileRoles(profile.valorantRole));
     setSelectedAgents(profile.favoriteAgents ?? []);
     setProfileBio(profile.profileBio ?? "");
-    setMessage(null);
   }, [profile?.discordId, profile?.profileBio, profile?.name, profile?.valorantRole, profile?.favoriteAgents]);
 
   useEffect(() => {

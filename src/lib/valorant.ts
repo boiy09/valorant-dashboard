@@ -427,8 +427,23 @@ function pickPreviousSeasonSummary(
   summaries: RankSeasonSummary[],
   currentSeason: RankSeasonSummary | null
 ) {
-  if (!currentSeason) return summaries[1] ?? null;
-  return summaries.find((item) => item.season !== currentSeason.season) ?? null;
+  if (!currentSeason) return null;
+  const previousSeasonKey = getPreviousActSeasonKey(currentSeason.season);
+  if (!previousSeasonKey) return null;
+  return summaries.find((item) => item.season === previousSeasonKey) ?? null;
+}
+
+function getPreviousActSeasonKey(season: string) {
+  const match = season.match(/e(\d+)a(\d+)/i);
+  if (!match) return "";
+
+  const episode = Number(match[1]);
+  const act = Number(match[2]);
+  if (!Number.isFinite(episode) || !Number.isFinite(act)) return "";
+
+  if (act > 1) return `e${episode}a${act - 1}`;
+  if (episode > 1) return `e${episode - 1}a3`;
+  return "";
 }
 
 function pickPeakSeasonSummary(

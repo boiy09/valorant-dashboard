@@ -19,6 +19,7 @@ model User {
   riotPuuid    String?
   riotGameName String?
   riotTagLine  String?
+  profileBio   String   @default("")
   valorantRole String?
   favoriteAgents String @default("")
   createdAt    DateTime @default(now())

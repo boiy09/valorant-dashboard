@@ -393,7 +393,7 @@ function readStatsCache() {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = window.sessionStorage.getItem("valorant-dashboard:valorant-stats:v3");
+    const raw = window.sessionStorage.getItem("valorant-dashboard:valorant-stats:v4");
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { savedAt?: number; data?: { accounts: RegionStats[] } };
     if (!parsed.savedAt || Date.now() - parsed.savedAt > 10 * 60 * 1000) return null;
@@ -407,7 +407,7 @@ function writeStatsCache(data: { accounts: RegionStats[] }) {
   if (typeof window === "undefined") return;
 
   try {
-    window.sessionStorage.setItem("valorant-dashboard:valorant-stats:v3", JSON.stringify({ savedAt: Date.now(), data }));
+    window.sessionStorage.setItem("valorant-dashboard:valorant-stats:v4", JSON.stringify({ savedAt: Date.now(), data }));
   } catch {}
 }
 

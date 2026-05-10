@@ -31,6 +31,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [navigating, setNavigating] = useState(false);
   const [showMyProfile, setShowMyProfile] = useState(false);
   const [myRiotAccounts, setMyRiotAccounts] = useState<ProfileAccount[]>([]);
+  const [myProfileBio, setMyProfileBio] = useState("");
   const [myValorantRole, setMyValorantRole] = useState<string | null>(null);
   const [myFavoriteAgents, setMyFavoriteAgents] = useState<string[]>([]);
   const prevPathname = useRef(pathname);
@@ -110,6 +111,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .then((response) => (response.ok ? response.json() : { favoriteAgents: [] }))
       .then((data) => {
         if (cancelled) return;
+        setMyProfileBio(data.profileBio ?? "");
         setMyValorantRole(data.valorantRole ?? null);
         setMyFavoriteAgents(data.favoriteAgents ?? []);
       })
@@ -283,7 +285,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           profile={{
             name: session?.user?.name ?? null,
             image: session?.user?.image ?? null,
-            email: session?.user?.email ?? null,
+            profileBio: myProfileBio,
             discordId: session?.user?.id ?? undefined,
             riotAccounts: myRiotAccounts,
             valorantRole: myValorantRole,
@@ -291,6 +293,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           }}
           editable
           onProfileSaved={(data) => {
+            setMyProfileBio(data.profileBio ?? "");
             setMyValorantRole(data.valorantRole ?? null);
             setMyFavoriteAgents(data.favoriteAgents ?? []);
           }}

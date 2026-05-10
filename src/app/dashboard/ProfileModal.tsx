@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface ProfileAccount {
   region: string;
@@ -16,6 +16,7 @@ export interface ProfileData {
   name: string | null;
   image: string | null;
   email?: string | null;
+  profileBio?: string | null;
   discordId?: string | null;
   roles?: string[];
   riotId?: string | null;
@@ -30,7 +31,7 @@ interface ProfileModalProps {
   profile: ProfileData | null;
   editable?: boolean;
   onClose: () => void;
-  onProfileSaved?: (data: Pick<ProfileData, "valorantRole" | "favoriteAgents">) => void;
+  onProfileSaved?: (data: Pick<ProfileData, "profileBio" | "valorantRole" | "favoriteAgents">) => void;
 }
 
 interface AgentOption {
@@ -67,11 +68,18 @@ function regionLabel(region: string) {
   return region.toUpperCase() === "AP" ? "AP · 아섭" : "KR · 한섭";
 }
 
-export default function ProfileModal({ title = "프로필", profile, editable = false, onClose, onProfileSaved }: ProfileModalProps) {
+export default function ProfileModal({
+  title = "프로필",
+  profile,
+  editable = false,
+  onClose,
+  onProfileSaved,
+}: ProfileModalProps) {
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [profileBio, setProfileBio] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -79,8 +87,9 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
     if (!profile) return;
     setSelectedRoles(parseProfileRoles(profile.valorantRole));
     setSelectedAgents(profile.favoriteAgents ?? []);
+    setProfileBio(profile.profileBio ?? "");
     setMessage(null);
-  }, [profile?.discordId, profile?.email, profile?.name]);
+  }, [profile?.discordId, profile?.profileBio, profile?.name, profile?.valorantRole, profile?.favoriteAgents]);
 
   useEffect(() => {
     if (!profile) return;
@@ -105,20 +114,29 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
 
   const displayName = profile.name || "이름 없음";
   const accounts = profile.riotAccounts ?? [];
-  const favoriteAgentDetails = (editable ? selectedAgents : profile.favoriteAgents ?? [])
-    .map((name) => agents.find((agent) => agent.name === name) ?? { id: name, name, icon: null, role: "", roleLabel: "", roleIcon: null });
   const activeRoleValues = editable ? selectedRoles : parseProfileRoles(profile.valorantRole);
   const currentRoles = roles.filter((role) => activeRoleValues.includes(role.role));
+  const favoriteAgentDetails = (editable ? selectedAgents : profile.favoriteAgents ?? []).map(
+    (name) =>
+      agents.find((agent) => agent.name === name) ?? {
+        id: name,
+        name,
+        icon: null,
+        role: "",
+        roleLabel: "",
+        roleIcon: null,
+      }
+  );
   const canSave = editable && !saving;
-  const saved = message === "프로필이 저장되었습니다.";
+  const saved = message === PROFILE_SAVED_MESSAGE;
 
   function toggleRole(role: string) {
     if (!editable) return;
-    setSelectedRoles((current) => (
+    setSelectedRoles((current) =>
       current.includes(role)
         ? current.filter((item) => item !== role)
         : [...current, role]
-    ));
+    );
   }
 
   function toggleAgent(name: string) {
@@ -143,12 +161,20 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
       const response = await fetch("/api/user/profile", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ valorantRole: selectedRoles, favoriteAgents: selectedAgents }),
+        body: JSON.stringify({
+          profileBio,
+          valorantRole: selectedRoles,
+          favoriteAgents: selectedAgents,
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "프로필 저장 실패");
-      onProfileSaved?.({ valorantRole: data.valorantRole, favoriteAgents: data.favoriteAgents ?? [] });
-      setMessage("프로필이 저장되었습니다.");
+      onProfileSaved?.({
+        profileBio: data.profileBio ?? "",
+        valorantRole: data.valorantRole,
+        favoriteAgents: data.favoriteAgents ?? [],
+      });
+      setMessage(PROFILE_SAVED_MESSAGE);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "프로필 저장에 실패했습니다.");
     } finally {
@@ -191,30 +217,37 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="val-mini-button flex-shrink-0 px-3 py-1 text-xs"
-            aria-label="프로필 닫기"
-          >
+          <button type="button" onClick={onClose} className="val-mini-button flex-shrink-0 px-3 py-1 text-xs" aria-label="프로필 닫기">
             닫기
           </button>
         </div>
 
         <div className="member-scroll mt-4 max-h-[calc(88vh-7.5rem)] space-y-4 overflow-y-auto pr-1">
-          {profile.email && (
-            <InfoBlock label="이메일" value={profile.email} />
-          )}
+          <div>
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">한줄 소개</p>
+              {editable && <span className="text-[10px] text-[#7b8a96]">{profileBio.length} / 80</span>}
+            </div>
+            {editable ? (
+              <input
+                value={profileBio}
+                onChange={(event) => setProfileBio(event.target.value.slice(0, 80))}
+                placeholder="예: 오늘도 한 판만 하고 자는 사람"
+                className="w-full rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-sm font-bold text-[#ece8e1] outline-none transition-colors placeholder:text-[#4a5a68] focus:border-[#ff4655]/70"
+              />
+            ) : (
+              <div className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-sm font-bold text-[#ece8e1]">
+                {profile.profileBio?.trim() || "등록된 소개가 없습니다."}
+              </div>
+            )}
+          </div>
 
           {profile.roles && profile.roles.length > 0 && (
             <div>
               <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">역할</p>
               <div className="flex flex-wrap gap-1.5">
                 {profile.roles.map((role) => (
-                  <span
-                    key={role}
-                    className="rounded border border-[#ff4655]/25 bg-[#ff4655]/10 px-2 py-1 text-[10px] font-bold text-[#ff8a95]"
-                  >
+                  <span key={role} className="rounded border border-[#ff4655]/25 bg-[#ff4655]/10 px-2 py-1 text-[10px] font-bold text-[#ff8a95]">
                     {role}
                   </span>
                 ))}
@@ -253,9 +286,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
                 ))}
               </div>
             ) : (
-              <div className="rounded border border-dashed border-[#2a3540] bg-[#0f1923]/45 px-3 py-4 text-center text-xs text-[#7b8a96]">
-                연동된 라이엇 계정이 없습니다.
-              </div>
+              <EmptyState text="연동된 라이엇 계정이 없습니다." />
             )}
           </div>
 
@@ -297,7 +328,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
                 ))}
               </div>
             ) : (
-              <EmptyState text="선택된 역할군이 없습니다." />
+              <EmptyState text="선택한 역할군이 없습니다." />
             )}
           </div>
 
@@ -307,7 +338,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
               {editable && <span className="text-[10px] text-[#7b8a96]">{selectedAgents.length} / 3</span>}
             </div>
             {editable ? (
-              <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
+              <div className="member-scroll grid max-h-56 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
                 {agents.map((agent) => {
                   const selected = selectedAgents.includes(agent.name);
 
@@ -317,9 +348,7 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
                       type="button"
                       onClick={() => toggleAgent(agent.name)}
                       className={`flex items-center gap-2 rounded border p-2 text-left transition-colors ${
-                        selected
-                          ? "border-[#0fffd0] bg-[#0fffd0]/10"
-                          : "border-[#2a3540] bg-[#0f1923]/70 hover:border-[#ff4655]/55"
+                        selected ? "border-[#0fffd0] bg-[#0fffd0]/10" : "border-[#2a3540] bg-[#0f1923]/70 hover:border-[#ff4655]/55"
                       }`}
                     >
                       {agent.portrait || agent.icon ? (
@@ -349,28 +378,23 @@ export default function ProfileModal({ title = "프로필", profile, editable = 
                 ))}
               </div>
             ) : (
-              <EmptyState text="선택된 모스트 요원이 없습니다." />
+              <EmptyState text="선택한 모스트 요원이 없습니다." />
             )}
           </div>
 
           {message && (
-            <div className={`rounded border px-3 py-2 text-xs font-bold ${
-              saved
-                ? "border-[#0fffd0]/35 bg-[#0fffd0]/10 text-[#0fffd0]"
-                : "border-[#2a3540] bg-[#0f1923]/70 text-[#c8d3db]"
-            }`}>
+            <div
+              className={`rounded border px-3 py-2 text-xs font-bold ${
+                saved ? "border-[#0fffd0]/35 bg-[#0fffd0]/10 text-[#0fffd0]" : "border-[#2a3540] bg-[#0f1923]/70 text-[#c8d3db]"
+              }`}
+            >
               {message}
             </div>
           )}
 
           {editable && (
             <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={saveProfile}
-                disabled={!canSave}
-                className="val-btn bg-[#ff4655] px-5 py-2 text-xs font-black text-white disabled:opacity-50"
-              >
+              <button type="button" onClick={saveProfile} disabled={!canSave} className="val-btn bg-[#ff4655] px-5 py-2 text-xs font-black text-white disabled:opacity-50">
                 {saving ? "저장 중" : "프로필 저장"}
               </button>
             </div>
@@ -385,17 +409,6 @@ function EmptyState({ text }: { text: string }) {
   return (
     <div className="rounded border border-dashed border-[#2a3540] bg-[#0f1923]/45 px-3 py-4 text-center text-xs text-[#7b8a96]">
       {text}
-    </div>
-  );
-}
-
-function InfoBlock({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">{label}</p>
-      <div className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-sm font-bold text-[#ece8e1]">
-        {value}
-      </div>
     </div>
   );
 }

@@ -77,14 +77,29 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const [newManagerId, setNewManagerId] = useState("");
 
   useEffect(() => {
-    fetch(`/api/scrim/${id}`, { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data) => {
+    let cancelled = false;
+
+    async function loadScrim({ silent = false } = {}) {
+      if (!silent) setLoading(true);
+      try {
+        const response = await fetch(`/api/scrim/${id}`, { cache: "no-store" });
+        const data = await response.json();
+        if (cancelled) return;
         setScrim(data.scrim ?? null);
         setManagerIds(data.managerIds ?? []);
         setGuildMembers(data.guildMembers ?? []);
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        if (!cancelled && !silent) setLoading(false);
+      }
+    }
+
+    loadScrim();
+    const timer = window.setInterval(() => loadScrim({ silent: true }), 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [id]);
 
   const grouped = useMemo(() => {

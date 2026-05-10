@@ -30,6 +30,7 @@ interface ProfileModalProps {
   title?: string;
   profile: ProfileData | null;
   editable?: boolean;
+  requirePreferences?: boolean;
   onClose: () => void;
   onProfileSaved?: (data: Pick<ProfileData, "profileBio" | "valorantRole" | "favoriteAgents">) => void;
 }
@@ -72,6 +73,7 @@ export default function ProfileModal({
   title = "프로필",
   profile,
   editable = false,
+  requirePreferences = false,
   onClose,
   onProfileSaved,
 }: ProfileModalProps) {
@@ -153,6 +155,13 @@ export default function ProfileModal({
 
   async function saveProfile() {
     if (!editable) return;
+    const missing: string[] = [];
+    if (selectedRoles.length === 0) missing.push("역할군");
+    if (selectedAgents.length !== 3) missing.push("모스트 요원 3개");
+    if (requirePreferences && missing.length > 0) {
+      setMessage(`${missing.join(", ")}을 선택한 뒤 저장하세요.`);
+      return;
+    }
     setSaving(true);
     setMessage(null);
 
@@ -187,7 +196,13 @@ export default function ProfileModal({
     <div
       className="fixed inset-0 z-[180] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) {
+          if (requirePreferences && (selectedRoles.length === 0 || selectedAgents.length !== 3)) {
+            setMessage("역할군과 모스트 요원을 선택 후 저장하세요.");
+            return;
+          }
+          onClose();
+        }
       }}
     >
       <div className="val-card max-h-[88vh] w-full max-w-2xl overflow-hidden p-5 shadow-2xl shadow-black/50">
@@ -218,7 +233,18 @@ export default function ProfileModal({
               </div>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="val-mini-button flex-shrink-0 px-3 py-1 text-xs" aria-label="프로필 닫기">
+          <button
+            type="button"
+            onClick={() => {
+              if (requirePreferences && (selectedRoles.length === 0 || selectedAgents.length !== 3)) {
+                setMessage("역할군과 모스트 요원을 선택 후 저장하세요.");
+                return;
+              }
+              onClose();
+            }}
+            className="val-mini-button flex-shrink-0 px-3 py-1 text-xs"
+            aria-label="프로필 닫기"
+          >
             닫기
           </button>
         </div>

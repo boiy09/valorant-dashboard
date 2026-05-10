@@ -6,6 +6,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { prisma } from "../../lib/prisma";
+import { requirePrivilegedMember } from "../utils/permissions";
 
 export const data = new SlashCommandBuilder()
   .setName("일정")
@@ -36,6 +37,8 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
+  if (!(await requirePrivilegedMember(interaction))) return;
+
   const subcommand = interaction.options.getSubcommand();
   const guildDiscordId = interaction.guildId;
 

@@ -2,17 +2,20 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const ADMIN_ROLE_KEYWORDS = ["관리자", "admin", "administrator", "운영진", "운영자"];
-const ASSIST_ROLE_KEYWORDS = ["어시스트", "assistant", "assist", "staff", "스태프", "매니저"];
+const VALONEKKI_ROLE_KEYWORDS = ["발로네끼"];
 
 function normalizeRole(role: string) {
-  return role.trim().toLowerCase();
+  return role.trim().toLowerCase().replace(/\s+/g, "");
 }
 
 function hasKeywordMatch(roles: string[], keywords: string[]) {
   const normalizedRoles = roles.map(normalizeRole);
-  return normalizedRoles.some((role) =>
-    keywords.some((keyword) => role.includes(keyword.toLowerCase()))
-  );
+  const normalizedKeywords = keywords.map(normalizeRole);
+  return normalizedRoles.some((role) => normalizedKeywords.some((keyword) => role.includes(keyword)));
+}
+
+export function hasPrivilegedRole(roles: string[]) {
+  return hasKeywordMatch(roles, ADMIN_ROLE_KEYWORDS) || hasKeywordMatch(roles, VALONEKKI_ROLE_KEYWORDS);
 }
 
 export async function getAdminSession() {
@@ -33,8 +36,7 @@ export async function getAdminSession() {
   });
 
   const roles = member?.roles ? member.roles.split(",").map((role) => role.trim()).filter(Boolean) : [];
-  const isAdmin =
-    hasKeywordMatch(roles, ADMIN_ROLE_KEYWORDS) || hasKeywordMatch(roles, ASSIST_ROLE_KEYWORDS);
+  const isAdmin = hasPrivilegedRole(roles);
 
   return { session, user, guild, roles, isAdmin };
 }

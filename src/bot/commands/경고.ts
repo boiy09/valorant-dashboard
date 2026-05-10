@@ -7,6 +7,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { prisma } from "../../lib/prisma";
+import { requirePrivilegedMember } from "../utils/permissions";
 
 export const data = new SlashCommandBuilder()
   .setName("경고")
@@ -36,6 +37,8 @@ async function getOrCreateUser(discordId: string, name: string) {
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
+  if (!(await requirePrivilegedMember(interaction))) return;
+
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const sub = interaction.options.getSubcommand();
   const guildDiscordId = interaction.guildId!;

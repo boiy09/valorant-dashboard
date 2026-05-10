@@ -6,6 +6,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { prisma } from "../../lib/prisma";
+import { requirePrivilegedMember } from "../utils/permissions";
 
 function normalizeAnnouncementContent(content: string) {
   return content.replace(/\\n/g, "\n").trim();
@@ -42,6 +43,8 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
+  if (!(await requirePrivilegedMember(interaction))) return;
+
   const sub = interaction.options.getSubcommand();
   const guildDiscordId = interaction.guildId!;
 

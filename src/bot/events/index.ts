@@ -6,7 +6,6 @@ import { prisma } from "../../lib/prisma";
 const VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv", ".avi"];
 const VIDEO_URL_PATTERN = /https?:\/\/\S+\.(?:mp4|mov|webm|mkv|avi)(?:\?\S*)?/gi;
 const MAX_VOICE_SESSION_SECONDS = 18 * 60 * 60;
-const SCRIM_RECRUIT_EMOJI = "✅";
 
 function isVideoAttachment(name: string, contentType: string | null | undefined) {
   const lowerName = name.toLowerCase();
@@ -60,7 +59,7 @@ async function registerScrimParticipant(
   reaction: MessageReaction | PartialMessageReaction,
   user: User | PartialUser
 ) {
-  if (user.bot || reaction.emoji.name !== SCRIM_RECRUIT_EMOJI) return;
+  if (user.bot) return;
 
   const fullReaction = reaction.partial ? await reaction.fetch().catch(() => null) : reaction;
   if (!fullReaction?.message.guildId || !fullReaction.message.id) return;

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
+import { fetchDiscordChannel, isTextRecruitmentChannel } from "@/lib/scrimRecruitmentChannels";
 
 const DEFAULT_SETTINGS = {
   showRiotNickname: true,
@@ -61,8 +62,17 @@ function parseMessageIds(value: string | null | undefined) {
   }
 }
 
+async function validateRecruitmentChannel(channelId: string) {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) throw new Error("Discord bot token is missing.");
+
+  const channel = await fetchDiscordChannel(channelId, token);
+  return Boolean(channel && isTextRecruitmentChannel(channel));
+}
+
 async function sendRecruitmentMessage(params: {
   channelId: string;
+  scrimId: string;
   title: string;
   description: string;
   scheduledAt: Date | null;
@@ -71,14 +81,19 @@ async function sendRecruitmentMessage(params: {
   const token = process.env.DISCORD_BOT_TOKEN;
   if (!token) throw new Error("Discord bot token is missing.");
 
+  const appUrl = (process.env.NEXTAUTH_URL ?? "https://valorant-dashboard-henna.vercel.app").replace(/\/$/, "");
+  const detailUrl = `${appUrl}/dashboard/scrim/${params.scrimId}`;
   const description = [
-    params.extraNotice ? `**${params.extraNotice}**` : null,
+    params.extraNotice ? `🚨 **${params.extraNotice}** 🚨` : null,
     params.description || "내전 참가자를 모집합니다.",
-    params.scheduledAt ? `\n시작 시간: ${params.scheduledAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}` : null,
-    "\n참가하려면 이 메시지에 ✅ 이모지를 눌러 주세요.",
+    params.scheduledAt
+      ? `시작 시간: ${params.scheduledAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`
+      : null,
+    "참가하려면 이 메시지에 아무 이모지나 눌러 주세요.",
+    `상세 페이지: ${detailUrl}`,
   ]
     .filter(Boolean)
-    .join("\n");
+    .join("\n\n");
 
   const response = await fetch(`https://discord.com/api/v10/channels/${params.channelId}/messages`, {
     method: "POST",
@@ -89,26 +104,19 @@ async function sendRecruitmentMessage(params: {
     body: JSON.stringify({
       embeds: [
         {
-          color: 0xff4655,
-          title: params.title,
+          color: params.extraNotice ? 0xffb000 : 0xff4655,
+          title: params.extraNotice ? `🚨 추가 모집중! ${params.title}` : params.title,
           description,
           timestamp: new Date().toISOString(),
         },
       ],
     }),
   });
+
   if (!response.ok) throw new Error(`Discord message send failed: ${response.status}`);
   const message = (await response.json()) as { id?: string };
-
   if (!message.id) throw new Error("Discord message id was not returned.");
 
-  await fetch(
-    `https://discord.com/api/v10/channels/${params.channelId}/messages/${message.id}/reactions/${encodeURIComponent("✅")}/@me`,
-    {
-      method: "PUT",
-      headers: { Authorization: `Bot ${token}` },
-    }
-  );
   return message.id;
 }
 
@@ -194,7 +202,7 @@ export async function POST(req: NextRequest) {
 
   const { session, isAdmin, guild } = await getAdminSession();
   if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+  if (!isAdmin) return Response.json({ error: "관리자 또는 발로네끼 권한이 필요합니다." }, { status: 403 });
   if (!guild) return Response.json({ error: "서버 정보를 찾을 수 없습니다." }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
@@ -203,17 +211,14 @@ export async function POST(req: NextRequest) {
   const channelId = typeof body.channelId === "string" ? body.channelId.trim() : "";
   const scheduledAt = typeof body.scheduledAt === "string" && body.scheduledAt ? new Date(body.scheduledAt) : null;
 
-  if (!title) {
-    return Response.json({ error: "내전 제목을 입력해 주세요." }, { status: 400 });
-  }
-  if (!channelId) {
-    return Response.json({ error: "모집 글을 올릴 채널을 선택해 주세요." }, { status: 400 });
-  }
+  if (!title) return Response.json({ error: "내전 제목을 입력해 주세요." }, { status: 400 });
+  if (!channelId) return Response.json({ error: "모집 글을 올릴 채널을 선택해 주세요." }, { status: 400 });
   if (scheduledAt && Number.isNaN(scheduledAt.getTime())) {
     return Response.json({ error: "시작 시간이 올바르지 않습니다." }, { status: 400 });
   }
-
-  const messageId = await sendRecruitmentMessage({ channelId, title, description, scheduledAt });
+  if (!(await validateRecruitmentChannel(channelId))) {
+    return Response.json({ error: "내전 모집 글은 이벤트 공지 또는 구인-구직 채널에만 올릴 수 있습니다." }, { status: 400 });
+  }
 
   const scrim = await prisma.scrimSession.create({
     data: {
@@ -223,7 +228,7 @@ export async function POST(req: NextRequest) {
       settings: JSON.stringify(normalizeSettings(body.settings)),
       scheduledAt,
       recruitmentChannelId: channelId,
-      recruitmentMessageIds: JSON.stringify([messageId]),
+      recruitmentMessageIds: JSON.stringify([]),
       managers: JSON.stringify([session.user.id]),
       status: "waiting",
       createdBy: session.user.id,
@@ -237,7 +242,20 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return Response.json({ success: true, scrim });
+  const messageId = await sendRecruitmentMessage({ channelId, scrimId: scrim.id, title, description, scheduledAt });
+  const updatedScrim = await prisma.scrimSession.update({
+    where: { id: scrim.id },
+    data: { recruitmentMessageIds: JSON.stringify([messageId]) },
+    include: {
+      players: {
+        include: {
+          user: { select: { id: true, name: true, image: true, riotGameName: true } },
+        },
+      },
+    },
+  });
+
+  return Response.json({ success: true, scrim: updatedScrim });
 }
 
 export async function PUT(req: NextRequest) {
@@ -245,7 +263,7 @@ export async function PUT(req: NextRequest) {
 
   const { session, isAdmin, guild } = await getAdminSession();
   if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+  if (!isAdmin) return Response.json({ error: "관리자 또는 발로네끼 권한이 필요합니다." }, { status: 403 });
   if (!guild) return Response.json({ error: "서버 정보를 찾을 수 없습니다." }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
@@ -257,13 +275,17 @@ export async function PUT(req: NextRequest) {
   if (!scrim.recruitmentChannelId) {
     return Response.json({ error: "기존 모집 채널 정보가 없습니다." }, { status: 400 });
   }
+  if (!(await validateRecruitmentChannel(scrim.recruitmentChannelId))) {
+    return Response.json({ error: "추가 모집은 이벤트 공지 또는 구인-구직 채널에서만 가능합니다." }, { status: 400 });
+  }
 
   const messageId = await sendRecruitmentMessage({
     channelId: scrim.recruitmentChannelId,
+    scrimId: scrim.id,
     title: scrim.title,
     description: scrim.description ?? "",
     scheduledAt: scrim.scheduledAt,
-    extraNotice: "추가 모집중!",
+    extraNotice: "추가 모집중! 아직 참가할 수 있습니다.",
   });
   const nextIds = Array.from(new Set([...parseMessageIds(scrim.recruitmentMessageIds), messageId]));
 
@@ -278,7 +300,7 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const { session, isAdmin, guild } = await getAdminSession();
   if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+  if (!isAdmin) return Response.json({ error: "관리자 또는 발로네끼 권한이 필요합니다." }, { status: 403 });
 
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return Response.json({ error: "내전 ID가 필요합니다." }, { status: 400 });

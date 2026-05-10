@@ -92,6 +92,7 @@ export default function RiotConnectPage() {
   const [urlRegion, setUrlRegion] = useState<RiotRegion>("KR");
   const [riotId, setRiotId] = useState("");
   const [connectedRegion, setConnectedRegion] = useState<RiotRegion | "">("");
+  const [showLoginConfirm, setShowLoginConfirm] = useState(false);
 
   async function handleUrlSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -136,10 +137,10 @@ export default function RiotConnectPage() {
             </div>
           ) : null}
           <button
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push("/dashboard?profile=1")}
             className="val-btn bg-[#ff4655] px-8 py-2.5 text-sm font-bold text-white"
           >
-            대시보드로 이동
+            내 프로필로 이동
           </button>
         </div>
       </div>
@@ -167,14 +168,13 @@ export default function RiotConnectPage() {
                 <div className="text-base font-black uppercase tracking-widest text-[#ff4655]">연동 안내</div>
                 <div className="mt-1 text-sm text-[#7b8a96]">영상 내용을 단계별 이미지로 정리했습니다.</div>
               </div>
-              <a
-                href={RIOT_LOGIN_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-bold text-white hover:bg-[#cc3644]"
+              <button
+                type="button"
+                onClick={() => setShowLoginConfirm(true)}
+                className="val-btn animate-pulse bg-[#ff4655] px-6 py-3 text-sm font-black text-white shadow-[0_0_28px_rgba(255,70,85,0.45)] hover:bg-[#cc3644]"
               >
                 Riot 로그인 페이지 열기
-              </a>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -285,6 +285,32 @@ export default function RiotConnectPage() {
           </div>
         </aside>
       </div>
+
+      {showLoginConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="val-card w-full max-w-md p-6 text-center shadow-2xl">
+            <div className="text-xs font-black uppercase tracking-[0.2em] text-[#ff4655]">확인 필요</div>
+            <h2 className="mt-2 text-xl font-black text-white">연동 안내를 먼저 읽었나요?</h2>
+            <p className="mt-3 break-keep text-sm leading-relaxed text-[#9aa8b3]">
+              Riot 로그인 후 404 화면이 나와도 정상입니다. 그 화면의 주소창 URL 전체를 복사해서 아래 입력칸에 붙여넣어야 합니다.
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button type="button" onClick={() => setShowLoginConfirm(false)} className="val-mini-button flex-1 py-2 text-sm">
+                다시 읽기
+              </button>
+              <a
+                href={RIOT_LOGIN_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setShowLoginConfirm(false)}
+                className="val-btn flex-1 bg-[#ff4655] py-2 text-sm font-black text-white"
+              >
+                열기
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

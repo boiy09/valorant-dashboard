@@ -1,4 +1,5 @@
 import { getAdminSession } from "@/lib/admin";
+import { isTextRecruitmentChannel } from "@/lib/scrimRecruitmentChannels";
 
 export async function GET() {
   const { session, isAdmin, guild } = await getAdminSession();
@@ -38,7 +39,7 @@ export async function GET() {
   }>;
 
   const textChannels = channels
-    .filter((channel) => channel.type === 0 || channel.type === 5)
+    .filter(isTextRecruitmentChannel)
     .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
     .map((channel) => ({
       id: channel.id,

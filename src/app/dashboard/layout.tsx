@@ -104,6 +104,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [status]);
 
   useEffect(() => {
+    if (status !== "authenticated") return;
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("profile") === "1") {
+      setShowMyProfile(true);
+      router.replace("/dashboard");
+    }
+  }, [status, router]);
+
+  useEffect(() => {
     if (status !== "authenticated" || !session?.user?.id) return;
 
     let cancelled = false;
@@ -321,6 +330,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             favoriteAgents: myFavoriteAgents,
           }}
           editable
+          requirePreferences={myRiotAccounts.length > 0 && (!myValorantRole || myFavoriteAgents.length < 3)}
           onProfileSaved={(data) => {
             setMyProfileBio(data.profileBio ?? "");
             setMyValorantRole(data.valorantRole ?? null);

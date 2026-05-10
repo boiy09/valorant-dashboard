@@ -175,6 +175,7 @@ export default function ProfileModal({
       });
       setProfileBio(data.profileBio ?? "");
       setMessage(PROFILE_SAVED_MESSAGE);
+      window.dispatchEvent(new Event("profile-updated"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "프로필 저장에 실패했습니다.");
     } finally {

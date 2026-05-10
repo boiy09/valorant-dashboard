@@ -49,6 +49,7 @@ export default function AnnouncePage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
 
   function loadAnnouncements() {
     return fetch("/api/announcements")
@@ -169,11 +170,11 @@ export default function AnnouncePage() {
             ) : (
               <div className="flex max-h-[520px] flex-col gap-3 overflow-y-auto pr-1">
                 {pinned.map((item) => (
-                  <AnnouncementCard key={item.id} item={item} isAdmin={isAdmin} deleting={deletingId === item.id} onDelete={deleteAnnouncement} />
+                  <AnnouncementCard key={item.id} item={item} onOpen={setSelectedAnnouncement} />
                 ))}
                 {pinned.length > 0 && rest.length > 0 ? <div className="my-1 border-t border-[#2a3540]" /> : null}
                 {rest.map((item) => (
-                  <AnnouncementCard key={item.id} item={item} isAdmin={isAdmin} deleting={deletingId === item.id} onDelete={deleteAnnouncement} />
+                  <AnnouncementCard key={item.id} item={item} onOpen={setSelectedAnnouncement} />
                 ))}
               </div>
             )}
@@ -205,6 +206,19 @@ export default function AnnouncePage() {
           }}
           onSubmit={submitAnnouncement}
           onInsertFormat={insertFormat}
+        />
+      ) : null}
+
+      {selectedAnnouncement ? (
+        <AnnouncementModal
+          item={selectedAnnouncement}
+          isAdmin={isAdmin}
+          deleting={deletingId === selectedAnnouncement.id}
+          onClose={() => setSelectedAnnouncement(null)}
+          onDelete={async (id) => {
+            await deleteAnnouncement(id);
+            setSelectedAnnouncement(null);
+          }}
         />
       ) : null}
     </div>
@@ -402,8 +416,7 @@ function renderInlineFormat(value: string, keyPrefix: string) {
   });
 }
 
-function AnnouncementCard({ item, isAdmin, deleting, onDelete }: { item: Announcement; isAdmin: boolean; deleting: boolean; onDelete: (id: string) => void }) {
-  const [open, setOpen] = useState(false);
+function AnnouncementCard({ item, onOpen }: { item: Announcement; onOpen: (item: Announcement) => void }) {
   const [copied, setCopied] = useState(false);
 
   async function copyId(event: MouseEvent<HTMLSpanElement> | KeyboardEvent<HTMLSpanElement>) {
@@ -415,7 +428,7 @@ function AnnouncementCard({ item, isAdmin, deleting, onDelete }: { item: Announc
 
   return (
     <div className="val-card overflow-hidden">
-      <button className="w-full p-5 text-left" onClick={() => setOpen((o) => !o)}>
+      <button className="w-full p-5 text-left" onClick={() => onOpen(item)}>
         <div className="flex items-start gap-3">
           {item.pinned ? <span className="mt-0.5 flex-shrink-0 text-xs font-black text-[#ff4655]">고정</span> : null}
           <div className="min-w-0 flex-1">
@@ -427,21 +440,72 @@ function AnnouncementCard({ item, isAdmin, deleting, onDelete }: { item: Announc
               </span>
             </div>
           </div>
-          <span className="mt-0.5 flex-shrink-0 text-xs text-[#7b8a96]">{open ? "접기" : "보기"}</span>
+          <span className="mt-0.5 flex-shrink-0 text-xs text-[#7b8a96]">열기</span>
         </div>
       </button>
-      {open ? (
-        <div className="border-t border-[#2a3540] px-5 pb-5 pt-4">
-          <div className="max-h-72 overflow-y-auto pr-2 whitespace-pre-wrap text-sm leading-relaxed text-[#c8d3db]">{renderFormattedContent(item.content)}</div>
-          {isAdmin ? (
-            <div className="mt-4 flex justify-end">
-              <button type="button" onClick={() => onDelete(item.id)} disabled={deleting} className="rounded border border-[#ff4655]/50 px-3 py-1.5 text-xs font-black text-[#ff4655] transition-colors hover:bg-[#ff4655] hover:text-white disabled:cursor-not-allowed disabled:opacity-50">
-                {deleting ? "삭제 중..." : "삭제"}
-              </button>
+    </div>
+  );
+}
+
+function AnnouncementModal({
+  item,
+  isAdmin,
+  deleting,
+  onClose,
+  onDelete,
+}: {
+  item: Announcement;
+  isAdmin: boolean;
+  deleting: boolean;
+  onClose: () => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="val-card w-full max-w-2xl p-5 shadow-2xl shadow-black/40">
+        <div className="mb-4 flex items-start justify-between gap-4 border-b border-[#2a3540] pb-4">
+          <div className="min-w-0">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              {item.pinned ? (
+                <span className="rounded bg-[#ff4655]/10 px-2 py-0.5 text-[10px] font-black text-[#ff4655]">
+                  고정
+                </span>
+              ) : null}
+              <span className="text-xs text-[#7b8a96]">{formatDate(item.createdAt)}</span>
             </div>
-          ) : null}
+            <h2 className="break-words text-xl font-black text-white">{item.title}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded border border-[#2a3540] px-3 py-1.5 text-xs font-bold text-[#c8d3db] hover:border-[#ff4655] hover:text-white"
+          >
+            닫기
+          </button>
         </div>
-      ) : null}
+
+        <div className="member-scroll max-h-[55vh] overflow-y-auto pr-2 whitespace-pre-wrap text-sm leading-relaxed text-[#c8d3db]">
+          {renderFormattedContent(item.content)}
+        </div>
+
+        {isAdmin ? (
+          <div className="mt-5 flex justify-end">
+            <button
+              type="button"
+              onClick={() => onDelete(item.id)}
+              disabled={deleting}
+              className="rounded border border-[#ff4655]/50 px-4 py-2 text-xs font-black text-[#ff4655] transition-colors hover:bg-[#ff4655] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {deleting ? "삭제 중..." : "삭제"}
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

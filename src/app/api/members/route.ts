@@ -18,17 +18,15 @@ async function settleInBatches<T, R>(items: T[], size: number, task: (item: T) =
   return results;
 }
 
-async function hasProfileColumns() {
-  const rows = await prisma.$queryRaw<{ exists: boolean }[]>`
-    SELECT EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'User'
-        AND column_name = 'valorantRole'
-    ) AS "exists"
+async function getProfileColumns() {
+  const rows = await prisma.$queryRaw<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'User'
+      AND column_name IN ('profileBio', 'valorantRole', 'favoriteAgents')
   `;
-  return Boolean(rows[0]?.exists);
+  return new Set(rows.map((row) => row.column_name));
 }
 
 export async function GET(req: NextRequest) {
@@ -44,7 +42,10 @@ export async function GET(req: NextRequest) {
 
   if (!guild) return Response.json({ members: [], guildName: null });
 
-  const profileColumnsReady = await hasProfileColumns();
+  const profileColumns = await getProfileColumns();
+  const hasProfileBio = profileColumns.has("profileBio");
+  const hasValorantRole = profileColumns.has("valorantRole");
+  const hasFavoriteAgents = profileColumns.has("favoriteAgents");
 
   const members = await prisma.guildMember.findMany({
     where: { guildId: guild.id },
@@ -56,7 +57,9 @@ export async function GET(req: NextRequest) {
           discordId: true,
           riotGameName: true,
           riotTagLine: true,
-          ...(profileColumnsReady ? { valorantRole: true, favoriteAgents: true } : {}),
+          ...(hasProfileBio ? { profileBio: true } : {}),
+          ...(hasValorantRole ? { valorantRole: true } : {}),
+          ...(hasFavoriteAgents ? { favoriteAgents: true } : {}),
           riotAccounts: {
             select: {
               puuid: true,
@@ -193,8 +196,9 @@ export async function GET(req: NextRequest) {
         riotId: member.user.riotGameName
           ? `${member.user.riotGameName}#${member.user.riotTagLine}`
           : null,
-        valorantRole: profileColumnsReady ? (member.user as any).valorantRole : null,
-        favoriteAgents: profileColumnsReady && (member.user as any).favoriteAgents
+        profileBio: hasProfileBio ? (member.user as any).profileBio ?? "" : "",
+        valorantRole: hasValorantRole ? (member.user as any).valorantRole : null,
+        favoriteAgents: hasFavoriteAgents && (member.user as any).favoriteAgents
           ? (member.user as any).favoriteAgents.split(",").map((agent: string) => agent.trim()).filter(Boolean).slice(0, 3)
           : [],
         riotAccounts: member.user.riotAccounts.map((account) => accountDetails.get(account.puuid) ?? {

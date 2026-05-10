@@ -19,6 +19,7 @@ interface Member {
   image: string | null;
   roles: string[];
   riotId: string | null;
+  profileBio?: string | null;
   riotAccounts?: ProfileAccount[];
   valorantRole?: string | null;
   favoriteAgents?: string[];
@@ -139,10 +140,12 @@ export default function MemberSidebar() {
     };
 
     load();
+    window.addEventListener("profile-updated", load);
     const interval = window.setInterval(load, 30000);
 
     return () => {
       alive = false;
+      window.removeEventListener("profile-updated", load);
       window.clearInterval(interval);
     };
   }, []);
@@ -231,6 +234,7 @@ export default function MemberSidebar() {
                 discordId: selectedMember.discordId,
                 roles: selectedMember.roles,
                 riotId: selectedMember.riotId,
+                profileBio: selectedMember.profileBio ?? "",
                 riotAccounts: selectedMember.riotAccounts ?? [],
                 valorantRole: selectedMember.valorantRole,
                 favoriteAgents: selectedMember.favoriteAgents ?? [],

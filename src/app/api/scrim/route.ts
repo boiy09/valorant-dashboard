@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { auth } from "@/lib/auth";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
@@ -18,6 +17,11 @@ function ensureScrimSessionColumns() {
     scrimColumnsPromise = Promise.all([
       prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "description" TEXT`),
       prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "settings" TEXT NOT NULL DEFAULT ''`),
+      prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "scheduledAt" TIMESTAMP(3)`),
+      prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "recruitmentChannelId" TEXT`),
+      prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "recruitmentMessageIds" TEXT NOT NULL DEFAULT ''`),
+      prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "managers" TEXT NOT NULL DEFAULT ''`),
+      prisma.$executeRawUnsafe(`ALTER TABLE "ScrimPlayer" ADD COLUMN IF NOT EXISTS "role" TEXT NOT NULL DEFAULT 'participant'`),
     ])
       .then(() => undefined)
       .catch((error) => {
@@ -45,6 +49,67 @@ function normalizeSettings(value: unknown) {
     showValorantRole: input.showValorantRole !== false,
     showFavoriteAgents: input.showFavoriteAgents !== false,
   };
+}
+
+function parseMessageIds(value: string | null | undefined) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+}
+
+async function sendRecruitmentMessage(params: {
+  channelId: string;
+  title: string;
+  description: string;
+  scheduledAt: Date | null;
+  extraNotice?: string;
+}) {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) throw new Error("Discord bot token is missing.");
+
+  const description = [
+    params.extraNotice ? `**${params.extraNotice}**` : null,
+    params.description || "내전 참가자를 모집합니다.",
+    params.scheduledAt ? `\n시작 시간: ${params.scheduledAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}` : null,
+    "\n참가하려면 이 메시지에 ✅ 이모지를 눌러 주세요.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const response = await fetch(`https://discord.com/api/v10/channels/${params.channelId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bot ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      embeds: [
+        {
+          color: 0xff4655,
+          title: params.title,
+          description,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    }),
+  });
+  if (!response.ok) throw new Error(`Discord message send failed: ${response.status}`);
+  const message = (await response.json()) as { id?: string };
+
+  if (!message.id) throw new Error("Discord message id was not returned.");
+
+  await fetch(
+    `https://discord.com/api/v10/channels/${params.channelId}/messages/${message.id}/reactions/${encodeURIComponent("✅")}/@me`,
+    {
+      method: "PUT",
+      headers: { Authorization: `Bot ${token}` },
+    }
+  );
+  return message.id;
 }
 
 export async function GET(req: NextRequest) {
@@ -135,10 +200,20 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const description = typeof body.description === "string" ? body.description.trim() : "";
+  const channelId = typeof body.channelId === "string" ? body.channelId.trim() : "";
+  const scheduledAt = typeof body.scheduledAt === "string" && body.scheduledAt ? new Date(body.scheduledAt) : null;
 
   if (!title) {
     return Response.json({ error: "내전 제목을 입력해 주세요." }, { status: 400 });
   }
+  if (!channelId) {
+    return Response.json({ error: "모집 글을 올릴 채널을 선택해 주세요." }, { status: 400 });
+  }
+  if (scheduledAt && Number.isNaN(scheduledAt.getTime())) {
+    return Response.json({ error: "시작 시간이 올바르지 않습니다." }, { status: 400 });
+  }
+
+  const messageId = await sendRecruitmentMessage({ channelId, title, description, scheduledAt });
 
   const scrim = await prisma.scrimSession.create({
     data: {
@@ -146,6 +221,10 @@ export async function POST(req: NextRequest) {
       title,
       description: description || null,
       settings: JSON.stringify(normalizeSettings(body.settings)),
+      scheduledAt,
+      recruitmentChannelId: channelId,
+      recruitmentMessageIds: JSON.stringify([messageId]),
+      managers: JSON.stringify([session.user.id]),
       status: "waiting",
       createdBy: session.user.id,
     },
@@ -159,6 +238,41 @@ export async function POST(req: NextRequest) {
   });
 
   return Response.json({ success: true, scrim });
+}
+
+export async function PUT(req: NextRequest) {
+  await ensureScrimSessionColumns();
+
+  const { session, isAdmin, guild } = await getAdminSession();
+  if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+  if (!guild) return Response.json({ error: "서버 정보를 찾을 수 없습니다." }, { status: 404 });
+
+  const body = await req.json().catch(() => ({}));
+  const id = typeof body.id === "string" ? body.id : "";
+  if (!id) return Response.json({ error: "내전 ID가 필요합니다." }, { status: 400 });
+
+  const scrim = await prisma.scrimSession.findFirst({ where: { id, guildId: guild.id } });
+  if (!scrim) return Response.json({ error: "내전을 찾을 수 없습니다." }, { status: 404 });
+  if (!scrim.recruitmentChannelId) {
+    return Response.json({ error: "기존 모집 채널 정보가 없습니다." }, { status: 400 });
+  }
+
+  const messageId = await sendRecruitmentMessage({
+    channelId: scrim.recruitmentChannelId,
+    title: scrim.title,
+    description: scrim.description ?? "",
+    scheduledAt: scrim.scheduledAt,
+    extraNotice: "추가 모집중!",
+  });
+  const nextIds = Array.from(new Set([...parseMessageIds(scrim.recruitmentMessageIds), messageId]));
+
+  await prisma.scrimSession.update({
+    where: { id: scrim.id },
+    data: { recruitmentMessageIds: JSON.stringify(nextIds) },
+  });
+
+  return Response.json({ success: true, messageId });
 }
 
 export async function DELETE(req: NextRequest) {

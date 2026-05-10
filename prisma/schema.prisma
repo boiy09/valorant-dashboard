@@ -201,6 +201,10 @@ model ScrimSession {
   title     String        @default("내전")
   description String?
   settings  String        @default("")
+  scheduledAt DateTime?
+  recruitmentChannelId String?
+  recruitmentMessageIds String @default("")
+  managers  String        @default("")
   status    String        @default("waiting")
   map       String?
   winnerId  String?
@@ -218,6 +222,7 @@ model ScrimPlayer {
   user      User         @relation(fields: [userId], references: [id])
   userId    String
   team      String
+  role      String        @default("participant")
   kills     Int?
   deaths    Int?
   assists   Int?

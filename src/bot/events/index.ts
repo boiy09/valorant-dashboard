@@ -1,11 +1,12 @@
 import { Events, MessageFlags } from "discord.js";
-import type { Guild, InteractionReplyOptions } from "discord.js";
+import type { Guild, GuildMember, InteractionReplyOptions, MessageReaction, PartialMessageReaction, PartialUser, User } from "discord.js";
 import type { BotClient } from "../index";
 import { prisma } from "../../lib/prisma";
 
 const VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv", ".avi"];
 const VIDEO_URL_PATTERN = /https?:\/\/\S+\.(?:mp4|mov|webm|mkv|avi)(?:\?\S*)?/gi;
 const MAX_VOICE_SESSION_SECONDS = 18 * 60 * 60;
+const SCRIM_RECRUIT_EMOJI = "✅";
 
 function isVideoAttachment(name: string, contentType: string | null | undefined) {
   const lowerName = name.toLowerCase();
@@ -43,6 +44,75 @@ async function deleteHighlightsByDiscordMessage(guildDiscordId: string | null | 
   });
 
   return result.count;
+}
+
+function parseIdList(value: string | null | undefined) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+}
+
+async function registerScrimParticipant(
+  reaction: MessageReaction | PartialMessageReaction,
+  user: User | PartialUser
+) {
+  if (user.bot || reaction.emoji.name !== SCRIM_RECRUIT_EMOJI) return;
+
+  const fullReaction = reaction.partial ? await reaction.fetch().catch(() => null) : reaction;
+  if (!fullReaction?.message.guildId || !fullReaction.message.id) return;
+
+  const guild = await prisma.guild.findUnique({
+    where: { discordId: fullReaction.message.guildId },
+    select: { id: true },
+  });
+  if (!guild) return;
+
+  const candidates = await prisma.scrimSession.findMany({
+    where: {
+      guildId: guild.id,
+      status: { not: "done" },
+      recruitmentMessageIds: { contains: fullReaction.message.id },
+    },
+    select: { id: true, recruitmentMessageIds: true },
+  });
+  const scrim = candidates.find((item) => parseIdList(item.recruitmentMessageIds).includes(fullReaction.message.id));
+  if (!scrim) return;
+
+  const member = fullReaction.message.guild
+    ? await fullReaction.message.guild.members.fetch(user.id).catch(() => null)
+    : null;
+
+  const discordUser = user.partial ? await user.fetch().catch(() => null) : user;
+  if (!discordUser) return;
+
+  const appUser = await prisma.user.upsert({
+    where: { discordId: discordUser.id },
+    update: {
+      name: (member as GuildMember | null)?.displayName ?? discordUser.displayName ?? discordUser.username,
+      image: discordUser.displayAvatarURL(),
+    },
+    create: {
+      discordId: discordUser.id,
+      email: `${discordUser.id}@discord`,
+      name: (member as GuildMember | null)?.displayName ?? discordUser.displayName ?? discordUser.username,
+      image: discordUser.displayAvatarURL(),
+    },
+  });
+
+  await prisma.scrimPlayer.upsert({
+    where: { sessionId_userId: { sessionId: scrim.id, userId: appUser.id } },
+    update: {},
+    create: {
+      sessionId: scrim.id,
+      userId: appUser.id,
+      team: "participant",
+      role: "participant",
+    },
+  });
 }
 
 export function registerEvents(client: BotClient) {
@@ -243,6 +313,14 @@ export function registerEvents(client: BotClient) {
           console.error("하이라이트 raw 일괄 삭제 이벤트 처리 오류:", error);
         });
       }
+    }
+  });
+
+  client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    try {
+      await registerScrimParticipant(reaction, user);
+    } catch (error) {
+      console.error("내전 참가 등록 오류:", error);
     }
   });
 

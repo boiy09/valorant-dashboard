@@ -1,7 +1,7 @@
 import { config } from "dotenv";
 config();
 config({ path: ".env.local", override: false });
-import { Client, GatewayIntentBits, Collection } from "discord.js";
+import { Client, GatewayIntentBits, Collection, Partials } from "discord.js";
 import { loadCommands } from "./loader";
 import { registerEvents } from "./events/index";
 import { registerVoiceEvents } from "./events/voiceActivity";
@@ -15,10 +15,12 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildPresences,
   ],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.User],
 }) as BotClient;
 
 client.commands = new Collection();

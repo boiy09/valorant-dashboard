@@ -29,6 +29,8 @@ interface ScrimSession {
   title: string;
   description: string | null;
   settings: string | null;
+  scheduledAt: string | null;
+  recruitmentChannelId: string | null;
   status: string;
   map: string | null;
   winnerId: string | null;
@@ -47,6 +49,11 @@ interface KdRankingPlayer {
   assists: number;
   matches: number;
   kd: number;
+}
+
+interface DiscordChannel {
+  id: string;
+  name: string;
 }
 
 const DEFAULT_SETTINGS: ScrimSettings = {
@@ -106,6 +113,10 @@ export default function ScrimPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState("");
   const [createDescription, setCreateDescription] = useState("");
+  const [createScheduledAt, setCreateScheduledAt] = useState("");
+  const [channels, setChannels] = useState<DiscordChannel[]>([]);
+  const [selectedChannelId, setSelectedChannelId] = useState("");
+  const [channelStep, setChannelStep] = useState(false);
   const [createSettings, setCreateSettings] = useState<ScrimSettings>(DEFAULT_SETTINGS);
   const [creating, setCreating] = useState(false);
 
@@ -123,6 +134,14 @@ export default function ScrimPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!createOpen || !isAdmin || channels.length > 0) return;
+    fetch("/api/scrim/channels", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => setChannels(data.channels ?? []))
+      .catch(() => setChannels([]));
+  }, [channels.length, createOpen, isAdmin]);
 
   const visibleScrims = useMemo(() => scrims, [scrims]);
 
@@ -155,6 +174,14 @@ export default function ScrimPage() {
       setMessage("내전 제목을 입력해 주세요.");
       return;
     }
+    if (!channelStep) {
+      setChannelStep(true);
+      return;
+    }
+    if (!selectedChannelId) {
+      setMessage("모집 글을 올릴 채널을 선택해 주세요.");
+      return;
+    }
 
     setCreating(true);
     setMessage(null);
@@ -166,6 +193,8 @@ export default function ScrimPage() {
         body: JSON.stringify({
           title,
           description: createDescription,
+          scheduledAt: createScheduledAt || null,
+          channelId: selectedChannelId,
           settings: createSettings,
         }),
       });
@@ -176,6 +205,9 @@ export default function ScrimPage() {
       setCreateOpen(false);
       setCreateTitle("");
       setCreateDescription("");
+      setCreateScheduledAt("");
+      setSelectedChannelId("");
+      setChannelStep(false);
       setCreateSettings(DEFAULT_SETTINGS);
       setMessage("내전 카드를 생성했습니다.");
     } catch (error) {
@@ -242,18 +274,22 @@ export default function ScrimPage() {
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="truncate text-base font-black text-white">{scrim.title}</h3>
-                            {scrim.map && (
-                              <span className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-2 py-0.5 text-[11px] font-bold text-[#9aa8b3]">
-                                {scrim.map}
-                              </span>
-                            )}
                           </div>
-                          <div className="mt-1 text-xs text-[#7b8a96]">{formatDate(scrim.createdAt)}</div>
+                          <div className="mt-1 text-xs text-[#7b8a96]">
+                            생성 {formatDate(scrim.createdAt)}
+                            {scrim.scheduledAt ? ` · 시작 ${new Date(scrim.scheduledAt).toLocaleString("ko-KR")}` : ""}
+                          </div>
                         </div>
                         <div className="flex flex-shrink-0 items-center gap-2">
                           <span className="rounded bg-[#ff4655]/10 px-3 py-1 text-xs font-black text-[#ff4655]">
                             {getWinnerLabel(scrim.winnerId)}
                           </span>
+                          <a
+                            href={`/dashboard/scrim/${scrim.id}`}
+                            className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-1 text-xs font-black text-[#c8d3db] hover:border-[#ff4655]/50 hover:text-white"
+                          >
+                            열기
+                          </a>
                           {isAdmin && (
                             <button
                               type="button"
@@ -267,12 +303,6 @@ export default function ScrimPage() {
                         </div>
                       </div>
 
-                      {scrim.description && (
-                        <p className="mb-4 whitespace-pre-wrap rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-sm leading-relaxed text-[#c8d3db]">
-                          {scrim.description}
-                        </p>
-                      )}
-
                       <div className="mb-4 flex flex-wrap gap-1.5">
                         {SETTING_LABELS.filter((item) => settings[item.key]).map((item) => (
                           <span key={item.key} className="rounded bg-[#ff4655]/10 px-2 py-1 text-[11px] font-black text-[#ff8a95]">
@@ -281,16 +311,9 @@ export default function ScrimPage() {
                         ))}
                       </div>
 
-                      {scrim.players.length === 0 ? (
-                        <div className="rounded border border-dashed border-[#2a3540] bg-[#0f1923]/45 px-3 py-6 text-center text-xs text-[#7b8a96]">
-                          아직 참가자가 없습니다. 이후 참가/팀 배정 기능과 연결할 수 있습니다.
-                        </div>
-                      ) : (
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <TeamPanel label="Team A" color="text-[#0fffd0]" players={teamA} />
-                          <TeamPanel label="Team B" color="text-[#ff8a95]" players={teamB} />
-                        </div>
-                      )}
+                      <div className="text-xs text-[#7b8a96]">
+                        참가자 {scrim.players.length}명 · Team A {teamA.length}명 · Team B {teamB.length}명
+                      </div>
                     </article>
                   );
                 })}
@@ -380,6 +403,16 @@ export default function ScrimPage() {
               </section>
 
               <section>
+                <h3 className="mb-2 text-sm font-black text-white">시작 시간</h3>
+                <input
+                  type="datetime-local"
+                  value={createScheduledAt}
+                  onChange={(event) => setCreateScheduledAt(event.target.value)}
+                  className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors focus:border-[#ff4655]"
+                />
+              </section>
+
+              <section>
                 <h3 className="mb-2 text-sm font-black text-white">설정</h3>
                 <p className="mb-3 text-xs text-[#7b8a96]">
                   참가자 카드에 어떤 정보를 보여줄지 선택합니다. 선택한 정보는 각자의 웹 프로필에 저장된 값을 기준으로 표시됩니다.
@@ -413,6 +446,27 @@ export default function ScrimPage() {
                   })}
                 </div>
               </section>
+
+              {channelStep && (
+                <section className="rounded border border-[#ff4655]/35 bg-[#ff4655]/[0.06] p-4">
+                  <h3 className="mb-2 text-sm font-black text-white">모집 글을 올릴 채널</h3>
+                  <p className="mb-3 text-xs text-[#9aa8b3]">
+                    확인을 누르면 발로세끼 봇이 선택한 채널에 제목/설명과 참가 이모지 안내를 올립니다.
+                  </p>
+                  <select
+                    value={selectedChannelId}
+                    onChange={(event) => setSelectedChannelId(event.target.value)}
+                    className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors focus:border-[#ff4655]"
+                  >
+                    <option value="">채널 선택</option>
+                    {channels.map((channel) => (
+                      <option key={channel.id} value={channel.id}>
+                        #{channel.name}
+                      </option>
+                    ))}
+                  </select>
+                </section>
+              )}
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
@@ -429,7 +483,7 @@ export default function ScrimPage() {
                 disabled={creating}
                 className="val-btn bg-[#ff4655] px-5 py-2 text-sm font-black text-white disabled:opacity-50"
               >
-                {creating ? "생성 중" : "생성"}
+                {creating ? "생성 중" : channelStep ? "채널 확인 후 생성" : "생성"}
               </button>
             </div>
           </div>

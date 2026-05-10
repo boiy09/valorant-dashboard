@@ -167,13 +167,14 @@ export default function ProfileModal({
           favoriteAgents: selectedAgents,
         }),
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? "프로필 저장 실패");
       onProfileSaved?.({
         profileBio: data.profileBio ?? "",
         valorantRole: data.valorantRole,
         favoriteAgents: data.favoriteAgents ?? [],
       });
+      setProfileBio(data.profileBio ?? "");
       setMessage(PROFILE_SAVED_MESSAGE);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "프로필 저장에 실패했습니다.");

@@ -24,6 +24,27 @@ async function fetchGuildMembersSafely(guild: Guild) {
   }
 }
 
+async function deleteHighlightsByDiscordMessage(guildDiscordId: string | null | undefined, messageId: string) {
+  if (!guildDiscordId || !messageId) return 0;
+
+  const guild = await prisma.guild.findUnique({
+    where: { discordId: guildDiscordId },
+    select: { id: true },
+  });
+  if (!guild) return 0;
+
+  const result = await prisma.highlight.deleteMany({
+    where: {
+      guildId: guild.id,
+      description: {
+        contains: `/${messageId}`,
+      },
+    },
+  });
+
+  return result.count;
+}
+
 export function registerEvents(client: BotClient) {
   client.once(Events.ClientReady, async (discordClient) => {
     console.log(`봇 온라인: ${discordClient.user.tag}`);
@@ -180,6 +201,48 @@ export function registerEvents(client: BotClient) {
       }
     } catch (error) {
       console.error("하이라이트 자동 등록 오류:", error);
+    }
+  });
+
+  client.on(Events.MessageDelete, async (message) => {
+    try {
+      const deletedCount = await deleteHighlightsByDiscordMessage(message.guildId, message.id);
+      if (deletedCount > 0) {
+        console.log(`하이라이트 자동 삭제: Discord 메시지 ${message.id} (${deletedCount}개)`);
+      }
+    } catch (error) {
+      console.error("하이라이트 자동 삭제 오류:", error);
+    }
+  });
+
+  client.on(Events.MessageBulkDelete, async (messages) => {
+    for (const [, message] of messages) {
+      try {
+        const deletedCount = await deleteHighlightsByDiscordMessage(message.guildId, message.id);
+        if (deletedCount > 0) {
+          console.log(`하이라이트 자동 일괄 삭제: Discord 메시지 ${message.id} (${deletedCount}개)`);
+        }
+      } catch (error) {
+        console.error("하이라이트 자동 일괄 삭제 오류:", error);
+      }
+    }
+  });
+
+  client.on(Events.Raw, async (packet) => {
+    if (packet.t === "MESSAGE_DELETE") {
+      await deleteHighlightsByDiscordMessage(packet.d.guild_id, packet.d.id).catch((error) => {
+        console.error("하이라이트 raw 삭제 이벤트 처리 오류:", error);
+      });
+    }
+
+    if (packet.t === "MESSAGE_DELETE_BULK") {
+      const guildId = packet.d.guild_id as string | undefined;
+      const ids = Array.isArray(packet.d.ids) ? packet.d.ids : [];
+      for (const messageId of ids) {
+        await deleteHighlightsByDiscordMessage(guildId, messageId).catch((error) => {
+          console.error("하이라이트 raw 일괄 삭제 이벤트 처리 오류:", error);
+        });
+      }
     }
   });
 

@@ -7,13 +7,27 @@ export async function GET() {
   if (!guild) return Response.json({ error: "서버 정보를 찾을 수 없습니다." }, { status: 404 });
 
   const token = process.env.DISCORD_BOT_TOKEN;
-  if (!token) return Response.json({ error: "Discord bot token is missing." }, { status: 500 });
+  if (!token) {
+    return Response.json(
+      { error: "Vercel 환경변수 DISCORD_BOT_TOKEN이 없어 채널 목록을 불러올 수 없습니다." },
+      { status: 500 }
+    );
+  }
 
   const response = await fetch(`https://discord.com/api/v10/guilds/${guild.discordId}/channels`, {
     headers: { Authorization: `Bot ${token}` },
     cache: "no-store",
   });
-  if (!response.ok) return Response.json({ error: `Discord channel list failed: ${response.status}` }, { status: 502 });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    return Response.json(
+      {
+        error: `Discord 채널 목록 요청 실패 (${response.status})`,
+        detail: detail.slice(0, 300),
+      },
+      { status: 502 }
+    );
+  }
 
   const channels = (await response.json()) as Array<{
     id: string;
@@ -33,5 +47,5 @@ export async function GET() {
       parentId: channel.parent_id ?? null,
     }));
 
-  return Response.json({ channels: textChannels });
+  return Response.json({ channels: textChannels, count: textChannels.length });
 }

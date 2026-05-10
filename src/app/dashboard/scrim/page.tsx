@@ -116,6 +116,9 @@ export default function ScrimPage() {
   const [createScheduledAt, setCreateScheduledAt] = useState("");
   const [channels, setChannels] = useState<DiscordChannel[]>([]);
   const [selectedChannelId, setSelectedChannelId] = useState("");
+  const [manualChannelId, setManualChannelId] = useState("");
+  const [channelLoading, setChannelLoading] = useState(false);
+  const [channelError, setChannelError] = useState<string | null>(null);
   const [channelStep, setChannelStep] = useState(false);
   const [createSettings, setCreateSettings] = useState<ScrimSettings>(DEFAULT_SETTINGS);
   const [creating, setCreating] = useState(false);
@@ -137,10 +140,20 @@ export default function ScrimPage() {
 
   useEffect(() => {
     if (!createOpen || !isAdmin || channels.length > 0) return;
+    setChannelLoading(true);
+    setChannelError(null);
     fetch("/api/scrim/channels", { cache: "no-store" })
       .then((response) => response.json())
-      .then((data) => setChannels(data.channels ?? []))
-      .catch(() => setChannels([]));
+      .then((data) => {
+        setChannels(data.channels ?? []);
+        if (data.error) setChannelError(data.error);
+        else if ((data.channels ?? []).length === 0) setChannelError("선택 가능한 텍스트 채널이 없습니다.");
+      })
+      .catch(() => {
+        setChannels([]);
+        setChannelError("채널 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => setChannelLoading(false));
   }, [channels.length, createOpen, isAdmin]);
 
   const visibleScrims = useMemo(() => scrims, [scrims]);
@@ -178,7 +191,8 @@ export default function ScrimPage() {
       setChannelStep(true);
       return;
     }
-    if (!selectedChannelId) {
+    const channelId = selectedChannelId || manualChannelId.trim();
+    if (!channelId) {
       setMessage("모집 글을 올릴 채널을 선택해 주세요.");
       return;
     }
@@ -194,7 +208,7 @@ export default function ScrimPage() {
           title,
           description: createDescription,
           scheduledAt: createScheduledAt || null,
-          channelId: selectedChannelId,
+          channelId,
           settings: createSettings,
         }),
       });
@@ -207,6 +221,7 @@ export default function ScrimPage() {
       setCreateDescription("");
       setCreateScheduledAt("");
       setSelectedChannelId("");
+      setManualChannelId("");
       setChannelStep(false);
       setCreateSettings(DEFAULT_SETTINGS);
       setMessage("내전 카드를 생성했습니다.");
@@ -453,9 +468,24 @@ export default function ScrimPage() {
                   <p className="mb-3 text-xs text-[#9aa8b3]">
                     확인을 누르면 발로세끼 봇이 선택한 채널에 제목/설명과 참가 이모지 안내를 올립니다.
                   </p>
+                  {channelLoading && (
+                    <div className="mb-3 rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-xs font-bold text-[#9aa8b3]">
+                      채널 목록을 불러오는 중...
+                    </div>
+                  )}
+                  {channelError && (
+                    <div className="mb-3 rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-3 py-2 text-xs font-bold leading-relaxed text-[#ff8a95]">
+                      {channelError}
+                      <br />
+                      목록이 계속 비어 있으면 Discord 채널 ID를 직접 입력해서 진행할 수 있습니다.
+                    </div>
+                  )}
                   <select
                     value={selectedChannelId}
-                    onChange={(event) => setSelectedChannelId(event.target.value)}
+                    onChange={(event) => {
+                      setSelectedChannelId(event.target.value);
+                      if (event.target.value) setManualChannelId("");
+                    }}
                     className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors focus:border-[#ff4655]"
                   >
                     <option value="">채널 선택</option>
@@ -465,6 +495,20 @@ export default function ScrimPage() {
                       </option>
                     ))}
                   </select>
+                  <div className="mt-3">
+                    <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">
+                      채널 ID 직접 입력
+                    </label>
+                    <input
+                      value={manualChannelId}
+                      onChange={(event) => {
+                        setManualChannelId(event.target.value);
+                        if (event.target.value) setSelectedChannelId("");
+                      }}
+                      placeholder="예: 123456789012345678"
+                      className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors placeholder:text-[#56636f] focus:border-[#ff4655]"
+                    />
+                  </div>
                 </section>
               )}
             </div>

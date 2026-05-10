@@ -2,6 +2,7 @@ import { Events, MessageFlags } from "discord.js";
 import type { Guild, GuildMember, InteractionReplyOptions, MessageReaction, PartialMessageReaction, PartialUser, User } from "discord.js";
 import type { BotClient } from "../index";
 import { prisma } from "../../lib/prisma";
+import { recordMemberJoin } from "../../lib/memberJoinLogs";
 
 const VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv", ".avi"];
 const VIDEO_URL_PATTERN = /https?:\/\/\S+\.(?:mp4|mov|webm|mkv|avi)(?:\?\S*)?/gi;
@@ -386,6 +387,10 @@ export function registerEvents(client: BotClient) {
       where: { userId_guildId: { userId: user.id, guildId: guild.id } },
       update: {},
       create: { userId: user.id, guildId: guild.id },
+    });
+
+    await recordMemberJoin(user.id, guild.id).catch((error) => {
+      console.error("멤버 재입장 기록 저장 오류:", error);
     });
   });
 

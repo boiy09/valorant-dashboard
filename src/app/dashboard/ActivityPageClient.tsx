@@ -200,6 +200,24 @@ function getPieStyle(region: TierDistributionRegion, mode: "detail" | "group" = 
   return { background: `conic-gradient(${segments.join(", ")})` };
 }
 
+function getPieSegments(region: TierDistributionRegion) {
+  if (region.total === 0) return [];
+
+  let current = 0;
+  const segments: { start: number; end: number; tier: TierDistributionItem }[] = [];
+
+  for (const group of getVisibleTierGroups(region)) {
+    for (const tier of group.tiers) {
+      const deg = (tier.count / region.total) * 360;
+      if (deg <= 0) continue;
+      segments.push({ start: current, end: current + deg, tier });
+      current += deg;
+    }
+  }
+
+  return segments;
+}
+
 function TierDistributionPanel({
   data,
   ready,

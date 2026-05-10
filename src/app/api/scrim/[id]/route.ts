@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
+const reactionSyncCache = new Map<string, number>();
+
 function parseIdList(value: string | null | undefined) {
   if (!value) return [];
   try {
@@ -59,6 +61,87 @@ async function findScrim(id: string, guildId?: string) {
   });
 }
 
+function getDiscordHeaders() {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) return null;
+  return { Authorization: `Bot ${token}` };
+}
+
+function encodeReactionEmoji(reaction: { emoji?: { id?: string | null; name?: string | null } }) {
+  const name = reaction.emoji?.name;
+  if (!name) return null;
+  return encodeURIComponent(reaction.emoji?.id ? `${name}:${reaction.emoji.id}` : name);
+}
+
+async function fetchDiscordJson<T>(url: string): Promise<T | null> {
+  const headers = getDiscordHeaders();
+  if (!headers) return null;
+
+  const response = await fetch(url, { headers, cache: "no-store" });
+  if (!response.ok) return null;
+  return (await response.json().catch(() => null)) as T | null;
+}
+
+async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<typeof findScrim>>>) {
+  if (!scrim.recruitmentChannelId) return;
+
+  const messageIds = parseIdList(scrim.recruitmentMessageIds);
+  if (messageIds.length === 0) return;
+
+  const lastSynced = reactionSyncCache.get(scrim.id) ?? 0;
+  if (Date.now() - lastSynced < 15_000) return;
+  reactionSyncCache.set(scrim.id, Date.now());
+
+  for (const messageId of messageIds) {
+    const message = await fetchDiscordJson<{
+      reactions?: Array<{ count?: number; emoji?: { id?: string | null; name?: string | null } }>;
+    }>(`https://discord.com/api/v10/channels/${scrim.recruitmentChannelId}/messages/${messageId}`);
+
+    for (const reaction of message?.reactions ?? []) {
+      if (!reaction.count || reaction.count <= 0) continue;
+
+      const emoji = encodeReactionEmoji(reaction);
+      if (!emoji) continue;
+
+      const users = await fetchDiscordJson<
+        Array<{ id: string; username?: string; global_name?: string | null; avatar?: string | null; bot?: boolean }>
+      >(`https://discord.com/api/v10/channels/${scrim.recruitmentChannelId}/messages/${messageId}/reactions/${emoji}?limit=100`);
+
+      for (const discordUser of users ?? []) {
+        if (!discordUser.id || discordUser.bot) continue;
+
+        const avatarUrl = discordUser.avatar
+          ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
+          : null;
+        const appUser = await prisma.user.upsert({
+          where: { discordId: discordUser.id },
+          update: {
+            name: discordUser.global_name ?? discordUser.username ?? "Discord User",
+            image: avatarUrl ?? undefined,
+          },
+          create: {
+            discordId: discordUser.id,
+            email: `${discordUser.id}@discord`,
+            name: discordUser.global_name ?? discordUser.username ?? "Discord User",
+            image: avatarUrl,
+          },
+        });
+
+        await prisma.scrimPlayer.upsert({
+          where: { sessionId_userId: { sessionId: scrim.id, userId: appUser.id } },
+          update: {},
+          create: {
+            sessionId: scrim.id,
+            userId: appUser.id,
+            team: "participant",
+            role: "participant",
+          },
+        });
+      }
+    }
+  }
+}
+
 export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
   await ensureColumns();
   const { session, guild } = await getAdminSession();
@@ -67,6 +150,13 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
   const { id } = await context.params;
   const scrim = await findScrim(id, guild?.id);
   if (!scrim) return Response.json({ error: "내전을 찾을 수 없습니다." }, { status: 404 });
+
+  await syncRecruitmentReactions(scrim).catch((error) => {
+    console.error("내전 모집 반응 동기화 오류:", error);
+  });
+
+  const syncedScrim = await findScrim(id, guild?.id);
+  if (!syncedScrim) return Response.json({ error: "내전을 찾을 수 없습니다." }, { status: 404 });
 
   const guildMembers = guild
     ? await prisma.guildMember.findMany({
@@ -79,8 +169,8 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
     : [];
 
   return Response.json({
-    scrim,
-    managerIds: parseIdList(scrim.managers || scrim.createdBy),
+    scrim: syncedScrim,
+    managerIds: parseIdList(syncedScrim.managers || syncedScrim.createdBy),
     guildMembers: guildMembers.map((member) => ({
       userId: member.userId,
       discordId: member.user.discordId,

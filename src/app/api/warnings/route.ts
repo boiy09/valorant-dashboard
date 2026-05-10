@@ -1,15 +1,13 @@
 import { NextRequest } from "next/server";
-import { auth } from "@/lib/auth";
+import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  }
+  const { isAdmin } = await getAdminSession();
+  if (!isAdmin) return Response.json({ error: "관리자 또는 발로네끼 권한이 필요합니다." }, { status: 403 });
 
   const guildDiscordId = req.nextUrl.searchParams.get("guildId");
-  const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50");
+  const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50", 10);
 
   const guild = guildDiscordId
     ? await prisma.guild.findUnique({ where: { discordId: guildDiscordId } })
@@ -18,7 +16,7 @@ export async function GET(req: NextRequest) {
   const warnings = await prisma.warning.findMany({
     where: guild ? { guildId: guild.id } : undefined,
     orderBy: { createdAt: "desc" },
-    take: limit,
+    take: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 200) : 50,
     include: {
       user: { select: { name: true, image: true } },
     },

@@ -34,6 +34,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [myProfileBio, setMyProfileBio] = useState("");
   const [myValorantRole, setMyValorantRole] = useState<string | null>(null);
   const [myFavoriteAgents, setMyFavoriteAgents] = useState<string[]>([]);
+  const [serverNickname, setServerNickname] = useState<string | null>(null);
   const prevPathname = useRef(pathname);
 
   useEffect(() => {
@@ -103,6 +104,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [status]);
 
   useEffect(() => {
+    if (status !== "authenticated" || !session?.user?.id) return;
+
+    let cancelled = false;
+
+    async function loadServerNickname() {
+      try {
+        const response = await fetch("/api/members", { cache: "no-store" });
+        const data = response.ok ? await response.json() : { members: [] };
+        const me = (data.members ?? []).find(
+          (member: { discordId?: string; name?: string | null }) => member.discordId === session?.user?.id
+        );
+        if (!cancelled) setServerNickname(me?.name ?? null);
+      } catch {
+        if (!cancelled) setServerNickname(null);
+      }
+    }
+
+    loadServerNickname();
+    window.addEventListener("profile-updated", loadServerNickname);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("profile-updated", loadServerNickname);
+    };
+  }, [status, session?.user?.id]);
+
+  useEffect(() => {
     if (status !== "authenticated") return;
 
     let cancelled = false;
@@ -150,6 +178,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const activeHref = [...tabs]
     .sort((left, right) => right.href.length - left.href.length)
     .find((tab) => pathname === tab.href || pathname.startsWith(tab.href + "/"))?.href;
+  const displayName = serverNickname ?? session?.user?.name ?? "";
 
   return (
     <div className="val-shell min-h-screen flex flex-col">
@@ -199,8 +228,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   {(session?.user?.name ?? "?").charAt(0)}
                 </span>
               )}
-              {session?.user?.name && (
-                <span className="hidden max-w-32 truncate text-xs font-bold text-[#ece8e1] sm:block">{session.user.name}</span>
+              {displayName && (
+                <span className="hidden max-w-32 truncate text-xs font-bold text-[#ece8e1] sm:block">{displayName}</span>
               )}
             </button>
             <button
@@ -283,7 +312,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <ProfileModal
           title="내 프로필"
           profile={{
-            name: session?.user?.name ?? null,
+            name: (displayName || session?.user?.name) ?? null,
             image: session?.user?.image ?? null,
             profileBio: myProfileBio,
             discordId: session?.user?.id ?? undefined,

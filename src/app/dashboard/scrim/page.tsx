@@ -16,9 +16,19 @@ interface ScrimPlayer {
   };
 }
 
+interface ScrimSettings {
+  showRiotNickname: boolean;
+  showDiscordNickname: boolean;
+  showRankTier: boolean;
+  showValorantRole: boolean;
+  showFavoriteAgents: boolean;
+}
+
 interface ScrimSession {
   id: string;
   title: string;
+  description: string | null;
+  settings: string | null;
   status: string;
   map: string | null;
   winnerId: string | null;
@@ -39,6 +49,22 @@ interface KdRankingPlayer {
   kd: number;
 }
 
+const DEFAULT_SETTINGS: ScrimSettings = {
+  showRiotNickname: true,
+  showDiscordNickname: true,
+  showRankTier: true,
+  showValorantRole: true,
+  showFavoriteAgents: true,
+};
+
+const SETTING_LABELS: Array<{ key: keyof ScrimSettings; label: string; description: string }> = [
+  { key: "showRiotNickname", label: "라이엇 닉네임", description: "연동된 한섭/아섭 Riot ID" },
+  { key: "showDiscordNickname", label: "디스코드 닉네임", description: "발로세끼 서버 닉네임" },
+  { key: "showRankTier", label: "랭크 티어", description: "프로필에 저장된 현재 티어" },
+  { key: "showValorantRole", label: "역할군", description: "감시자/타격대/척후대/전략가" },
+  { key: "showFavoriteAgents", label: "모스트 3 요원", description: "프로필에 저장한 주 요원" },
+];
+
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("ko-KR", {
     month: "short",
@@ -51,7 +77,23 @@ function getWinnerLabel(winnerId: string | null) {
   if (winnerId === "team_a") return "Team A 승리";
   if (winnerId === "team_b") return "Team B 승리";
   if (winnerId === "draw") return "무승부";
-  return "결과 미등록";
+  return "모집/진행 중";
+}
+
+function parseSettings(value: string | null): ScrimSettings {
+  if (!value) return DEFAULT_SETTINGS;
+  try {
+    const parsed = JSON.parse(value) as Partial<ScrimSettings>;
+    return {
+      showRiotNickname: parsed.showRiotNickname !== false,
+      showDiscordNickname: parsed.showDiscordNickname !== false,
+      showRankTier: parsed.showRankTier !== false,
+      showValorantRole: parsed.showValorantRole !== false,
+      showFavoriteAgents: parsed.showFavoriteAgents !== false,
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
 }
 
 export default function ScrimPage() {
@@ -61,11 +103,18 @@ export default function ScrimPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
+  const [createSettings, setCreateSettings] = useState<ScrimSettings>(DEFAULT_SETTINGS);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/scrim").then((response) => response.json()),
-      fetch("/api/me/roles").then((response) => response.json()).catch(() => ({ isAdmin: false })),
+      fetch("/api/scrim", { cache: "no-store" }).then((response) => response.json()),
+      fetch("/api/me/roles", { cache: "no-store" })
+        .then((response) => response.json())
+        .catch(() => ({ isAdmin: false })),
     ])
       .then(([scrimData, roleData]) => {
         setScrims(scrimData.sessions ?? []);
@@ -79,7 +128,7 @@ export default function ScrimPage() {
 
   async function deleteScrim(id: string) {
     if (!isAdmin || deletingId) return;
-    const confirmed = window.confirm("이 내전 기록을 삭제할까요?");
+    const confirmed = window.confirm("내전 기록을 삭제할까요?");
     if (!confirmed) return;
 
     setDeletingId(id);
@@ -99,8 +148,50 @@ export default function ScrimPage() {
     }
   }
 
-  function showCreateNotice() {
-    setMessage("웹 내전 생성은 준비 중입니다. 지금은 Discord /내전 시작 명령어를 사용해 주세요.");
+  async function createScrim() {
+    if (!isAdmin || creating) return;
+    const title = createTitle.trim();
+    if (!title) {
+      setMessage("내전 제목을 입력해 주세요.");
+      return;
+    }
+
+    setCreating(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/scrim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description: createDescription,
+          settings: createSettings,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "내전 생성에 실패했습니다.");
+
+      setScrims((current) => [data.scrim, ...current]);
+      setCreateOpen(false);
+      setCreateTitle("");
+      setCreateDescription("");
+      setCreateSettings(DEFAULT_SETTINGS);
+      setMessage("내전 카드를 생성했습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "내전 생성에 실패했습니다.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function openCreateModal() {
+    if (!isAdmin) {
+      setMessage("관리자만 내전을 생성할 수 있습니다.");
+      return;
+    }
+    setMessage(null);
+    setCreateOpen(true);
   }
 
   return (
@@ -112,10 +203,10 @@ export default function ScrimPage() {
           </div>
           <h1 className="text-2xl font-black text-white">내전</h1>
           <p className="mt-0.5 text-sm text-[#7b8a96]">
-            생성된 내전 기록과 내전 KD 랭킹을 확인합니다.
+            생성된 내전 목록과 내전 KD 랭킹을 확인합니다.
           </p>
         </div>
-        <button type="button" onClick={showCreateNotice} className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white">
+        <button type="button" onClick={openCreateModal} className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white">
           내전 생성
         </button>
       </div>
@@ -143,6 +234,7 @@ export default function ScrimPage() {
                 {visibleScrims.map((scrim) => {
                   const teamA = scrim.players?.filter((player) => player.team === "team_a") ?? [];
                   const teamB = scrim.players?.filter((player) => player.team === "team_b") ?? [];
+                  const settings = parseSettings(scrim.settings);
 
                   return (
                     <article key={scrim.id} className="val-card p-5">
@@ -175,10 +267,30 @@ export default function ScrimPage() {
                         </div>
                       </div>
 
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <TeamPanel label="Team A" color="text-[#0fffd0]" players={teamA} />
-                        <TeamPanel label="Team B" color="text-[#ff8a95]" players={teamB} />
+                      {scrim.description && (
+                        <p className="mb-4 whitespace-pre-wrap rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-sm leading-relaxed text-[#c8d3db]">
+                          {scrim.description}
+                        </p>
+                      )}
+
+                      <div className="mb-4 flex flex-wrap gap-1.5">
+                        {SETTING_LABELS.filter((item) => settings[item.key]).map((item) => (
+                          <span key={item.key} className="rounded bg-[#ff4655]/10 px-2 py-1 text-[11px] font-black text-[#ff8a95]">
+                            {item.label}
+                          </span>
+                        ))}
                       </div>
+
+                      {scrim.players.length === 0 ? (
+                        <div className="rounded border border-dashed border-[#2a3540] bg-[#0f1923]/45 px-3 py-6 text-center text-xs text-[#7b8a96]">
+                          아직 참가자가 없습니다. 이후 참가/팀 배정 기능과 연결할 수 있습니다.
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <TeamPanel label="Team A" color="text-[#0fffd0]" players={teamA} />
+                          <TeamPanel label="Team B" color="text-[#ff8a95]" players={teamB} />
+                        </div>
+                      )}
                     </article>
                   );
                 })}
@@ -222,6 +334,105 @@ export default function ScrimPage() {
               </div>
             )}
           </aside>
+        </div>
+      )}
+
+      {createOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
+          <div className="val-card max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ff4655]">CREATE SCRIM</div>
+                <h2 className="mt-1 text-2xl font-black text-white">내전 생성</h2>
+                <p className="mt-1 text-sm text-[#7b8a96]">내전 카드에 표시할 정보와 설명을 설정합니다.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCreateOpen(false)}
+                className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-xs font-black text-[#9aa8b3] hover:border-[#ff4655]/50 hover:text-white"
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              <section>
+                <h3 className="mb-2 text-sm font-black text-white">제목</h3>
+                <input
+                  value={createTitle}
+                  onChange={(event) => setCreateTitle(event.target.value)}
+                  maxLength={80}
+                  placeholder="예: 금요일 5대5 밸런스 내전"
+                  className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors placeholder:text-[#56636f] focus:border-[#ff4655]"
+                />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-black text-white">설명</h3>
+                <textarea
+                  value={createDescription}
+                  onChange={(event) => setCreateDescription(event.target.value)}
+                  rows={5}
+                  maxLength={1000}
+                  placeholder="내전 컨셉, 참가 조건, 요구 사항, 진행 방식 등을 입력하세요."
+                  className="w-full resize-none rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold leading-relaxed text-white outline-none transition-colors placeholder:text-[#56636f] focus:border-[#ff4655]"
+                />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-black text-white">설정</h3>
+                <p className="mb-3 text-xs text-[#7b8a96]">
+                  참가자 카드에 어떤 정보를 보여줄지 선택합니다. 선택한 정보는 각자의 웹 프로필에 저장된 값을 기준으로 표시됩니다.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {SETTING_LABELS.map((item) => {
+                    const checked = createSettings[item.key];
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() =>
+                          setCreateSettings((current) => ({
+                            ...current,
+                            [item.key]: !current[item.key],
+                          }))
+                        }
+                        className={`rounded border px-3 py-3 text-left transition-colors ${
+                          checked
+                            ? "border-[#ff4655] bg-[#ff4655]/12 text-white"
+                            : "border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-black">{item.label}</span>
+                          <span className={`h-3 w-3 rounded-full ${checked ? "bg-[#ff4655]" : "bg-[#2a3540]"}`} />
+                        </div>
+                        <div className="mt-1 text-[11px] text-[#7b8a96]">{item.description}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCreateOpen(false)}
+                className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-5 py-2 text-sm font-black text-[#9aa8b3] hover:border-[#ff4655]/50 hover:text-white"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={createScrim}
+                disabled={creating}
+                className="val-btn bg-[#ff4655] px-5 py-2 text-sm font-black text-white disabled:opacity-50"
+              >
+                {creating ? "생성 중" : "생성"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

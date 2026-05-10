@@ -199,6 +199,8 @@ model ScrimSession {
   guild     Guild         @relation(fields: [guildId], references: [id])
   guildId   String
   title     String        @default("내전")
+  description String?
+  settings  String        @default("")
   status    String        @default("waiting")
   map       String?
   winnerId  String?

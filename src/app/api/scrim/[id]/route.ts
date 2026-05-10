@@ -18,6 +18,16 @@ function stringifyIdList(values: string[]) {
   return JSON.stringify(Array.from(new Set(values.filter(Boolean))).slice(0, 5));
 }
 
+function parseSettings(value: string | null | undefined) {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 async function ensureColumns() {
   await Promise.all([
     prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "scheduledAt" TIMESTAMP(3)`),
@@ -212,6 +222,14 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     await prisma.scrimSession.update({
       where: { id: scrim.id },
       data: { managers: stringifyIdList(body.managerIds) },
+    });
+  }
+
+  if (body.settings && typeof body.settings === "object" && !Array.isArray(body.settings)) {
+    const currentSettings = parseSettings(scrim.settings);
+    await prisma.scrimSession.update({
+      where: { id: scrim.id },
+      data: { settings: JSON.stringify({ ...currentSettings, ...body.settings }) },
     });
   }
 

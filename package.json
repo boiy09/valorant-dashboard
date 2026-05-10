@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"next dev\" \"nodemon --watch src/bot --watch src/lib --ext ts --exec \\\"ts-node --project tsconfig.bot.json --transpile-only\\\" src/bot/index.ts\"",
+    "dev": "concurrently \"next dev\" \"nodemon --watch src/bot --watch src/lib --ext ts --exec \\\"ts-node --project tsconfig.bot.json --transpile-only -r tsconfig-paths/register\\\" src/bot/index.ts\"",
     "dev:web": "next dev",
-    "dev:bot": "nodemon --watch src/bot --watch src/lib --ext ts --exec \"ts-node --project tsconfig.bot.json --transpile-only\" src/bot/index.ts",
+    "dev:bot": "nodemon --watch src/bot --watch src/lib --ext ts --exec \"ts-node --project tsconfig.bot.json --transpile-only -r tsconfig-paths/register\" src/bot/index.ts",
     "build": "next build",
     "start": "next start",
-    "bot": "ts-node --project tsconfig.bot.json --transpile-only src/bot/index.ts",
+    "bot": "ts-node --project tsconfig.bot.json --transpile-only -r tsconfig-paths/register src/bot/index.ts",
     "lint": "eslint",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -47,6 +47,7 @@
     "nodemon": "^3.1.14",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^3.15.0",
     "tsx": "^4.21.0",
     "typescript": "^5"
   }

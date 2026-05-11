@@ -1610,7 +1610,7 @@ function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename }: { te
   );
 }
 
-function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename, onRemove }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void; onRemove?: (id: string) => void }) {
+function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename, onRemove }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain?: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void; onRemove?: (id: string) => void }) {
   return (
     <article className="val-card overflow-hidden">
       <div className="border-b border-[#2a3540] bg-[#1d2732] px-5 py-4" style={{ borderTop: `3px solid ${color}` }}>

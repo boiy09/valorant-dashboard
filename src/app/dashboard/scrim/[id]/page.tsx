@@ -563,7 +563,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                 {activeGameId && (() => {
                   const game = games.find((g) => g.id === activeGameId);
                   if (!game) return null;
-                  const kdaData = parseJson<Array<{ userId: string; kills: number; deaths: number; assists: number; team: string; agent: string; score: number; name: string }>>(game.kdaSnapshot, []);
+                  const kdaData = parseJson<Array<{ userId: string; kills: number; deaths: number; assists: number; team: string; agent: string; score: number; name: string; agentPortrait?: string; agentCard?: string; agentName?: string; tierName?: string; tierIcon?: string; currentTier?: number; teamRoundsWon?: number }>>(game.kdaSnapshot, []);
                   const teamSnap = parseJson<Record<string, string[]>>(game.teamSnapshot, {});
 
                   return (
@@ -628,44 +628,59 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                       {game.matchId && kdaData.length > 0 ? (
                         <div>
                           {/* 경기 헤더: 맵 + 스코어 */}
-                          <div className="mb-4 rounded border border-[#2a3540] bg-[#0f1923] p-3">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">{game.map ?? ""}</div>
-                                {game.winnerId && (
-                                  <div className="mt-1 flex items-center gap-2">
-                                    <span className="text-sm font-black" style={{ color: game.winnerId === "Blue" ? "#00e7c2" : "#ff4655" }}>
-                                      {game.winnerId === "Blue" ? "BLUE" : "RED"} 승리
-                                    </span>
-                                    <span className="text-xs text-[#7b8a96]">
-                                      {kdaData.filter(k => k.team === "Blue").length > 0 && kdaData.filter(k => k.team === "Red").length > 0 && (
-                                        <>{kdaData.filter(k=>k.team==="Blue").length}v{kdaData.filter(k=>k.team==="Red").length}</>
-                                      )}
-                                    </span>
+                          {(() => {
+                            const blueRoundsH = kdaData.find(k => k.team === "Blue")?.teamRoundsWon ?? 0;
+                            const redRoundsH = kdaData.find(k => k.team === "Red")?.teamRoundsWon ?? 0;
+                            const winnerColor = blueRoundsH > redRoundsH ? "Blue" : redRoundsH > blueRoundsH ? "Red" : null;
+                            return (
+                              <div className="mb-4 rounded border border-[#2a3540] bg-[#0f1923] p-3">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">{game.map ?? ""}</div>
+                                    <div className="mt-1 flex items-center gap-3">
+                                      {(blueRoundsH > 0 || redRoundsH > 0) ? (
+                                        <>
+                                          <span className="text-lg font-black" style={{ color: winnerColor === "Blue" ? "#00e7c2" : "#7b8a96" }}>{blueRoundsH}</span>
+                                          <span className="text-xs text-[#7b8a96]">:</span>
+                                          <span className="text-lg font-black" style={{ color: winnerColor === "Red" ? "#ff4655" : "#7b8a96" }}>{redRoundsH}</span>
+                                          {winnerColor && (
+                                            <span className="text-xs font-black" style={{ color: winnerColor === "Blue" ? "#00e7c2" : "#ff4655" }}>
+                                              {winnerColor === "Blue" ? "TEAM A" : "TEAM B"} 승리
+                                            </span>
+                                          )}
+                                        </>
+                                      ) : game.winnerId ? (
+                                        <span className="text-sm font-black" style={{ color: game.winnerId === "Blue" ? "#00e7c2" : "#ff4655" }}>
+                                          {game.winnerId === "Blue" ? "TEAM A" : "TEAM B"} 승리
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   </div>
-                                )}
+                                  <span className="text-[10px] text-[#00e7c2]">✓ 매치 연동됨</span>
+                                </div>
                               </div>
-                              <span className="text-[10px] text-[#00e7c2]">✓ 매치 연동됨</span>
-                            </div>
-                          </div>
+                            );
+                          })()}
                           {/* 팀별 스코어보드 - 전적탭 스타일 */}
                           {["Blue", "Red"].map((teamColor) => {
                             const tColor = teamColor === "Blue" ? "#00e7c2" : "#ff4655";
                             const teamLabel = teamColor === "Blue" ? "TEAM A" : "TEAM B";
                             const teamPlayers = kdaData.filter((k) => k.team === teamColor).sort((a, b) => b.score - a.score);
                             if (teamPlayers.length === 0) return null;
-                            // 라운드 수 추정
-                            const allScores = kdaData.map(k => k.score);
-                            const maxScore = Math.max(...allScores, 1);
-                            const totalRounds = Math.max(13, Math.round(maxScore / 400));
+                            // 라운드 수: teamRoundsWon 합산 또는 추정
+                            const blueRounds = kdaData.find(k => k.team === "Blue")?.teamRoundsWon ?? 0;
+                            const redRounds = kdaData.find(k => k.team === "Red")?.teamRoundsWon ?? 0;
+                            const totalRounds = (blueRounds + redRounds) > 0 ? (blueRounds + redRounds) : Math.max(13, Math.round(Math.max(...kdaData.map(k => k.score), 1) / 400));
+                            const teamRounds = teamColor === "Blue" ? blueRounds : redRounds;
                             return (
                               <div key={teamColor} className="mb-4">
                                 {/* 팀 헤더 */}
                                 <div className="flex items-center px-3 py-2 rounded-t" style={{ background: `${tColor}20` }}>
                                   <div className="text-xs font-black tracking-widest uppercase" style={{ color: tColor }}>
                                     {teamLabel} · {teamPlayers.length}명
+                                    {teamRounds > 0 && <span className="ml-2 text-white">{teamRounds}라운드</span>}
                                   </div>
-                                  <div className="ml-auto flex gap-6 text-[10px] font-black text-[#7b8a96] pr-1">
+                                  <div className="ml-auto flex gap-4 text-[10px] font-black text-[#7b8a96] pr-1">
                                     <span className="w-10 text-right">ACS</span>
                                     <span className="w-6 text-right">K</span>
                                     <span className="w-6 text-right">D</span>
@@ -681,18 +696,25 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                                     const inGameNick = riotAcc ? `${riotAcc.gameName}#${riotAcc.tagLine}` : k.name;
                                     const acs = Math.round(k.score / Math.max(totalRounds, 1));
                                     return (
-                                      <div key={k.userId} className="flex items-center gap-3 px-3 py-2.5 bg-[#0a1520] hover:bg-[#0f1e2c] transition-colors">
-                                        {/* 에이전트 아이콘 */}
-                                        <div className="w-9 h-9 rounded bg-[#1d2732] flex items-center justify-center flex-shrink-0 text-[11px] font-black text-[#9aa8b3]">
-                                          {k.agent ? k.agent.slice(0, 4) : "?"}
+                                      <div key={k.userId} className="flex items-center gap-2 px-3 py-2.5 bg-[#0a1520] hover:bg-[#0f1e2c] transition-colors">
+                                        {/* 에이전트 초상화 */}
+                                        <div className="w-10 h-10 rounded overflow-hidden bg-[#1d2732] flex items-center justify-center flex-shrink-0">
+                                          {k.agentPortrait ? (
+                                            <img src={k.agentPortrait} alt={k.agentName ?? k.agent} className="w-full h-full object-cover object-top" />
+                                          ) : (
+                                            <span className="text-[11px] font-black text-[#9aa8b3]">{k.agent ? k.agent.slice(0, 4) : "?"}</span>
+                                          )}
                                         </div>
-                                        {/* 닉네임 */}
+                                        {/* 닉네임 + 티어 */}
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-black text-white text-sm truncate">{serverNick}</div>
+                                          <div className="flex items-center gap-1.5">
+                                            {k.tierIcon && <img src={k.tierIcon} alt={k.tierName ?? ""} className="w-4 h-4 flex-shrink-0" />}
+                                            <span className="font-black text-white text-sm truncate">{serverNick}</span>
+                                          </div>
                                           <div className="text-[11px] text-[#7b8a96] truncate">{inGameNick}</div>
                                         </div>
                                         {/* ACS / K / D / A */}
-                                        <div className="flex gap-6 text-sm flex-shrink-0 pr-1">
+                                        <div className="flex gap-4 text-sm flex-shrink-0 pr-1">
                                           <span className="w-10 text-right font-black text-white">{acs}</span>
                                           <span className="w-6 text-right font-black text-[#00e7c2]">{k.kills}</span>
                                           <span className="w-6 text-right font-black text-[#ff4655]">{k.deaths}</span>

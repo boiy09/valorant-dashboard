@@ -11,6 +11,7 @@ interface KdRankingPlayer {
   deaths: number;
   assists: number;
   matches: number;
+  gamesPlayed?: number;
   kd: number;
   tierName: string;
   tierIconUrl: string | null;

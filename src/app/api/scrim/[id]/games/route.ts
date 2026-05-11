@@ -60,6 +60,7 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
       matchId: string | null;
       teamSnapshot: string;
       kdaSnapshot: string;
+      roundResults: string | null;
       playedAt: Date | null;
       createdAt: Date;
     }>
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     "[]"
   );
 
-  const [game] = await prisma.$queryRawUnsafe<Array<{ id: string; sessionId: string; gameNumber: number; map: string | null; winnerId: string | null; matchId: string | null; teamSnapshot: string; kdaSnapshot: string; playedAt: Date | null; createdAt: Date }>>(
+  const [game] = await prisma.$queryRawUnsafe<Array<{ id: string; sessionId: string; gameNumber: number; map: string | null; winnerId: string | null; matchId: string | null; teamSnapshot: string; kdaSnapshot: string; roundResults: string | null; playedAt: Date | null; createdAt: Date }>>(
     `SELECT * FROM "ScrimGame" WHERE "id" = $1`,
     gameId
   );
@@ -167,7 +168,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     id
   );
 
-  const [game] = await prisma.$queryRawUnsafe<Array<{ id: string; sessionId: string; gameNumber: number; map: string | null; winnerId: string | null; matchId: string | null; teamSnapshot: string; kdaSnapshot: string; playedAt: Date | null; createdAt: Date }>>(
+  const [game] = await prisma.$queryRawUnsafe<Array<{ id: string; sessionId: string; gameNumber: number; map: string | null; winnerId: string | null; matchId: string | null; teamSnapshot: string; kdaSnapshot: string; roundResults: string | null; playedAt: Date | null; createdAt: Date }>>(
     `SELECT * FROM "ScrimGame" WHERE "id" = $1`,
     gameId
   );

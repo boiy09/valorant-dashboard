@@ -56,6 +56,7 @@ interface ScrimGame {
   matchId: string | null;
   teamSnapshot: string; // JSON: { team_a: userId[], team_b: userId[] }
   kdaSnapshot: string;  // JSON: [{ userId, kills, deaths, assists }]
+  roundResults: string | null; // JSON: [{ round, result, winner, plant, defuse }]
   playedAt: string | null;
   createdAt: string;
 }
@@ -657,6 +658,82 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                                     </div>
                                   </div>
                                   <span className="text-[10px] text-[#00e7c2]">✓ 매치 연동됨</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          {/* 라운드 타임라인 */}
+                          {(() => {
+                            const roundData = parseJson<Array<{ round: number; result: string; winner: string; plant: boolean; defuse: boolean }>>(game.roundResults, []);
+                            if (roundData.length === 0) return null;
+                            // 결과 아이콘 SVG (발로란트 스타일)
+                            const RoundIcon = ({ result, winner, teamColor }: { result: string; winner: string; teamColor: string }) => {
+                              const isWin = winner === teamColor;
+                              const color = isWin ? (teamColor === "Blue" ? "#00e7c2" : "#ff4655") : "#3a4a56";
+                              // Elimination=전멸(X), Bomb=스파이크폭발(●), Defuse=해제(◆), Detonate=폭발(●), Time=시간(⏱)
+                              if (!isWin) return <span style={{ color: "#3a4a56", fontSize: 10 }}>✕</span>;
+                              if (result === "Bomb" || result === "Detonate") return <span style={{ color, fontSize: 10 }}>●</span>;
+                              if (result === "Defuse") return <span style={{ color, fontSize: 10 }}>◆</span>;
+                              if (result === "Time") return <span style={{ color, fontSize: 10 }}>⏱</span>;
+                              return <span style={{ color, fontSize: 10 }}>✕</span>; // Elimination
+                            };
+                            const half1 = roundData.slice(0, 12);
+                            const half2 = roundData.slice(12);
+                            return (
+                              <div className="mb-4 rounded border border-[#2a3540] bg-[#0a1520] p-3 overflow-x-auto">
+                                {/* 팀 A (Blue) 행 */}
+                                <div className="flex items-center gap-0.5 mb-1">
+                                  <span className="text-[10px] font-black w-14 flex-shrink-0" style={{ color: "#00e7c2" }}>Team A</span>
+                                  <div className="flex gap-0.5 flex-wrap">
+                                    {half1.map((r) => (
+                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center">
+                                        <RoundIcon result={r.result} winner={r.winner} teamColor="Blue" />
+                                      </div>
+                                    ))}
+                                    {half2.length > 0 && <div className="w-px h-5 bg-[#2a3540] mx-0.5" />}
+                                    {half2.map((r) => (
+                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center">
+                                        <RoundIcon result={r.result} winner={r.winner} teamColor="Blue" />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                                {/* 라운드 번호 행 */}
+                                <div className="flex items-center gap-0.5 mb-1">
+                                  <span className="w-14 flex-shrink-0" />
+                                  <div className="flex gap-0.5 flex-wrap">
+                                    {half1.map((r) => (
+                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center text-[8px] text-[#4a5a66]">{r.round}</div>
+                                    ))}
+                                    {half2.length > 0 && <div className="w-px h-5 mx-0.5" />}
+                                    {half2.map((r) => (
+                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center text-[8px] text-[#4a5a66]">{r.round}</div>
+                                    ))}
+                                  </div>
+                                </div>
+                                {/* 팀 B (Red) 행 */}
+                                <div className="flex items-center gap-0.5">
+                                  <span className="text-[10px] font-black w-14 flex-shrink-0" style={{ color: "#ff4655" }}>Team B</span>
+                                  <div className="flex gap-0.5 flex-wrap">
+                                    {half1.map((r) => (
+                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center">
+                                        <RoundIcon result={r.result} winner={r.winner} teamColor="Red" />
+                                      </div>
+                                    ))}
+                                    {half2.length > 0 && <div className="w-px h-5 bg-[#2a3540] mx-0.5" />}
+                                    {half2.map((r) => (
+                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center">
+                                        <RoundIcon result={r.result} winner={r.winner} teamColor="Red" />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                                {/* 범례 */}
+                                <div className="mt-2 flex gap-3 text-[9px] text-[#4a5a66]">
+                                  <span>✕ 전멸</span>
+                                  <span>● 스파이크 폭발</span>
+                                  <span>◆ 스파이크 해제</span>
+                                  <span>⏱ 시간 승리</span>
                                 </div>
                               </div>
                             );

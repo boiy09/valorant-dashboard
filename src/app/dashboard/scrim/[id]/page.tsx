@@ -758,7 +758,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
             subtitle={settings.useTeamBoard ? "드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." : "내전에 참여 중인 플레이어 목록입니다."} 
             onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
             <div className="flex flex-wrap gap-2">
-              {participantPlayers.map((p) => <PlayerCard key={p.userId} player={p} onRemove={removePlayer} />)}
+              {participantPlayers.map((p) => <PlayerCard key={p.user.id} player={p} onRemove={removePlayer} />)}
               {participantPlayers.length === 0 && <EmptyState text="참가자가 없습니다." />}
             </div>
           </DropArea>

@@ -1,0 +1,224 @@
+import { NextRequest } from "next/server";
+import { getAdminSession } from "@/lib/admin";
+import { prisma } from "@/lib/prisma";
+import { getRecentMatches } from "@/lib/valorant";
+
+/**
+ * POST /api/scrim/[id]/sync-match
+ * 내전 참가자들의 최근 커스텀 매치를 조회하여
+ * 참가자 전원이 포함된 매치를 찾아 승패/맵/KDA를 자동으로 기록한다.
+ */
+export async function POST(_: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { session, isAdmin, guild } = await getAdminSession();
+  if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  if (!guild) return Response.json({ error: "서버 정보를 찾을 수 없습니다." }, { status: 404 });
+
+  const { id } = await context.params;
+
+  // 내전 세션 조회 (참가자 + 라이엇 계정 포함)
+  const scrim = await prisma.scrimSession.findFirst({
+    where: { id, guildId: guild.id },
+    include: {
+      players: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              riotAccounts: {
+                select: { puuid: true, region: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!scrim) return Response.json({ error: "내전을 찾을 수 없습니다." }, { status: 404 });
+
+  const currentManagers = (() => {
+    try {
+      const p = JSON.parse(scrim.managers || "[]");
+      return Array.isArray(p) ? p : [scrim.createdBy];
+    } catch { return [scrim.createdBy]; }
+  })();
+  if (!isAdmin && !currentManagers.includes(session.user.id)) {
+    return Response.json({ error: "내전 관리자 권한이 필요합니다." }, { status: 403 });
+  }
+
+  // 팀에 배정된 참가자만 대상 (captain + member)
+  const assignedPlayers = scrim.players.filter(
+    (p) => p.team.startsWith("team_") && (p.role === "captain" || p.role === "member")
+  );
+  if (assignedPlayers.length < 2) {
+    return Response.json({ error: "팀에 배정된 참가자가 2명 이상이어야 합니다." }, { status: 400 });
+  }
+
+  // 참가자별 PUUID 수집 (팀 정보 포함)
+  type PlayerPuuidEntry = {
+    playerId: string;
+    userId: string;
+    team: string;
+    puuid: string;
+    region: string;
+  };
+  const playerPuuids: PlayerPuuidEntry[] = [];
+  for (const p of assignedPlayers) {
+    for (const acc of p.user.riotAccounts) {
+      if (acc.puuid) {
+        playerPuuids.push({
+          playerId: p.id,
+          userId: p.user.id,
+          team: p.team,
+          puuid: acc.puuid,
+          region: acc.region ?? "KR",
+        });
+      }
+    }
+  }
+
+  if (playerPuuids.length === 0) {
+    return Response.json({ error: "라이엇 계정이 연동된 참가자가 없습니다." }, { status: 400 });
+  }
+
+  // 대표 계정 1개로 최근 커스텀 매치 조회 (스코어보드 포함)
+  const representative = playerPuuids[0];
+  const qRegion = representative.region === "AP" ? "ap" : "kr";
+
+  let recentMatches;
+  try {
+    recentMatches = await getRecentMatches(representative.puuid, 20, qRegion, "pc", {
+      skipAccountFallback: true,
+      skipRankFallback: true,
+    });
+  } catch {
+    return Response.json({ error: "전적 데이터를 가져오는 데 실패했습니다." }, { status: 500 });
+  }
+
+  // 커스텀 매치만 필터링
+  const customMatches = recentMatches.filter((m) => {
+    const mode = m.mode?.toLowerCase() ?? "";
+    return mode.includes("custom") || mode === "커스텀" || mode === "custom game";
+  });
+
+  if (customMatches.length === 0) {
+    return Response.json({ error: "최근 커스텀 매치를 찾을 수 없습니다." }, { status: 404 });
+  }
+
+  // 내전 참가자 PUUID 전체 Set
+  const allParticipantPuuids = new Set(playerPuuids.map((p) => p.puuid));
+
+  // 매칭되는 커스텀 매치 탐색
+  let matchedMatch = null;
+  for (const match of customMatches) {
+    const matchPuuids = (match.scoreboard?.players ?? [])
+      .map((p) => p.puuid)
+      .filter(Boolean);
+    if (matchPuuids.length === 0) continue;
+    const matchSet = new Set(matchPuuids);
+    const allPresent = [...allParticipantPuuids].every((puuid) => matchSet.has(puuid));
+    if (allPresent) {
+      matchedMatch = match;
+      break;
+    }
+  }
+
+  if (!matchedMatch) {
+    return Response.json({
+      error: "참가자 전원이 포함된 커스텀 매치를 찾을 수 없습니다. 아직 전적이 업데이트되지 않았을 수 있습니다.",
+    }, { status: 404 });
+  }
+
+  // 팀별 라운드 승리 수 계산 → 승팀 결정
+  const teams = matchedMatch.scoreboard?.teams ?? [];
+  let winnerTeamColor: string | null = null;
+  if (teams.length >= 2) {
+    const winnerTeam = teams.find((t) => t.won);
+    winnerTeamColor = winnerTeam?.teamId?.toLowerCase() ?? null; // "red" | "blue"
+  }
+
+  // 발로란트 팀 컬러(red/blue)를 내전 팀 ID에 매핑
+  // 내전 팀A의 팀장 PUUID가 어느 팀 컬러에 속하는지 확인
+  const teamAPlayers = playerPuuids.filter((p) => p.team === "team_a");
+  const teamBPlayers = playerPuuids.filter((p) => p.team === "team_b");
+
+  let winnerId: string | null = null;
+  if (winnerTeamColor && teamAPlayers.length > 0 && teamBPlayers.length > 0) {
+    const scoreboardPlayers = matchedMatch.scoreboard?.players ?? [];
+    const teamAFirstPuuid = teamAPlayers[0].puuid;
+    const teamAScoreboardPlayer = scoreboardPlayers.find((p) => p.puuid === teamAFirstPuuid);
+    const teamAColor = teamAScoreboardPlayer?.teamId?.toLowerCase();
+
+    if (teamAColor === winnerTeamColor) {
+      winnerId = "team_a";
+    } else if (teamAColor) {
+      winnerId = "team_b";
+    }
+    // 팀이 3개 이상이면 draw 처리
+    if (!teamAColor) winnerId = "draw";
+  } else if (winnerTeamColor === null && teams.length >= 2) {
+    winnerId = "draw";
+  }
+
+  // 맵 이름 한국어 매핑
+  const MAP_KO: Record<string, string> = {
+    "Ascent": "어센트",
+    "Bind": "바인드",
+    "Haven": "헤이븐",
+    "Split": "스플릿",
+    "Icebox": "아이스박스",
+    "Fracture": "프랙처",
+    "Pearl": "펄",
+    "Lotus": "로터스",
+    "Sunset": "선셋",
+    "Abyss": "어비스",
+  };
+  const rawMapName = matchedMatch.map ?? "";
+  const mapName = MAP_KO[rawMapName] ?? rawMapName;
+
+  // KDA 업데이트: 스코어보드에서 각 참가자 KDA 추출
+  const scoreboardPlayers = matchedMatch.scoreboard?.players ?? [];
+  const kdaUpdates: { id: string; kills: number; deaths: number; assists: number }[] = [];
+  for (const entry of playerPuuids) {
+    const sbPlayer = scoreboardPlayers.find((p) => p.puuid === entry.puuid);
+    if (!sbPlayer) continue;
+    kdaUpdates.push({
+      id: entry.playerId,
+      kills: sbPlayer.kills ?? 0,
+      deaths: sbPlayer.deaths ?? 0,
+      assists: sbPlayer.assists ?? 0,
+    });
+  }
+
+  // DB 저장
+  await prisma.$transaction(async (tx) => {
+    // 승패 + 맵 + 상태 업데이트
+    const sessionData: Record<string, unknown> = {
+      status: "done",
+      endedAt: new Date(),
+    };
+    if (winnerId !== undefined) sessionData.winnerId = winnerId;
+    if (mapName) sessionData.map = mapName;
+
+    await tx.scrimSession.update({
+      where: { id: scrim.id },
+      data: sessionData,
+    });
+
+    // KDA 업데이트
+    for (const kda of kdaUpdates) {
+      await tx.scrimPlayer.updateMany({
+        where: { id: kda.id, sessionId: scrim.id },
+        data: { kills: kda.kills, deaths: kda.deaths, assists: kda.assists },
+      });
+    }
+  });
+
+  return Response.json({
+    success: true,
+    matchId: matchedMatch.matchId,
+    map: mapName,
+    winnerId,
+    kdaCount: kdaUpdates.length,
+    message: `전적 자동 연동 완료: ${mapName} / ${winnerId === "team_a" ? "팀A 승리" : winnerId === "team_b" ? "팀B 승리" : winnerId === "draw" ? "무승부" : "승패 미정"} / KDA ${kdaUpdates.length}명 기록`,
+  });
+}

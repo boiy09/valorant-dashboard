@@ -261,7 +261,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     playing: { label: "진행중", color: "#f6c945" },
     done: { label: "완료", color: "#ff4655" },
   };
-  const VALORANT_MAPS = ["어센션", "바인드", "브리즈", "프락티스", "헤이븐", "로터스", "스플릿", "선셋", "아이스박스", "피카"];
+  const VALORANT_MAPS = ["어센트", "바인드", "헤이븐", "스플릿", "아이스박스", "프랙처", "펄", "로터스", "선셋", "어비스"];
   const statusInfo = STATUS_LABELS[scrim.status] ?? STATUS_LABELS.waiting;
 
   // 랜덤 팀 배정
@@ -314,6 +314,22 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     void patchScrim({ removePlayerId: playerId, silent: true });
   }
 
+  // 전적 자동 연동
+  async function syncMatch() {
+    setSaving(true); setMessage(null);
+    try {
+      const res = await fetch(`/api/scrim/${id}/sync-match`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "전적 연동에 실패했습니다.");
+      setMessage(data.message ?? "전적 자동 연동 완료!");
+      // 업데이트된 내전 데이터 다시 로드
+      const reloadRes = await fetch(`/api/scrim/${id}`, { cache: "no-store" });
+      const reloadData = await reloadRes.json();
+      setScrim(reloadData.scrim ?? null);
+    } catch (e) { setMessage(e instanceof Error ? e.message : "전적 연동에 실패했습니다."); }
+    finally { setSaving(false); }
+  }
+
   // 상태 전환
   function changeStatus(status: string) {
     if (!scrim) return;
@@ -356,6 +372,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           <button type="button" onClick={balanceAssign} disabled={saving || participantPlayers.length < 2} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40" title="티어 기반 밸런스 배정">⚖️ 밸런스</button>
           <button type="button" onClick={addTeam} disabled={saving} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-50">팀 추가</button>
           <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn bg-[#ff4655] px-3 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
+          <button type="button" onClick={() => void syncMatch()} disabled={saving} className="val-btn border border-[#00e7c2]/40 bg-[#00e7c2]/10 px-3 py-2 text-xs font-black text-[#00e7c2] disabled:opacity-50" title="참가자 전원이 포함된 커스텀 매치를 자동으로 찾아 승패/맵/KDA를 기록합니다">🔄 전적 자동 연동</button>
         </div>
       </div>
 

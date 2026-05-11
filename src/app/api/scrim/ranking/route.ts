@@ -28,11 +28,9 @@ export async function GET(req: NextRequest) {
         ? JSON.parse(game.kdaSnapshot) 
         : game.kdaSnapshot;
       
-      if (!Array.isArray(kdaList)) continue;
 
       for (const p of kdaList) {
         const uid = p.userId;
-        if (!uid) continue;
 
         const existing = statsMap.get(uid) || {
           userId: uid,
@@ -72,16 +70,42 @@ export async function GET(req: NextRequest) {
 
   const userTierMap = new Map(users.map(u => [u.id, u]));
 
+  // Function to get tier icon URL based on tier name
+  function getTierIconUrl(tierName: string | null): string | null {
+    // Map Korean tier names to standard Valorant tier icons
+    const tierIcons: { [key: string]: string } = {
+      "아이언": "/images/tiers/iron.png",
+      "브론즈": "/images/tiers/bronze.png",
+      "실버": "/images/tiers/silver.png",
+      "골드": "/images/tiers/gold.png",
+      "플래티넘": "/images/tiers/platinum.png",
+      "다이아몬드": "/images/tiers/diamond.png",
+      "초월자": "/images/tiers/ascendant.png",
+      "불멸": "/images/tiers/immortal.png",
+      "레디언트": "/images/tiers/radiant.png",
+      "언랭크": "/images/tiers/unranked.png",
+    };
+    
+    // Check if it contains the tier name
+    for (const [key, url] of Object.entries(tierIcons)) {
+      if (tierName.includes(key)) return url;
+    }
+    
+    return "/images/tiers/unranked.png";
+  }
+
   // 4. 랭킹 데이터 구성 및 필터링
   let ranking = Array.from(statsMap.values()).map(s => {
     const user = userTierMap.get(s.userId);
-    const tier = user?.riotAccounts?.[0]?.cachedTierName || "언랭크";
+    const tierName = user?.riotAccounts?.[0]?.cachedTierName || "언랭크";
+    const tierIconUrl = getTierIconUrl(tierName);
     
     return {
       ...s,
-      name: user?.name || "Unknown",
+      name: user?.name || "Unknown", // Discord nickname
       image: user?.image || null,
-      tier,
+      tier: tierName,
+      tierIconUrl,
       kd: s.deaths === 0 ? s.kills : Number((s.kills / s.deaths).toFixed(2)),
     };
   });

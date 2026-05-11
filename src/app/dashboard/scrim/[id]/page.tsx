@@ -56,7 +56,8 @@ interface ScrimGame {
   matchId: string | null;
   teamSnapshot: string; // JSON: { team_a: userId[], team_b: userId[] }
   kdaSnapshot: string;  // JSON: [{ userId, kills, deaths, assists }]
-  roundResults: string | null | unknown; // JSON: [{ round, result, winner, plant, defuse }] - Prisma가 이미 파싱된 객체로 반환할 수 있음
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  roundResults: any; // JSON: [{ round, result, winner, plant, defuse }] - Prisma가 이미 파싱된 객체로 반환할 수 있음
   playedAt: string | null;
   createdAt: string;
 }
@@ -308,7 +309,8 @@ function parseSettings(value: string | null | undefined): ScrimDetailSettings {
   try { const p = JSON.parse(value); return p && typeof p === "object" ? (p as ScrimDetailSettings) : {}; }
   catch { return {}; }
 }
-function parseJson<T>(value: string | null | undefined | T, fallback: T): T {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseJson<T>(value: any, fallback: T): T {
   if (value === null || value === undefined) return fallback;
   // Prisma $queryRawUnsafe는 JSON 콼럼을 이미 파싱된 객체로 반환함
   if (typeof value !== "string") return value as T;

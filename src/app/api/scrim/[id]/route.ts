@@ -207,6 +207,8 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
   }
 
   const body = await req.json().catch(() => ({}));
+
+  // 팀/역할 업데이트
   const updates = Array.isArray(body.players) ? body.players : [];
   for (const update of updates) {
     if (!update?.id || typeof update.team !== "string" || typeof update.role !== "string") continue;
@@ -219,6 +221,28 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     });
   }
 
+  // KDA 업데이트
+  const kdaUpdates = Array.isArray(body.kdaPlayers) ? body.kdaPlayers : [];
+  for (const kda of kdaUpdates) {
+    if (!kda?.id) continue;
+    await prisma.scrimPlayer.updateMany({
+      where: { id: kda.id, sessionId: scrim.id },
+      data: {
+        kills: typeof kda.kills === "number" ? kda.kills : undefined,
+        deaths: typeof kda.deaths === "number" ? kda.deaths : undefined,
+        assists: typeof kda.assists === "number" ? kda.assists : undefined,
+      },
+    });
+  }
+
+  // 참가자 제거
+  if (typeof body.removePlayerId === "string" && body.removePlayerId) {
+    await prisma.scrimPlayer.deleteMany({
+      where: { id: body.removePlayerId, sessionId: scrim.id },
+    });
+  }
+
+  // 매니저 업데이트
   if (Array.isArray(body.managerIds)) {
     await prisma.scrimSession.update({
       where: { id: scrim.id },
@@ -226,6 +250,26 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     });
   }
 
+  // 세션 상태/결과/맵 업데이트
+  const sessionUpdate: Record<string, unknown> = {};
+  const VALID_STATUSES = ["waiting", "recruiting", "playing", "done"];
+  const VALID_WINNERS = ["team_a", "team_b", "draw", null];
+  if (typeof body.status === "string" && VALID_STATUSES.includes(body.status)) {
+    sessionUpdate.status = body.status;
+    if (body.status === "playing" && !scrim.startedAt) sessionUpdate.startedAt = new Date();
+    if (body.status === "done" && !scrim.endedAt) sessionUpdate.endedAt = new Date();
+  }
+  if (body.winnerId !== undefined && VALID_WINNERS.includes(body.winnerId as string | null)) {
+    sessionUpdate.winnerId = body.winnerId as string | null;
+  }
+  if (typeof body.map === "string") {
+    sessionUpdate.map = body.map || null;
+  }
+  if (Object.keys(sessionUpdate).length > 0) {
+    await prisma.scrimSession.update({ where: { id: scrim.id }, data: sessionUpdate });
+  }
+
+  // 설정 업데이트
   if (body.settings && typeof body.settings === "object" && !Array.isArray(body.settings)) {
     const currentSettings = parseSettings(scrim.settings);
     await prisma.scrimSession.update({

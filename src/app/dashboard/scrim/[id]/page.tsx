@@ -17,6 +17,9 @@ interface ScrimPlayer {
   id: string;
   team: string;
   role: string;
+  kills: number | null;
+  deaths: number | null;
+  assists: number | null;
   user: {
     id: string;
     discordId: string | null;
@@ -36,6 +39,11 @@ interface ScrimDetail {
   recruitmentChannelId: string | null;
   settings: string | null;
   mode: string | null;
+  status: string;
+  winnerId: string | null;
+  map: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
   players: ScrimPlayer[];
 }
 
@@ -148,23 +156,39 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [id]);
 
-  async function patchScrim(payload: { players?: ScrimPlayer[]; managerIds?: string[]; settings?: ScrimDetailSettings }) {
-    setSaving(true); setMessage(null);
+  async function patchScrim(payload: {
+    players?: ScrimPlayer[];
+    managerIds?: string[];
+    settings?: ScrimDetailSettings;
+    status?: string;
+    winnerId?: string | null;
+    map?: string;
+    kdaPlayers?: { id: string; kills: number; deaths: number; assists: number }[];
+    removePlayerId?: string;
+    silent?: boolean;
+  }) {
+    if (!payload.silent) { setSaving(true); setMessage(null); }
     try {
       const res = await fetch(`/api/scrim/${id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           players: payload.players?.map((p) => ({ id: p.id, team: p.team, role: p.role })),
-          managerIds: payload.managerIds, settings: payload.settings,
+          managerIds: payload.managerIds,
+          settings: payload.settings,
+          status: payload.status,
+          winnerId: payload.winnerId,
+          map: payload.map,
+          kdaPlayers: payload.kdaPlayers,
+          removePlayerId: payload.removePlayerId,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "저장에 실패했습니다.");
       setScrim(data.scrim);
       if (payload.managerIds) setManagerIds(payload.managerIds);
-      setMessage("저장했습니다.");
+      if (!payload.silent) setMessage("저장했습니다.");
     } catch (e) { setMessage(e instanceof Error ? e.message : "저장에 실패했습니다."); }
-    finally { setSaving(false); }
+    finally { if (!payload.silent) setSaving(false); }
   }
 
   function movePlayer(playerId: string, team: string, role: string) {
@@ -230,35 +254,175 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const captainCount = assignedPlayers.filter((p) => p.role === "captain").length;
   const memberCount = assignedPlayers.filter((p) => p.role === "member").length;
 
+  // 내전 상태 레이블
+  const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+    waiting: { label: "모집 대기", color: "#7b8a96" },
+    recruiting: { label: "모집중", color: "#00e7c2" },
+    playing: { label: "진행중", color: "#f6c945" },
+    done: { label: "완료", color: "#ff4655" },
+  };
+  const VALORANT_MAPS = ["어센션", "바인드", "브리즈", "프락티스", "헤이븐", "로터스", "스플릿", "선셋", "아이스박스", "피카"];
+  const statusInfo = STATUS_LABELS[scrim.status] ?? STATUS_LABELS.waiting;
+
+  // 랜덤 팀 배정
+  function randomAssign() {
+    if (!scrim || participantPlayers.length < 2) return;
+    const shuffled = [...participantPlayers].sort(() => Math.random() - 0.5);
+    const half = Math.ceil(shuffled.length / 2);
+    const next = scrim.players.map((p) => {
+      const idxA = shuffled.slice(0, half).findIndex((x) => x.id === p.id);
+      const idxB = shuffled.slice(half).findIndex((x) => x.id === p.id);
+      if (idxA >= 0) return { ...p, team: "team_a", role: idxA === 0 ? "captain" : "member" };
+      if (idxB >= 0) return { ...p, team: "team_b", role: idxB === 0 ? "captain" : "member" };
+      return p;
+    });
+    setScrim({ ...scrim, players: next });
+    void patchScrim({ players: next, silent: true });
+  }
+
+  // 티어 기반 밸런스 배정
+  function balanceAssign() {
+    if (!scrim || participantPlayers.length < 2) return;
+    const TIER_ORDER = ["Radiant", "Immortal 3", "Immortal 2", "Immortal 1", "Ascendant 3", "Ascendant 2", "Ascendant 1", "Diamond 3", "Diamond 2", "Diamond 1", "Platinum 3", "Platinum 2", "Platinum 1", "Gold 3", "Gold 2", "Gold 1", "Silver 3", "Silver 2", "Silver 1", "Bronze 3", "Bronze 2", "Bronze 1", "Iron 3", "Iron 2", "Iron 1"];
+    const sorted = [...participantPlayers].sort((a, b) => {
+      const ta = a.user.riotAccounts[0]?.cachedTierName ?? "";
+      const tb = b.user.riotAccounts[0]?.cachedTierName ?? "";
+      return (TIER_ORDER.indexOf(ta) === -1 ? 999 : TIER_ORDER.indexOf(ta)) - (TIER_ORDER.indexOf(tb) === -1 ? 999 : TIER_ORDER.indexOf(tb));
+    });
+    // 지그재그 방식으로 배분 (1위 팀A, 2위 팀B, 3위 팀B, 4위 팀A ...)
+    const teamA: ScrimPlayer[] = [], teamB: ScrimPlayer[] = [];
+    sorted.forEach((p, i) => {
+      const cycle = Math.floor(i / 2);
+      if (cycle % 2 === 0) { (i % 2 === 0 ? teamA : teamB).push(p); }
+      else { (i % 2 === 0 ? teamB : teamA).push(p); }
+    });
+    const next = scrim.players.map((p) => {
+      const idxA = teamA.findIndex((x) => x.id === p.id);
+      const idxB = teamB.findIndex((x) => x.id === p.id);
+      if (idxA >= 0) return { ...p, team: "team_a", role: idxA === 0 ? "captain" : "member" };
+      if (idxB >= 0) return { ...p, team: "team_b", role: idxB === 0 ? "captain" : "member" };
+      return p;
+    });
+    setScrim({ ...scrim, players: next });
+    void patchScrim({ players: next, silent: true });
+  }
+
+  // 참가자 제거
+  function removePlayer(playerId: string) {
+    if (!scrim) return;
+    setScrim({ ...scrim, players: scrim.players.filter((p) => p.id !== playerId) });
+    void patchScrim({ removePlayerId: playerId, silent: true });
+  }
+
+  // 상태 전환
+  function changeStatus(status: string) {
+    if (!scrim) return;
+    setScrim({ ...scrim, status });
+    void patchScrim({ status, silent: true });
+  }
+
+  // 승패 기록
+  function recordResult(winnerId: string | null) {
+    if (!scrim) return;
+    const next = { ...scrim, winnerId, status: winnerId !== null ? "done" : scrim.status };
+    setScrim(next);
+    void patchScrim({ winnerId, status: winnerId !== null ? "done" : undefined, silent: true });
+  }
+
+  // 맵 선택
+  function selectMap(map: string) {
+    if (!scrim) return;
+    setScrim({ ...scrim, map });
+    void patchScrim({ map, silent: true });
+  }
+
   return (
     <div className="mx-auto max-w-[1400px]">
+      {/* 헤더 */}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/dashboard/scrim" className="text-xs font-bold text-[#7b8a96] hover:text-white">← 내전 목록</Link>
-          <div className="mt-4 text-[10px] uppercase tracking-[0.32em] text-[#ff4655]">SCRIM WAITING ROOM</div>
+          <div className="mt-4 text-[10px] uppercase tracking-[0.32em] text-[#ff4655]">SCRIM ROOM</div>
           <div className="mt-2 flex flex-wrap items-center gap-3">
-            <h1 className="text-4xl font-black text-white">{scrim.title}</h1>
+            <h1 className="text-3xl font-black text-white">{scrim.title}</h1>
             <span className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-3 py-1 text-sm font-black text-[#ff8a95]">⚔ 일반 내전</span>
+            <span className="rounded px-3 py-1 text-sm font-black" style={{ background: `${statusInfo.color}18`, color: statusInfo.color, border: `1px solid ${statusInfo.color}50` }}>{statusInfo.label}</span>
+            {scrim.map && <span className="rounded bg-[#24313c] px-3 py-1 text-sm font-black text-[#c8d3db]">🗺 {scrim.map}</span>}
           </div>
           <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
         </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={addTeam} disabled={saving} className="val-btn border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50">팀 추가</button>
-          <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={randomAssign} disabled={saving || participantPlayers.length < 2} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40" title="참가자를 랜덤으로 두 팀에 배분">🎲 랜덤 배정</button>
+          <button type="button" onClick={balanceAssign} disabled={saving || participantPlayers.length < 2} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40" title="티어 기반 밸런스 배정">⚖️ 밸런스</button>
+          <button type="button" onClick={addTeam} disabled={saving} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-50">팀 추가</button>
+          <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn bg-[#ff4655] px-3 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
         </div>
       </div>
+
       {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
-      <section className="mb-5 grid gap-3 md:grid-cols-3">
+
+      {/* 상태 제어 바 */}
+      <section className="val-card mb-5 p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div>
+            <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">내전 상태</div>
+            <div className="flex gap-2">
+              {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                <button key={k} type="button" onClick={() => changeStatus(k)}
+                  className={`rounded px-3 py-1.5 text-xs font-black transition-colors ${scrim.status === k ? "text-black" : "border border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3] hover:border-[#ff4655]/40"}`}
+                  style={scrim.status === k ? { background: v.color } : {}}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="h-8 w-px bg-[#2a3540]" />
+          <div>
+            <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">맵</div>
+            <div className="flex flex-wrap gap-1.5">
+              {VALORANT_MAPS.map((m) => (
+                <button key={m} type="button" onClick={() => selectMap(scrim.map === m ? "" : m)}
+                  className={`rounded px-2.5 py-1 text-xs font-bold transition-colors ${scrim.map === m ? "bg-[#ff4655] text-white" : "border border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3] hover:border-[#ff4655]/40"}`}>
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="h-8 w-px bg-[#2a3540]" />
+          <div>
+            <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">승패 기록</div>
+            <div className="flex gap-2">
+              {[
+                { id: "team_a", label: `${teamNames.team_a ?? "TEAM A"} 승리`, color: TEAM_COLORS[0] },
+                { id: "team_b", label: `${teamNames.team_b ?? "TEAM B"} 승리`, color: TEAM_COLORS[1] },
+                { id: "draw", label: "무승부", color: "#7b8a96" },
+              ].map((opt) => (
+                <button key={opt.id} type="button" onClick={() => recordResult(scrim.winnerId === opt.id ? null : opt.id)}
+                  className={`rounded px-3 py-1.5 text-xs font-black transition-colors ${scrim.winnerId === opt.id ? "text-black" : "border border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3] hover:border-[#ff4655]/40"}`}
+                  style={scrim.winnerId === opt.id ? { background: opt.color } : {}}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 통계 카드 */}
+      <section className="mb-5 grid gap-3 sm:grid-cols-2 md:grid-cols-4">
         <StatCard label="참가자" value={`${scrim.players.length}`} suffix="명" />
         <StatCard label="팀장" value={`${captainCount}`} suffix="명" />
         <StatCard label="팀원" value={`${memberCount}`} suffix="명" />
+        <StatCard label="대기" value={`${participantPlayers.length}`} suffix="명" />
       </section>
+
       {scrim.description && (
         <section className="val-card mb-5 p-5">
           <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">Description</div>
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#c8d3db]">{scrim.description}</p>
         </section>
       )}
+
       <div className="grid gap-5 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
         <aside className="space-y-4">
           <TeamCaptainRail teamIds={teamIds} teamNames={teamNames} players={scrim.players} onDrop={(pId, tId) => movePlayer(pId, tId, "captain")} onRename={updateTeamName} />
@@ -266,7 +430,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
         <main className="space-y-5">
           <DropArea title={`참가자 목록 (${participantPlayers.length}명)`} subtitle="드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {participantPlayers.map((p) => <PlayerCard key={p.id} player={p} compact />)}
+              {participantPlayers.map((p) => <PlayerCard key={p.id} player={p} compact onRemove={() => removePlayer(p.id)} />)}
               {participantPlayers.length === 0 && <EmptyState text="대기 중인 참가자가 없습니다." />}
             </div>
           </DropArea>
@@ -274,9 +438,14 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
             {teamIds.map((tId, i) => {
               const captain = scrim.players.find((p) => p.team === tId && p.role === "captain");
               const members = scrim.players.filter((p) => p.team === tId && p.role === "member");
-              return <TeamBoard key={tId} teamId={tId} name={teamNames[tId] ?? getDefaultTeamName(i)} color={TEAM_COLORS[i % TEAM_COLORS.length]} captain={captain} members={members} onDropCaptain={(pId) => movePlayer(pId, tId, "captain")} onDropMember={(pId) => movePlayer(pId, tId, "member")} onRename={(n) => updateTeamName(tId, n)} />;
+              return <TeamBoard key={tId} teamId={tId} name={teamNames[tId] ?? getDefaultTeamName(i)} color={TEAM_COLORS[i % TEAM_COLORS.length]} captain={captain} members={members} onDropCaptain={(pId) => movePlayer(pId, tId, "captain")} onDropMember={(pId) => movePlayer(pId, tId, "member")} onRename={(n) => updateTeamName(tId, n)} onRemove={removePlayer} />;
             })}
           </section>
+
+          {/* KDA 입력 패널 */}
+          {assignedPlayers.length > 0 && (
+            <KdaPanel players={assignedPlayers} teamNames={teamNames} onSave={(kdaPlayers) => void patchScrim({ kdaPlayers })} />
+          )}
         </main>
         <aside className="space-y-4">
           <ManagerPanel managerIds={managerIds} guildMembers={guildMembers} newManagerId={newManagerId} setNewManagerId={setNewManagerId} addManager={addManager} />
@@ -284,6 +453,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
             <div className="mb-2 font-black text-white">사용 방법</div>
             <p>디스코드 모집 글에 아무 이모지를 누른 멤버가 참가자 목록에 자동 등록됩니다.</p>
             <p className="mt-2">참가자 카드를 드래그해서 팀장 또는 팀원 영역에 놓으면 즉시 화면에 반영되고 저장됩니다.</p>
+            <p className="mt-2">랜덤 배정 버튼으로 참가자를 자동 배분하거나, 밸런스 버튼으로 티어 기반 균등 배분이 가능합니다.</p>
           </div>
         </aside>
       </div>
@@ -801,7 +971,7 @@ function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename }: { te
   );
 }
 
-function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void }) {
+function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename, onRemove }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void; onRemove?: (id: string) => void }) {
   return (
     <article className="val-card overflow-hidden">
       <div className="border-b border-[#2a3540] bg-[#1d2732] px-5 py-4" style={{ borderTop: `3px solid ${color}` }}>
@@ -811,10 +981,10 @@ function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDro
         </div>
       </div>
       <div className="grid gap-4 p-4">
-        <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
+        <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
         <DropAreaMini label="팀원" onDrop={onDropMember}>
           <div className="grid gap-2">
-            {members.map((p) => <PlayerCard key={p.id} player={p} />)}
+            {members.map((p) => <PlayerCard key={p.id} player={p} onRemove={onRemove ? () => onRemove(p.id) : undefined} />)}
             {members.length === 0 && <EmptyState text="팀원 배치" />}
           </div>
         </DropAreaMini>
@@ -833,7 +1003,7 @@ function DropAreaMini({ label, children, onDrop }: { label: string; children: Re
   );
 }
 
-function PlayerCard({ player, compact = false }: { player: ScrimPlayer; compact?: boolean }) {
+function PlayerCard({ player, compact = false, onRemove }: { player: ScrimPlayer; compact?: boolean; onRemove?: () => void }) {
   const riotNames = player.user.riotAccounts.map((a) => `${a.region.toUpperCase()} · ${a.gameName}#${a.tagLine}`);
   const tiers = player.user.riotAccounts.map((a) => a.cachedTierName).filter(Boolean);
   const agents = parseAgents(player.user.favoriteAgents);
@@ -846,6 +1016,11 @@ function PlayerCard({ player, compact = false }: { player: ScrimPlayer; compact?
           <div className="truncate text-sm font-black text-white">{player.user.name ?? "이름 없음"}</div>
           <div className="truncate text-[11px] text-[#7b8a96]">{riotNames.join(" · ") || "Riot 계정 미연동"}</div>
         </div>
+        {onRemove && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(); }} className="ml-1 flex-shrink-0 rounded p-1 text-[#7b8a96] hover:bg-[#ff4655]/20 hover:text-[#ff4655]" title="참가자 제거">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        )}
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
         {tiers.slice(0, 2).map((t) => <span key={t} className="rounded bg-[#ff4655]/12 px-2 py-0.5 font-bold text-[#ff8a95]">{t}</span>)}
@@ -886,5 +1061,110 @@ function ManagerPanel({ managerIds, guildMembers, newManagerId, setNewManagerId,
         <button type="button" onClick={addManager} disabled={managerIds.length >= 5} className="rounded bg-[#ff4655] px-3 py-2 text-xs font-black text-white disabled:opacity-50">추가</button>
       </div>
     </div>
+  );
+}
+
+// ─── KDA 입력 패널 ──────────────────────────────────────────────────────────────
+function KdaPanel({
+  players, teamNames, onSave,
+}: {
+  players: ScrimPlayer[];
+  teamNames: Record<string, string>;
+  onSave: (kdaPlayers: { id: string; kills: number; deaths: number; assists: number }[]) => void;
+}) {
+  const [kda, setKda] = useState<Record<string, { kills: string; deaths: string; assists: string }>>(() => {
+    const init: Record<string, { kills: string; deaths: string; assists: string }> = {};
+    players.forEach((p) => {
+      init[p.id] = {
+        kills: p.kills != null ? String(p.kills) : "",
+        deaths: p.deaths != null ? String(p.deaths) : "",
+        assists: p.assists != null ? String(p.assists) : "",
+      };
+    });
+    return init;
+  });
+  const [saved, setSaved] = useState(false);
+
+  function update(id: string, field: "kills" | "deaths" | "assists", val: string) {
+    setKda((prev) => ({ ...prev, [id]: { ...prev[id], [field]: val } }));
+    setSaved(false);
+  }
+
+  function handleSave() {
+    const result = players.map((p) => ({
+      id: p.id,
+      kills: parseInt(kda[p.id]?.kills ?? "0", 10) || 0,
+      deaths: parseInt(kda[p.id]?.deaths ?? "0", 10) || 0,
+      assists: parseInt(kda[p.id]?.assists ?? "0", 10) || 0,
+    }));
+    onSave(result);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  // 팀별로 그룹핑
+  const teams = Array.from(new Set(players.map((p) => p.team))).sort();
+
+  return (
+    <section className="val-card p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-black text-white">KDA 기록</div>
+          <p className="mt-0.5 text-[11px] font-bold text-[#7b8a96]">팀 배치 완료 후 각 플레이어의 킬/데스/어시스트를 입력하세요.</p>
+        </div>
+        <button
+          type="button" onClick={handleSave}
+          className={`rounded px-4 py-2 text-xs font-black transition-colors ${saved ? "bg-[#00e7c2] text-black" : "bg-[#ff4655] text-white hover:bg-[#e03040]"}`}>
+          {saved ? "저장됨 ✓" : "KDA 저장"}
+        </button>
+      </div>
+      <div className="space-y-4">
+        {teams.map((tId, ti) => {
+          const teamPlayers = players.filter((p) => p.team === tId);
+          const color = TEAM_COLORS[ti % TEAM_COLORS.length];
+          return (
+            <div key={tId}>
+              <div className="mb-2 text-[11px] font-black uppercase tracking-[0.12em]" style={{ color }}>{teamNames[tId] ?? getDefaultTeamName(ti)}</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-[#2a3540]">
+                      <th className="pb-2 text-left font-black text-[#7b8a96]">플레이어</th>
+                      <th className="pb-2 w-20 text-center font-black text-[#7b8a96]">K</th>
+                      <th className="pb-2 w-20 text-center font-black text-[#7b8a96]">D</th>
+                      <th className="pb-2 w-20 text-center font-black text-[#7b8a96]">A</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1d2732]">
+                    {teamPlayers.map((p) => (
+                      <tr key={p.id}>
+                        <td className="py-2 pr-3">
+                          <div className="flex items-center gap-2">
+                            {p.user.image ? <img src={p.user.image} alt="" className="h-6 w-6 rounded-full object-cover" /> : <div className="h-6 w-6 rounded-full bg-[#24313c]" />}
+                            <span className="font-bold text-white truncate max-w-[120px]">{p.user.name ?? "이름 없음"}</span>
+                            {p.role === "captain" && <span className="rounded bg-[#f6c945]/15 px-1.5 py-0.5 text-[10px] font-black text-[#f6c945]">C</span>}
+                          </div>
+                        </td>
+                        {(["kills", "deaths", "assists"] as const).map((field) => (
+                          <td key={field} className="py-2 px-1">
+                            <input
+                              type="number" min={0} max={99}
+                              value={kda[p.id]?.[field] ?? ""}
+                              onChange={(e) => update(p.id, field, e.target.value)}
+                              className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-2 py-1 text-center font-black text-white outline-none focus:border-[#ff4655]"
+                              placeholder="0"
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }

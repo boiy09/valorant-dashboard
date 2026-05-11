@@ -1620,7 +1620,9 @@ function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDro
         </div>
       </div>
       <div className="grid gap-4 p-4">
-        <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
+        {onDropCaptain && (
+          <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
+        )}
         <DropAreaMini label="팀원" onDrop={onDropMember}>
           <div className="grid gap-2">
             {members.map((p) => <PlayerCard key={p.id} player={p} onRemove={onRemove ? () => onRemove(p.id) : undefined} />)}
@@ -1633,9 +1635,16 @@ function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDro
   );
 }
 
-function DropAreaMini({ label, children, onDrop }: { label: string; children: React.ReactNode; onDrop: (id: string) => void }) {
+function DropAreaMini({ label, children, onDrop }: { label: string; children: React.ReactNode; onDrop?: (id: string) => void }) {
   return (
-    <div className="rounded border border-dashed border-[#33414e] bg-[#0b141c]/60 p-3" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDrop(id); }}>
+    <div className="rounded border border-dashed border-[#33414e] bg-[#0b141c]/60 p-3" 
+      onDragOver={(e) => onDrop ? e.preventDefault() : undefined} 
+      onDrop={(e) => { 
+        if (!onDrop) return;
+        e.preventDefault(); 
+        const id = e.dataTransfer.getData("text/plain"); 
+        if (id) onDrop(id); 
+      }}>
       <div className="mb-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#7b8a96]">{label}</div>
       {children}
     </div>

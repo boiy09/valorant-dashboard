@@ -85,6 +85,204 @@ interface AuctionState {
   failedQueue: string; // JSON: userId[]
 }
 
+// ─── 전적탭 동일 헬퍼 함수 ────────────────────────────────────────────────────
+function tierColor(tierId: number) {
+  if (tierId >= 24) return "text-[#ff4655]";
+  if (tierId >= 21) return "text-[#f0b429]";
+  if (tierId >= 18) return "text-[#a855f7]";
+  if (tierId >= 15) return "text-[#3b82f6]";
+  if (tierId >= 12) return "text-[#4ade80]";
+  if (tierId >= 9) return "text-orange-400";
+  if (tierId >= 6) return "text-amber-600";
+  if (tierId >= 3) return "text-zinc-400";
+  return "text-[#7b8a96]";
+}
+
+function normalizeTierNameLocal(name: string | null | undefined, tierId?: number): string {
+  if (tierId && tierId > 0) {
+    const map: Record<number, string> = {
+      0: "언랭크", 1: "아이언 1", 2: "아이언 2", 3: "아이언 3",
+      4: "브론즈 1", 5: "브론즈 2", 6: "브론즈 3",
+      7: "실버 1", 8: "실버 2", 9: "실버 3",
+      10: "골드 1", 11: "골드 2", 12: "골드 3",
+      13: "플래티넘 1", 14: "플래티넘 2", 15: "플래티넘 3",
+      16: "다이아몬드 1", 17: "다이아몬드 2", 18: "다이아몬드 3",
+      19: "어센던트 1", 20: "어센던트 2", 21: "어센던트 3",
+      22: "이모탈 1", 23: "이모탈 2", 24: "이모탈 3",
+      25: "레디언트",
+    };
+    if (map[tierId]) return map[tierId];
+  }
+  if (!name) return "언랭크";
+  return name;
+}
+
+type RoundWinType = "defuse" | "spike" | "time" | "surrender" | "elimination";
+function roundWinType(result: string, ceremony?: string): RoundWinType {
+  const text = `${result} ${ceremony ?? ""}`.toLowerCase();
+  if (text.includes("defus")) return "defuse";
+  if (text.includes("deton") || text.includes("explode") || text.includes("spike") || text.includes("bomb")) return "spike";
+  if (text.includes("time") || text.includes("timeout")) return "time";
+  if (text.includes("surrender") || text.includes("forfeit")) return "surrender";
+  return "elimination";
+}
+function roundWinLabel(type: RoundWinType) {
+  if (type === "defuse") return "스파이크 해체";
+  if (type === "spike") return "스파이크 폭발";
+  if (type === "time") return "시간 승리";
+  if (type === "surrender") return "항복";
+  return "전멸";
+}
+function RoundResultIcon({ type }: { type: RoundWinType }) {
+  if (type === "spike") return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <path fill="currentColor" d="M12 2 6.8 8.4l2.1 2.2L12 6.8l3.1 3.8 2.1-2.2L12 2Z" />
+      <path fill="currentColor" d="M8.4 11.3h7.2l1.1 7.7L12 22l-4.7-3 1.1-7.7Zm2.5 2.1-.5 4.4 1.6 1 1.6-1-.5-4.4h-2.2Z" />
+    </svg>
+  );
+  if (type === "defuse") return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <path fill="currentColor" d="M12 2 7 8.2l2.1 2.1L12 6.8l2.9 3.5L17 8.2 12 2Z" opacity="0.55" />
+      <path fill="currentColor" d="M6.2 11.5h11.6v2.1H6.2v-2.1Zm2 4h7.6v2.1H8.2v-2.1Z" />
+      <path fill="currentColor" d="M18.9 4.3 21 6.4 7.1 20.3 5 18.2 18.9 4.3Z" />
+    </svg>
+  );
+  if (type === "time") return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <path fill="currentColor" d="M7 2h10v5.2L13.8 12l3.2 4.8V22H7v-5.2l3.2-4.8L7 7.2V2Zm2.5 2.4v2.1l2.5 3.7 2.5-3.7V4.4h-5Zm2.5 9.4-2.5 3.7v2.1h5v-2.1L12 13.8Z" />
+    </svg>
+  );
+  if (type === "surrender") return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <path fill="currentColor" d="M5 3h2.4v18H5V3Zm4 1.5h9.5l-2.3 4L18.5 12H9V4.5Z" />
+    </svg>
+  );
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <path fill="currentColor" d="M4.7 3.2 2.8 5.1l5.8 5.8-4 4v3.5h3.5l4-4 6 6 1.9-1.9L4.7 3.2Z" />
+      <path fill="currentColor" d="m19.3 3.2 1.9 1.9-5.8 5.8 4 4v3.5h-3.5L2.8 5.1l1.9-1.9 11.2 11.2 1.7-1.7-4-4 5.7-5.5Z" />
+    </svg>
+  );
+}
+
+function ScrimScoreboardPortrait({ cardIcon, agentIcon, agent, level }: { cardIcon?: string; agentIcon?: string; agent?: string; level?: number | null }) {
+  return (
+    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-[#2a3540] ring-1 ring-white/10">
+      {cardIcon ? (
+        <>
+          <img src={cardIcon} alt={agent} className="h-full w-full object-cover object-top" />
+          <div className="absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/80 to-transparent" />
+        </>
+      ) : agentIcon ? (
+        <img src={agentIcon} alt={agent} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center">
+          <svg viewBox="0 0 24 24" className="h-6 w-6 text-[#7b8a96]" aria-hidden="true">
+            <path fill="currentColor" d="M12 12.4a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2.1c-4.2 0-7.5 2.1-7.5 4.6V21h15v-1.9c0-2.5-3.3-4.6-7.5-4.6Z" />
+          </svg>
+        </div>
+      )}
+      {level != null && (
+        <span className="absolute bottom-0 left-0 rounded-tr bg-black/80 px-1 text-[9px] font-bold text-white">{level}</span>
+      )}
+    </div>
+  );
+}
+
+function ScrimScoreboardTable({
+  players, label, accent,
+}: {
+  players: Array<{ userId: string; name: string; tag?: string; kills: number; deaths: number; assists: number; acs: number; plusMinus: number; kd: number; hsPercent: number; adr: number | null; tierId: number; tierName: string; tierIcon?: string; agentPortrait?: string; agentCard?: string; agentName?: string; agent?: string; level?: number | null }>;
+  label: string;
+  accent: "green" | "red";
+}) {
+  const sorted = [...players].sort((a, b) => b.acs - a.acs);
+  const headerClass = accent === "green" ? "bg-[#0f5b50] text-[#58ffd8]" : "bg-[#5a1f32] text-[#ff5f75]";
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[760px] table-fixed text-xs">
+        <colgroup>
+          <col className="w-[190px]" />
+          <col className="w-[120px]" />
+          <col className="w-[70px]" />
+          <col className="w-[54px]" />
+          <col className="w-[54px]" />
+          <col className="w-[54px]" />
+          <col className="w-[66px]" />
+          <col className="w-[66px]" />
+          <col className="w-[66px]" />
+          <col className="w-[66px]" />
+        </colgroup>
+        <thead>
+          <tr className={headerClass}>
+            <th className="py-2 pl-3 text-left font-bold">{label}</th>
+            <th className="px-2 py-2 text-left font-medium">Match Rank</th>
+            <th className="px-2 py-2 text-center font-medium">ACS</th>
+            <th className="px-2 py-2 text-center font-medium">K</th>
+            <th className="px-2 py-2 text-center font-medium">D</th>
+            <th className="px-2 py-2 text-center font-medium">A</th>
+            <th className="px-2 py-2 text-center font-medium">+/-</th>
+            <th className="px-2 py-2 text-center font-medium">K/D</th>
+            <th className="px-2 py-2 text-center font-medium">HS%</th>
+            <th className="px-2 py-2 text-center font-medium">ADR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((player, index) => (
+            <tr key={player.userId}
+              className={`border-b border-[#0e1821] ${
+                index % 2 === 0 ? "bg-[#101c26]" : "bg-[#192633]"
+              }`}>
+              <td className="py-2 pl-3">
+                <div className="flex items-center gap-2">
+                  <ScrimScoreboardPortrait
+                    cardIcon={player.agentCard}
+                    agentIcon={player.agentPortrait}
+                    agent={player.agentName ?? player.agent}
+                    level={player.level}
+                  />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1">
+                      <span className="truncate text-sm font-black text-white">{player.name}</span>
+                      {player.tag && <span className="rounded bg-[#263544] px-1 text-[10px] text-[#b8c6d1]">#{player.tag}</span>}
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px]">
+                      {player.agentPortrait && <img src={player.agentPortrait} alt={player.agentName ?? player.agent} className="h-3 w-3 rounded object-cover" />}
+                      <span className="truncate text-[#8da0ad]">{player.agentName ?? player.agent}</span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td className="px-2 py-2">
+                <div className="flex items-center gap-1.5">
+                  {player.tierIcon ? (
+                    <img src={player.tierIcon} alt={player.tierName} className="h-6 w-6 object-contain" />
+                  ) : (
+                    <div className="h-6 w-6 rounded-full bg-[#2a3540]" />
+                  )}
+                  <span className={`truncate text-[11px] font-bold ${tierColor(player.tierId)}`}>{normalizeTierNameLocal(player.tierName, player.tierId)}</span>
+                </div>
+              </td>
+              <td className="bg-[#24384a] px-2 py-2 text-center text-base font-black text-white">{player.acs}</td>
+              <td className="px-2 py-2 text-center text-base font-bold text-white">{player.kills}</td>
+              <td className="px-2 py-2 text-center text-base font-bold text-[#ff4655]">{player.deaths}</td>
+              <td className="px-2 py-2 text-center text-base font-bold text-white">{player.assists}</td>
+              <td className={`px-2 py-2 text-center text-base font-black ${
+                player.plusMinus > 0 ? "text-green-400" : player.plusMinus < 0 ? "text-[#ff4655]" : "text-[#8da0ad]"
+              }`}>{player.plusMinus > 0 ? `+${player.plusMinus}` : player.plusMinus}</td>
+              <td className={`px-2 py-2 text-center text-base font-black ${
+                player.kd >= 1 ? "text-green-400" : "text-[#ff4655]"
+              }`}>{player.kd.toFixed(1)}</td>
+              <td className="px-2 py-2 text-center font-bold text-white">{player.hsPercent}%</td>
+              <td className="px-2 py-2 text-center font-bold text-white">{player.adr ?? "--"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── 상수 ──────────────────────────────────────────────────────────────────────
 const ROLE_LABELS: Record<string, string> = {
   Duelist: "타격대", Initiator: "척후대", Controller: "전략가", Sentinel: "감시자",
@@ -625,185 +823,146 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                         )}
                       </div>
 
-                      {/* 매치 연동 시: 전적탭 스타일 KDA 표시 */}
+                      {/* 매치 연동 시: 전적탭 MatchDetailScoreboard와 동일한 UI */}
                       {game.matchId && kdaData.length > 0 ? (
                         <div>
-                          {/* 경기 헤더: 맵 + 스코어 */}
+                          {/* 헤더: 맵 + 스코어 (전적탭 bg-[#2a4054] 스타일) */}
                           {(() => {
-                            const blueRoundsH = kdaData.find(k => k.team === "Blue")?.teamRoundsWon ?? 0;
-                            const redRoundsH = kdaData.find(k => k.team === "Red")?.teamRoundsWon ?? 0;
-                            const winnerColor = blueRoundsH > redRoundsH ? "Blue" : redRoundsH > blueRoundsH ? "Red" : null;
+                            const blueRounds = kdaData.find(k => k.team === "Blue")?.teamRoundsWon ?? 0;
+                            const redRounds = kdaData.find(k => k.team === "Red")?.teamRoundsWon ?? 0;
                             return (
-                              <div className="mb-4 rounded border border-[#2a3540] bg-[#0f1923] p-3">
-                                <div className="flex items-center justify-between">
+                              <div className="bg-[#2a4054] px-4 py-3 mb-0">
+                                <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
                                   <div>
-                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">{game.map ?? ""}</div>
-                                    <div className="mt-1 flex items-center gap-3">
-                                      {(blueRoundsH > 0 || redRoundsH > 0) ? (
-                                        <>
-                                          <span className="text-lg font-black" style={{ color: winnerColor === "Blue" ? "#00e7c2" : "#7b8a96" }}>{blueRoundsH}</span>
-                                          <span className="text-xs text-[#7b8a96]">:</span>
-                                          <span className="text-lg font-black" style={{ color: winnerColor === "Red" ? "#ff4655" : "#7b8a96" }}>{redRoundsH}</span>
-                                          {winnerColor && (
-                                            <span className="text-xs font-black" style={{ color: winnerColor === "Blue" ? "#00e7c2" : "#ff4655" }}>
-                                              {winnerColor === "Blue" ? "TEAM A" : "TEAM B"} 승리
-                                            </span>
-                                          )}
-                                        </>
-                                      ) : game.winnerId ? (
-                                        <span className="text-sm font-black" style={{ color: game.winnerId === "Blue" ? "#00e7c2" : "#ff4655" }}>
-                                          {game.winnerId === "Blue" ? "TEAM A" : "TEAM B"} 승리
-                                        </span>
-                                      ) : null}
-                                    </div>
+                                    <div className="text-[11px] font-bold text-[#9fb0be]">{game.map ?? ""}</div>
                                   </div>
-                                  <span className="text-[10px] text-[#00e7c2]">✓ 매치 연동됨</span>
+                                  <div className="flex items-end gap-3 text-lg font-black">
+                                    <span className="text-[#58ffd8]">Team A</span>
+                                    <span className="text-[#58ffd8]">{blueRounds}</span>
+                                    <span className="text-white">:</span>
+                                    <span className="text-[#ff5f75]">{redRounds}</span>
+                                    <span className="text-[#ff5f75]">Team B</span>
+                                  </div>
                                 </div>
                               </div>
                             );
                           })()}
-                          {/* 라운드 타임라인 */}
+                          {/* Scoreboard 탭 헤더 (전적탭 동일) */}
+                          <div className="border-b border-[#0e1821] bg-[#2a4054] text-sm font-bold text-white mb-0">
+                            <div className="inline-flex min-w-[140px] justify-center border-b-2 border-[#ff4655] py-3">Scoreboard</div>
+                          </div>
+                          {/* 라운드 타임라인 (전적탭 bg-[#07131e] 스타일) */}
                           {(() => {
                             const roundData = parseJson<Array<{ round: number; result: string; winner: string; plant: boolean; defuse: boolean }>>(game.roundResults, []);
                             if (roundData.length === 0) return null;
-                            // 결과 아이콘 SVG (발로란트 스타일)
-                            const RoundIcon = ({ result, winner, teamColor }: { result: string; winner: string; teamColor: string }) => {
-                              const isWin = winner === teamColor;
-                              const color = isWin ? (teamColor === "Blue" ? "#00e7c2" : "#ff4655") : "#3a4a56";
-                              // Elimination=전멸(X), Bomb=스파이크폭발(●), Defuse=해제(◆), Detonate=폭발(●), Time=시간(⏱)
-                              if (!isWin) return <span style={{ color: "#3a4a56", fontSize: 10 }}>✕</span>;
-                              if (result === "Bomb" || result === "Detonate") return <span style={{ color, fontSize: 10 }}>●</span>;
-                              if (result === "Defuse") return <span style={{ color, fontSize: 10 }}>◆</span>;
-                              if (result === "Time") return <span style={{ color, fontSize: 10 }}>⏱</span>;
-                              return <span style={{ color, fontSize: 10 }}>✕</span>; // Elimination
-                            };
-                            const half1 = roundData.slice(0, 12);
-                            const half2 = roundData.slice(12);
+                            const myTeamId = "Blue"; // Blue = Team A
                             return (
-                              <div className="mb-4 rounded border border-[#2a3540] bg-[#0a1520] p-3 overflow-x-auto">
-                                {/* 팀 A (Blue) 행 */}
-                                <div className="flex items-center gap-0.5 mb-1">
-                                  <span className="text-[10px] font-black w-14 flex-shrink-0" style={{ color: "#00e7c2" }}>Team A</span>
-                                  <div className="flex gap-0.5 flex-wrap">
-                                    {half1.map((r) => (
-                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center">
-                                        <RoundIcon result={r.result} winner={r.winner} teamColor="Blue" />
-                                      </div>
-                                    ))}
-                                    {half2.length > 0 && <div className="w-px h-5 bg-[#2a3540] mx-0.5" />}
-                                    {half2.map((r) => (
-                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center">
-                                        <RoundIcon result={r.result} winner={r.winner} teamColor="Blue" />
+                              <div className="bg-[#07131e] px-3 py-4">
+                                <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
+                                  {/* Team A 행 */}
+                                  <div className="whitespace-nowrap text-right text-sm font-bold text-[#58ffd8]">Team A</div>
+                                  <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(roundData.length, 1), 26)}, minmax(0, 1fr))` }}>
+                                    {roundData.map((round) => {
+                                      const isMyRound = round.winner === myTeamId;
+                                      const type = roundWinType(round.result);
+                                      return (
+                                        <div key={`team-a-${round.round}`}
+                                          className={`flex h-5 min-w-0 items-center justify-center rounded-sm leading-none ${
+                                            isMyRound ? "text-[#58ffd8]" : "text-[#263544]"
+                                          }`}
+                                          title={`${round.round}R ${isMyRound ? roundWinLabel(type) : ""} ${round.result}`}>
+                                          {isMyRound ? <RoundResultIcon type={type} /> : <span className="text-lg font-black leading-none">·</span>}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {/* Team B 행 */}
+                                  <div className="whitespace-nowrap text-right text-sm font-bold text-[#ff5f75]">Team B</div>
+                                  <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(roundData.length, 1), 26)}, minmax(0, 1fr))` }}>
+                                    {roundData.map((round) => {
+                                      const isEnemyRound = round.winner === "Red";
+                                      const type = roundWinType(round.result);
+                                      return (
+                                        <div key={`team-b-${round.round}`}
+                                          className={`flex h-5 min-w-0 items-center justify-center rounded-sm leading-none ${
+                                            isEnemyRound ? "text-[#ff5f75]" : "text-[#263544]"
+                                          }`}
+                                          title={`${round.round}R ${isEnemyRound ? roundWinLabel(type) : ""} ${round.result}`}>
+                                          {isEnemyRound ? <RoundResultIcon type={type} /> : <span className="text-lg font-black leading-none">·</span>}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {/* 라운드 번호 행 */}
+                                  <div className="whitespace-nowrap" />
+                                  <div className="grid min-w-0 gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(roundData.length, 1), 26)}, minmax(0, 1fr))` }}>
+                                    {roundData.map((round) => (
+                                      <div key={`num-${round.round}`} className="flex h-4 min-w-0 items-center justify-center text-[9px] text-[#8da0ad]">
+                                        {round.round}
                                       </div>
                                     ))}
                                   </div>
                                 </div>
-                                {/* 라운드 번호 행 */}
-                                <div className="flex items-center gap-0.5 mb-1">
-                                  <span className="w-14 flex-shrink-0" />
-                                  <div className="flex gap-0.5 flex-wrap">
-                                    {half1.map((r) => (
-                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center text-[8px] text-[#4a5a66]">{r.round}</div>
-                                    ))}
-                                    {half2.length > 0 && <div className="w-px h-5 mx-0.5" />}
-                                    {half2.map((r) => (
-                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center text-[8px] text-[#4a5a66]">{r.round}</div>
-                                    ))}
-                                  </div>
-                                </div>
-                                {/* 팀 B (Red) 행 */}
-                                <div className="flex items-center gap-0.5">
-                                  <span className="text-[10px] font-black w-14 flex-shrink-0" style={{ color: "#ff4655" }}>Team B</span>
-                                  <div className="flex gap-0.5 flex-wrap">
-                                    {half1.map((r) => (
-                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center">
-                                        <RoundIcon result={r.result} winner={r.winner} teamColor="Red" />
-                                      </div>
-                                    ))}
-                                    {half2.length > 0 && <div className="w-px h-5 bg-[#2a3540] mx-0.5" />}
-                                    {half2.map((r) => (
-                                      <div key={r.round} className="w-5 h-5 flex items-center justify-center">
-                                        <RoundIcon result={r.result} winner={r.winner} teamColor="Red" />
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                                {/* 범례 */}
-                                <div className="mt-2 flex gap-3 text-[9px] text-[#4a5a66]">
-                                  <span>✕ 전멸</span>
-                                  <span>● 스파이크 폭발</span>
-                                  <span>◆ 스파이크 해제</span>
-                                  <span>⏱ 시간 승리</span>
+                                {/* 범례 (전적탭 동일) */}
+                                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 pl-[58px] text-[10px] text-[#6f8291]">
+                                  {(["elimination", "spike", "defuse", "time"] as const).map((type) => (
+                                    <span key={type} className="inline-flex items-center gap-1">
+                                      <RoundResultIcon type={type} />
+                                      {roundWinLabel(type)}
+                                    </span>
+                                  ))}
                                 </div>
                               </div>
                             );
                           })()}
-                          {/* 팀별 스코어보드 - 전적탭 스타일 */}
-                          {["Blue", "Red"].map((teamColor) => {
-                            const tColor = teamColor === "Blue" ? "#00e7c2" : "#ff4655";
-                            const teamLabel = teamColor === "Blue" ? "TEAM A" : "TEAM B";
-                            const teamPlayers = kdaData.filter((k) => k.team === teamColor).sort((a, b) => b.score - a.score);
-                            if (teamPlayers.length === 0) return null;
-                            // 라운드 수: teamRoundsWon 합산 또는 추정
+                          {/* 스코어보드 테이블 (전적탭 ScoreboardTable 동일) */}
+                          {(() => {
                             const blueRounds = kdaData.find(k => k.team === "Blue")?.teamRoundsWon ?? 0;
                             const redRounds = kdaData.find(k => k.team === "Red")?.teamRoundsWon ?? 0;
                             const totalRounds = (blueRounds + redRounds) > 0 ? (blueRounds + redRounds) : Math.max(13, Math.round(Math.max(...kdaData.map(k => k.score), 1) / 400));
-                            const teamRounds = teamColor === "Blue" ? blueRounds : redRounds;
+                            const blueWon = blueRounds > redRounds;
+                            // kdaData → ScrimScoreboardTable 형식으로 변환
+                            const toTablePlayers = (teamColor: string) => kdaData
+                              .filter(k => k.team === teamColor)
+                              .map(k => {
+                                const player = scrim.players.find(p => p.user.id === k.userId);
+                                const serverNick = resolveServerNick(k.userId, guildMembers, player?.user.name);
+                                const riotAcc = player?.user.riotAccounts?.[0];
+                                const tag = riotAcc?.tagLine ?? "";
+                                const acs = Math.round(k.score / Math.max(totalRounds, 1));
+                                const kd = k.deaths > 0 ? k.kills / k.deaths : k.kills;
+                                const plusMinus = k.kills - k.deaths;
+                                return {
+                                  userId: k.userId,
+                                  name: serverNick,
+                                  tag,
+                                  kills: k.kills,
+                                  deaths: k.deaths,
+                                  assists: k.assists,
+                                  acs,
+                                  plusMinus,
+                                  kd,
+                                  hsPercent: 0,
+                                  adr: null as number | null,
+                                  tierId: k.currentTier ?? 0,
+                                  tierName: k.tierName ?? "",
+                                  tierIcon: k.tierIcon,
+                                  agentPortrait: k.agentPortrait,
+                                  agentCard: k.agentCard,
+                                  agentName: k.agentName ?? k.agent,
+                                  agent: k.agent,
+                                  level: null as number | null,
+                                };
+                              });
+                            const blueLabel = `Team A · ${blueRounds}R`;
+                            const redLabel = `Team B · ${redRounds}R`;
                             return (
-                              <div key={teamColor} className="mb-4">
-                                {/* 팀 헤더 */}
-                                <div className="flex items-center px-3 py-2 rounded-t" style={{ background: `${tColor}20` }}>
-                                  <div className="text-xs font-black tracking-widest uppercase" style={{ color: tColor }}>
-                                    {teamLabel} · {teamPlayers.length}명
-                                    {teamRounds > 0 && <span className="ml-2 text-white">{teamRounds}라운드</span>}
-                                  </div>
-                                  <div className="ml-auto flex gap-4 text-[10px] font-black text-[#7b8a96] pr-1">
-                                    <span className="w-10 text-right">ACS</span>
-                                    <span className="w-6 text-right">K</span>
-                                    <span className="w-6 text-right">D</span>
-                                    <span className="w-6 text-right">A</span>
-                                  </div>
-                                </div>
-                                {/* 플레이어 행 */}
-                                <div className="divide-y divide-[#1d2732] rounded-b border border-t-0" style={{ borderColor: `${tColor}30` }}>
-                                  {teamPlayers.map((k) => {
-                                    const player = scrim.players.find((p) => p.user.id === k.userId);
-                                    const serverNick = resolveServerNick(k.userId, guildMembers, player?.user.name);
-                                    const riotAcc = player?.user.riotAccounts?.[0];
-                                    const inGameNick = riotAcc ? `${riotAcc.gameName}#${riotAcc.tagLine}` : k.name;
-                                    const acs = Math.round(k.score / Math.max(totalRounds, 1));
-                                    return (
-                                      <div key={k.userId} className="flex items-center gap-2 px-3 py-2.5 bg-[#0a1520] hover:bg-[#0f1e2c] transition-colors">
-                                        {/* 에이전트 초상화 */}
-                                        <div className="w-10 h-10 rounded overflow-hidden bg-[#1d2732] flex items-center justify-center flex-shrink-0">
-                                          {k.agentPortrait ? (
-                                            <img src={k.agentPortrait} alt={k.agentName ?? k.agent} className="w-full h-full object-cover object-top" />
-                                          ) : (
-                                            <span className="text-[11px] font-black text-[#9aa8b3]">{k.agent ? k.agent.slice(0, 4) : "?"}</span>
-                                          )}
-                                        </div>
-                                        {/* 닉네임 + 티어 */}
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-1.5">
-                                            {k.tierIcon && <img src={k.tierIcon} alt={k.tierName ?? ""} className="w-4 h-4 flex-shrink-0" />}
-                                            <span className="font-black text-white text-sm truncate">{serverNick}</span>
-                                          </div>
-                                          <div className="text-[11px] text-[#7b8a96] truncate">{inGameNick}</div>
-                                        </div>
-                                        {/* ACS / K / D / A */}
-                                        <div className="flex gap-4 text-sm flex-shrink-0 pr-1">
-                                          <span className="w-10 text-right font-black text-white">{acs}</span>
-                                          <span className="w-6 text-right font-black text-[#00e7c2]">{k.kills}</span>
-                                          <span className="w-6 text-right font-black text-[#ff4655]">{k.deaths}</span>
-                                          <span className="w-6 text-right font-bold text-[#9aa8b3]">{k.assists}</span>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
+                              <>
+                                <ScrimScoreboardTable players={toTablePlayers("Blue")} label={blueLabel} accent={blueWon ? "green" : "red"} />
+                                <ScrimScoreboardTable players={toTablePlayers("Red")} label={redLabel} accent={blueWon ? "red" : "green"} />
+                              </>
                             );
-                          })}
+                          })()}
                         </div>
                       ) : (
                         /* 미연동 시: 기존 팀 구성 스냅샷 + KDA 입력 */

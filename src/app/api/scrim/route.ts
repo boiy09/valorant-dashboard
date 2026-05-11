@@ -213,10 +213,60 @@ export async function GET(req: NextRequest) {
       ...player,
       kd: calculateKd(player.kills, player.deaths),
     }))
-    .sort((a, b) => b.kd - a.kd || b.kills - a.kills)
-    .slice(0, 20);
+    .sort((a, b) => b.kd - a.kd || b.kills - a.kills);
 
-  return Response.json({ sessions, kdRanking });
+  // Fetch user details for Discord nicknames and tier info
+  const userIds = kdRanking.map(p => p.userId);
+  const usersWithDetails = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: {
+      id: true,
+      name: true, // Discord nickname
+      riotAccounts: {
+        select: {
+          cachedTierName: true,
+        },
+      },
+    },
+  });
+
+  const userDetailsMap = new Map(usersWithDetails.map(u => [u.id, u]));
+
+  // Function to get tier icon URL based on tier name
+  function getTierIconUrl(tierName: string | null): string | null {
+    if (!tierName) return "/images/tiers/unranked.png";
+    const tierIcons: { [key: string]: string } = {
+      "아이언": "/images/tiers/iron.png",
+      "브론즈": "/images/tiers/bronze.png",
+      "실버": "/images/tiers/silver.png",
+      "골드": "/images/tiers/gold.png",
+      "플래티넘": "/images/tiers/platinum.png",
+      "다이아몬드": "/images/tiers/diamond.png",
+      "초월자": "/images/tiers/ascendant.png",
+      "불멸": "/images/tiers/immortal.png",
+      "레디언트": "/images/tiers/radiant.png",
+      "언랭크": "/images/tiers/unranked.png",
+    };
+    for (const [key, url] of Object.entries(tierIcons)) {
+      if (tierName && tierName.includes(key)) return url;
+    }
+    return "/images/tiers/unranked.png";
+  }
+
+  const finalKdRanking = kdRanking.slice(0, 20).map(player => {
+    const userDetail = userDetailsMap.get(player.userId);
+    const tierName = userDetail?.riotAccounts?.[0]?.cachedTierName || "언랭크";
+    const tierIconUrl = getTierIconUrl(tierName);
+
+    return {
+      ...player,
+      name: userDetail?.name || player.name, // Use Discord nickname if available
+      tierName,
+      tierIconUrl,
+    };
+  });
+
+  return Response.json({ sessions, kdRanking: finalKdRanking });
 }
 
 export async function POST(req: NextRequest) {

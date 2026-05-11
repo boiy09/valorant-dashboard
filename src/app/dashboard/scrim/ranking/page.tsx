@@ -1,184 +1,169 @@
-"use client";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 
-import { useEffect, useState, useMemo } from "react";
-import { useSession } from "next-auth/react";
-
-interface RankingItem {
+interface KdRankingPlayer {
   userId: string;
-  name: string;
+  name: string | null;
   image: string | null;
   kills: number;
   deaths: number;
   assists: number;
-  gamesPlayed: number;
-  tier: string;
+  matches: number;
   kd: number;
+  tierName: string;
+  tierIconUrl: string | null;
   rank: number;
 }
 
 export default function ScrimRankingPage() {
-  const { data: session } = useSession();
-  const [ranking, setRanking] = useState<RankingItem[]>([]);
-  const [myRank, setMyRank] = useState<RankingItem | null>(null);
+  const [kdRanking, setKdRanking] = useState<KdRankingPlayer[]>([]);
+  const [myRank, setMyRank] = useState<KdRankingPlayer | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tierFilter, setTierFilter] = useState<string>("");
-
-  const tiers = ["아이언", "브론즈", "실버", "골드", "플래티넘", "다이아몬드", "초월자", "불멸", "레디언트"];
+  const [selectedTier, setSelectedTier] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchRanking() {
       setLoading(true);
-      try {
-        const url = new URL("/api/scrim/ranking", window.location.origin);
-        if (tierFilter) url.searchParams.set("tier", tierFilter);
-        
-        const res = await fetch(url.toString());
-        const data = await res.json();
-        setRanking(data.ranking || []);
-        setMyRank(data.myRank || null);
-      } catch (e) {
-        console.error("Failed to fetch ranking", e);
-      } finally {
-        setLoading(false);
-      }
+      const query = selectedTier ? `?tier=${selectedTier}` : "";
+      const response = await fetch(`/api/scrim/ranking${query}`, { cache: "no-store" });
+      const data = await response.json();
+      setKdRanking(data.ranking);
+      setMyRank(data.myRank);
+      setLoading(false);
     }
     fetchRanking();
-  }, [tierFilter]);
+  }, [selectedTier]);
 
-  if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="text-[#ff4655] animate-pulse font-black">RANKING LOADING...</div>
-      </div>
-    );
-  }
+  const tiers = [
+    "아이언", "브론즈", "실버", "골드", "플래티넘", "다이아몬드",
+    "초월자", "불멸", "레디언트", "언랭크"
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* 헤더 및 필터 */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-white uppercase tracking-tighter italic">Scrim Leaderboard</h1>
-          <p className="text-sm text-[#7b8a96]">내전 모든 경기의 K/D 기반 랭킹입니다.</p>
+          <div className="mb-0.5 text-[10px] uppercase tracking-[0.2em] text-[#ff4655]">
+            VALORANT DASHBOARD
+          </div>
+          <h1 className="text-2xl font-black text-white">내전 KD 랭킹</h1>
+          <p className="mt-0.5 text-sm text-[#7b8a96]">
+            기록된 내전 매치의 킬/데스 기준 랭킹입니다.
+          </p>
         </div>
-        
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-[#7b8a96] uppercase">Tier Filter:</span>
-          <select 
-            value={tierFilter} 
-            onChange={(e) => setTierFilter(e.target.value)}
-            className="rounded border border-[#2a3540] bg-[#0f1923] px-3 py-1.5 text-xs font-bold text-[#ece8e1] outline-none focus:border-[#ff4655]/50"
-          >
-            <option value="">전체 티어</option>
-            {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
+        <div className="flex gap-2">
+          <Link href="/dashboard/scrim" className="val-btn border border-[#2a3540] bg-[#0f1923] px-4 py-2 text-xs font-black text-[#c8d3db] hover:border-[#ff4655]/50 hover:text-white">
+            내전 목록
+          </Link>
         </div>
       </div>
 
-      {/* 내 순위 고정 표시 */}
-      {myRank && (
-        <div className="val-card border-l-4 border-l-[#ff4655] bg-[#ff4655]/5 p-4">
-          <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-[#ff4655]">My Standing</div>
-          <RankingRow item={myRank} isMe={true} />
-        </div>
-      )}
-
-      {/* 랭킹 리스트 */}
-      <div className="val-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-[#1d2732] text-[11px] font-black uppercase tracking-wider text-[#7b8a96]">
-              <tr>
-                <th className="px-6 py-4">Rank</th>
-                <th className="px-6 py-4">Player</th>
-                <th className="px-6 py-4">Tier</th>
-                <th className="px-6 py-4 text-center">Games</th>
-                <th className="px-6 py-4 text-center">K/D</th>
-                <th className="px-6 py-4 text-right">K / D / A</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#2a3540]/50">
-              {ranking.map((item) => (
-                <tr key={item.userId} className={`transition-colors hover:bg-white/[0.02] ${item.userId === session?.user?.id ? 'bg-[#ff4655]/5' : ''}`}>
-                  <td className="px-6 py-4">
-                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-black ${
-                      item.rank === 1 ? 'bg-[#ff4655] text-white' : 
-                      item.rank === 2 ? 'bg-[#ece8e1] text-[#0f1923]' :
-                      item.rank === 3 ? 'bg-[#c49b66] text-white' : 'text-[#7b8a96]'
-                    }`}>
-                      {item.rank}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      {item.image ? (
-                        <img src={item.image} alt="" className="h-8 w-8 rounded-full border border-[#2a3540] object-cover" />
-                      ) : (
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2a3540] text-xs font-bold text-[#7b8a96]">
-                          {item.name.charAt(0)}
-                        </div>
-                      )}
-                      <span className="font-bold text-[#ece8e1]">{item.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-xs font-medium text-[#9aa8b3]">{item.tier}</span>
-                  </td>
-                  <td className="px-6 py-4 text-center font-bold text-[#ece8e1]">{item.gamesPlayed}</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className={`text-base font-black ${item.kd >= 1.2 ? 'text-[#00ffcc]' : item.kd >= 1.0 ? 'text-[#ece8e1]' : 'text-[#7b8a96]'}`}>
-                      {item.kd.toFixed(2)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right font-mono text-xs text-[#7b8a96]">
-                    <span className="text-[#ece8e1]">{item.kills}</span> / {item.deaths} / {item.assists}
-                  </td>
-                </tr>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-black uppercase tracking-[0.18em] text-[#7b8a96]">전체 랭킹</h2>
+            <select
+              value={selectedTier || "all"}
+              onChange={(e) => setSelectedTier(e.target.value === "all" ? null : e.target.value)}
+              className="rounded border border-[#2a3540] bg-[#0b141c] px-3 py-1 text-xs font-bold text-white outline-none transition-colors focus:border-[#ff4655]"
+            >
+              <option value="all">모든 티어</option>
+              {tiers.map(tier => (
+                <option key={tier} value={tier}>{tier}</option>
               ))}
-              {ranking.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-[#7b8a96]">
-                    표시할 랭킹 데이터가 없습니다.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
+            </select>
+          </div>
 
-function RankingRow({ item, isMe }: { item: RankingItem; isMe: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="flex items-center gap-4">
-        <span className="text-2xl font-black italic text-[#ff4655]">#{item.rank}</span>
-        <div className="flex items-center gap-3">
-          {item.image ? (
-            <img src={item.image} alt="" className="h-10 w-10 rounded-full border-2 border-[#ff4655]/30 object-cover" />
+          {loading ? (
+            <div className="val-card p-12 text-center text-[#7b8a96]">불러오는 중...</div>
           ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2a3540] text-sm font-bold text-[#7b8a96]">
-              {item.name.charAt(0)}
+            <div className="flex flex-col gap-2">
+              {kdRanking.length === 0 ? (
+                <div className="val-card p-12 text-center text-[#7b8a96]">랭킹 기록이 없습니다.</div>
+              ) : (
+                kdRanking.map((player, index) => {
+                  const isTop3 = index < 3;
+                  const rankClass = isTop3
+                    ? index === 0
+                      ? "bg-gradient-to-r from-yellow-500 to-yellow-300 text-black shadow-lg shadow-yellow-500/30"
+                      : index === 1
+                      ? "bg-gradient-to-r from-gray-400 to-gray-200 text-black shadow-lg shadow-gray-400/30"
+                      : "bg-gradient-to-r from-amber-700 to-amber-500 text-black shadow-lg shadow-amber-700/30"
+                    : "border border-[#2a3540] bg-[#0f1923]/70 text-white";
+
+                  return (
+                    <div
+                      key={player.userId}
+                      className={`flex items-center gap-3 rounded px-3 py-2 ${rankClass}`}
+                    >
+                      <span className="w-6 text-center text-sm font-black">{player.rank}</span>
+                      {player.image ? (
+                        <img src={player.image} alt="" className="h-8 w-8 rounded-full object-cover" />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-[#24313c]" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-black">{player.name ?? "이름 없음"}</div>
+                        <div className="flex items-center gap-1 text-[11px] text-[#7b8a96]">
+                          {player.tierIconUrl && (
+                            <img src={player.tierIconUrl} alt={player.tierName} className="h-4 w-4" />
+                          )}
+                          <span>{player.tierName}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-black">{player.kd.toFixed(2)}</div>
+                        <div className="text-[10px] text-[#7b8a96]">KD</div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
-          <div>
-            <div className="text-sm font-black text-white">{item.name} {isMe && <span className="ml-1 text-[10px] text-[#ff4655]">(ME)</span>}</div>
-            <div className="text-[10px] font-bold text-[#7b8a96]">{item.tier} · {item.gamesPlayed} Games</div>
+        </section>
+
+        <aside className="val-card h-fit p-5">
+          <div className="mb-4">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-[#ff4655]">MY STANDING</div>
+            <h2 className="mt-1 text-xl font-black text-white">내 순위</h2>
+            <p className="mt-1 text-xs text-[#7b8a96]">나의 현재 KD 랭킹입니다.</p>
           </div>
-        </div>
-      </div>
-      
-      <div className="flex items-center gap-8">
-        <div className="text-center">
-          <div className="text-[10px] font-black uppercase text-[#7b8a96]">K/D Ratio</div>
-          <div className="text-xl font-black text-[#00ffcc]">{item.kd.toFixed(2)}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-[10px] font-black uppercase text-[#7b8a96]">K / D / A</div>
-          <div className="font-mono text-sm text-[#ece8e1]">{item.kills} / {item.deaths} / {item.assists}</div>
-        </div>
+
+          {loading ? (
+            <div className="rounded border border-dashed border-[#2a3540] bg-[#0f1923]/45 px-3 py-8 text-center text-xs text-[#7b8a96]">
+              불러오는 중...
+            </div>
+          ) : myRank ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3 rounded border border-[#ff4655] bg-[#ff4655]/10 px-3 py-2">
+                <span className="w-6 text-center text-sm font-black text-white">{myRank.rank}</span>
+                {myRank.image ? (
+                  <img src={myRank.image} alt="" className="h-8 w-8 rounded-full object-cover" />
+                ) : (
+                  <div className="h-8 w-8 rounded-full bg-[#24313c]" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-black text-white">{myRank.name ?? "이름 없음"}</div>
+                  <div className="flex items-center gap-1 text-[11px] text-[#c8d3db]">
+                    {myRank.tierIconUrl && (
+                      <img src={myRank.tierIconUrl} alt={myRank.tierName} className="h-4 w-4" />
+                    )}
+                    <span>{myRank.tierName}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-black text-white">{myRank.kd.toFixed(2)}</div>
+                  <div className="text-[10px] text-[#c8d3db]">KD</div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded border border-dashed border-[#2a3540] bg-[#0f1923]/45 px-3 py-8 text-center text-xs text-[#7b8a96]">
+              내 랭킹 기록이 없습니다.
+            </div>
+          )}
+        </aside>
       </div>
     </div>
   );

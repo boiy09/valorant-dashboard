@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 
 interface ScrimPlayer {
   id: string;
@@ -254,13 +253,13 @@ export default function ScrimPage() {
           </div>
           <h1 className="text-2xl font-black text-white">내전</h1>
           <p className="mt-0.5 text-sm text-[#7b8a96]">
-            생성된 내전 목록과 내전 KD 랭킹을 확인합니다.
+            생성된 내전 목록을 확인합니다.
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/dashboard/scrim/ranking" className="val-btn border border-[#2a3540] bg-[#0f1923] px-4 py-2 text-xs font-black text-white hover:border-[#ff4655]/50">
+          <a href="/dashboard/scrim/ranking" className="val-btn border border-[#2a3540] bg-[#0f1923] px-4 py-2 text-xs font-black text-white hover:border-[#ff4655]/50">
             KD 랭킹
-          </Link>
+          </a>
           <button type="button" onClick={openCreateModal} className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white">
             내전 생성
           </button>
@@ -310,6 +309,9 @@ export default function ScrimPage() {
                           </div>
                         </div>
                         <div className="flex flex-shrink-0 items-center gap-2">
+                          <span className="rounded bg-[#ff4655]/10 px-3 py-1 text-xs font-black text-[#ff4655]">
+                            {getWinnerLabel(scrim.winnerId)}
+                          </span>
                           <a
                             href={`/dashboard/scrim/${scrim.id}`}
                             className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-1 text-xs font-black text-[#c8d3db] hover:border-[#ff4655]/50 hover:text-white"

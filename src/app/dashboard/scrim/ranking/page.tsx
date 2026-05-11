@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -13,6 +15,8 @@ interface KdRankingPlayer {
   tierName: string;
   tierIconUrl: string | null;
   rank: number;
+  region?: string;
+  regionLabel?: string;
 }
 
 export default function ScrimRankingPage() {
@@ -109,6 +113,9 @@ export default function ScrimRankingPage() {
                             <img src={player.tierIconUrl} alt={player.tierName} className="h-4 w-4" />
                           )}
                           <span>{player.tierName}</span>
+                          {player.regionLabel && (
+                            <span className="ml-1 rounded bg-[#2a3540] px-1.5 py-0.5 text-[10px] font-bold">{player.regionLabel}</span>
+                          )}
                         </div>
                       </div>
                       <div className="text-right">
@@ -150,6 +157,9 @@ export default function ScrimRankingPage() {
                       <img src={myRank.tierIconUrl} alt={myRank.tierName} className="h-4 w-4" />
                     )}
                     <span>{myRank.tierName}</span>
+                    {myRank.regionLabel && (
+                      <span className="ml-1 rounded bg-[#ff4655]/20 px-1.5 py-0.5 text-[10px] font-bold">{myRank.regionLabel}</span>
+                    )}
                   </div>
                 </div>
                 <div className="text-right">

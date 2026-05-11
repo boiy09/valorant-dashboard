@@ -12,7 +12,7 @@ interface RegionStats {
   riotId: string;
   puuid: string;
   rank: (RankData & { tierId?: number }) | null;
-  recentMatches: (Omit<MatchStats, "playedAt"> & { playedAt: string })[];
+  recentMatches: (Omit<MatchStats, "playedAt"> & { playedAt: string; scrimSessionId?: string | null; scrimTitle?: string | null })[];
 }
 
 const REGION_LABELS: Record<RiotRegion, string> = { KR: "한섭", AP: "아섭" };
@@ -240,6 +240,15 @@ function RegionMatchList({ matches, trackerUrl, puuid }: {
                 <div className={`font-black text-sm ${match.result === "승리" ? "text-green-400" : match.result === "패배" ? "text-[#ff4655]" : "text-zinc-400"}`}>{match.result}</div>
                 <div className="text-[#7b8a96] text-xs">{match.agent}</div>
               </div>
+              {match.scrimSessionId && (
+                <a
+                  href={`/dashboard/scrim/${match.scrimSessionId}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="hidden sm:inline-flex flex-shrink-0 items-center gap-1 rounded border border-[#ff4655]/40 bg-[#ff4655]/10 px-2 py-0.5 text-[10px] font-black text-[#ff4655] hover:bg-[#ff4655]/20 transition-colors"
+                >
+                  ⚔ 내전
+                </a>
+              )}
               <div className="hidden sm:block text-[#7b8a96] text-sm w-16 flex-shrink-0">{match.map}</div>
               <div className="flex-1">
                 <span className="text-white font-bold">{match.kills}</span>
@@ -273,7 +282,13 @@ function RegionMatchList({ matches, trackerUrl, puuid }: {
                 </div>
                 <div>
                   <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">Mode</div>
-                  <div className="font-bold text-white">{match.mode}</div>
+                  <div className="font-bold text-white">
+                    {match.scrimSessionId ? (
+                      <a href={`/dashboard/scrim/${match.scrimSessionId}`} className="text-[#ff4655] hover:underline">
+                        ⚔ {match.scrimTitle ?? "내전"}
+                      </a>
+                    ) : match.mode}
+                  </div>
                 </div>
               </div>
               <MatchDetailScoreboard matchId={match.matchId} myPuuid={puuid} result={match.result} initialScoreboard={match.scoreboard} />

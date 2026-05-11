@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 interface ScrimPlayer {
   id: string;
@@ -256,9 +257,14 @@ export default function ScrimPage() {
             생성된 내전 목록과 내전 KD 랭킹을 확인합니다.
           </p>
         </div>
-        <button type="button" onClick={openCreateModal} className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white">
-          내전 생성
-        </button>
+        <div className="flex gap-2">
+          <Link href="/dashboard/scrim/ranking" className="val-btn border border-[#2a3540] bg-[#0f1923] px-4 py-2 text-xs font-black text-white hover:border-[#ff4655]/50">
+            KD 랭킹
+          </Link>
+          <button type="button" onClick={openCreateModal} className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white">
+            내전 생성
+          </button>
+        </div>
       </div>
 
       {message && (

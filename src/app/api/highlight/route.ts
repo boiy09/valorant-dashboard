@@ -11,33 +11,6 @@ async function getUser(session: any) {
   return user;
 }
 
-function isDiscordAttachmentUrl(url: string) {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return host === "cdn.discordapp.com" || host === "media.discordapp.net" || host.endsWith(".discordapp.com");
-  } catch {
-    return false;
-  }
-}
-
-async function isUrlReachable(url: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2500);
-
-  try {
-    const response = await fetch(url, {
-      method: "HEAD",
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    return response.ok;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get("type") ?? "clip";
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "20", 10);
@@ -49,27 +22,7 @@ export async function GET(req: NextRequest) {
     take: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 50) : 20,
   });
 
-  const checkedHighlights = await Promise.all(
-    highlights.map(async (highlight) => ({
-      highlight,
-      reachable: isDiscordAttachmentUrl(highlight.url) ? await isUrlReachable(highlight.url) : true,
-    }))
-  );
-
-  const staleHighlightIds = checkedHighlights
-    .filter((item) => !item.reachable)
-    .map((item) => item.highlight.id);
-  const visibleHighlights = checkedHighlights
-    .filter((item) => item.reachable)
-    .map((item) => item.highlight);
-
-  if (staleHighlightIds.length > 0) {
-    await prisma.highlight.deleteMany({
-      where: { id: { in: staleHighlightIds } },
-    });
-  }
-
-  return Response.json({ highlights: visibleHighlights });
+  return Response.json({ highlights });
 }
 
 export async function POST(req: NextRequest) {

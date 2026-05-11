@@ -166,15 +166,15 @@ function RoundResultIcon({ type }: { type: RoundWinType }) {
 }
 
 function ScrimScoreboardPortrait({ cardIcon, agentIcon, agent, level }: { cardIcon?: string; agentIcon?: string; agent?: string; level?: number | null }) {
+  // cardIcon = 플레이어 카드(smallart), agentIcon = killfeedportrait(초상화)
+  const primary = cardIcon || agentIcon;
   return (
     <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-[#2a3540] ring-1 ring-white/10">
-      {cardIcon ? (
+      {primary ? (
         <>
-          <img src={cardIcon} alt={agent} className="h-full w-full object-cover object-top" />
+          <img src={primary} alt={agent} className="h-full w-full object-cover object-top" />
           <div className="absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/80 to-transparent" />
         </>
-      ) : agentIcon ? (
-        <img src={agentIcon} alt={agent} className="h-full w-full object-cover" />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
           <svg viewBox="0 0 24 24" className="h-6 w-6 text-[#7b8a96]" aria-hidden="true">
@@ -247,7 +247,8 @@ function ScrimScoreboardTable({
                       {player.tag && <span className="rounded bg-[#263544] px-1 text-[10px] text-[#b8c6d1]">#{player.tag}</span>}
                     </div>
                     <div className="flex items-center gap-1 text-[10px]">
-                      {player.agentPortrait && <img src={player.agentPortrait} alt={player.agentName ?? player.agent} className="h-3 w-3 rounded object-cover" />}
+                      {/* 요원 이름 옆 아이콘: displayicon(작은 아이콘) 사용 */}
+                      {player.agentPortrait && <img src={player.agentPortrait.replace('killfeedportrait.png', 'displayicon.png')} alt={player.agentName ?? player.agent} className="h-3 w-3 rounded object-cover" />}
                       <span className="truncate text-[#8da0ad]">{player.agentName ?? player.agent}</span>
                     </div>
                   </div>
@@ -762,7 +763,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                 {activeGameId && (() => {
                   const game = games.find((g) => g.id === activeGameId);
                   if (!game) return null;
-                  const kdaData = parseJson<Array<{ userId: string; kills: number; deaths: number; assists: number; team: string; agent: string; score: number; name: string; agentPortrait?: string; agentCard?: string; agentName?: string; tierName?: string; tierIcon?: string; currentTier?: number; teamRoundsWon?: number }>>(game.kdaSnapshot, []);
+                  const kdaData = parseJson<Array<{ userId: string; kills: number; deaths: number; assists: number; team: string; agent: string; score: number; name: string; agentPortrait?: string; agentCard?: string; cardIcon?: string; agentName?: string; tierName?: string; tierIcon?: string; currentTier?: number; teamRoundsWon?: number }>>(game.kdaSnapshot, []);
                   const teamSnap = parseJson<Record<string, string[]>>(game.teamSnapshot, {});
 
                   return (
@@ -947,8 +948,9 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                                   tierId: k.currentTier ?? 0,
                                   tierName: k.tierName ?? "",
                                   tierIcon: k.tierIcon,
+                                  // agentCard = 플레이어 카드(cardIcon), agentPortrait = killfeedportrait(초상화)
+                                  agentCard: k.cardIcon || k.agentCard,
                                   agentPortrait: k.agentPortrait,
-                                  agentCard: k.agentCard,
                                   agentName: k.agentName ?? k.agent,
                                   agent: k.agent,
                                   level: null as number | null,

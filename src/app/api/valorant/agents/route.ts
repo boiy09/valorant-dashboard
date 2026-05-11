@@ -3,6 +3,7 @@ interface ValorantApiAgent {
   displayName: string;
   displayIcon: string | null;
   fullPortrait: string | null;
+  killfeedPortrait: string | null;
   role: {
     uuid: string;
     displayName: string;
@@ -47,7 +48,9 @@ export async function GET() {
         id: agent.uuid,
         name: localized?.displayName ?? agent.displayName,
         icon: agent.displayIcon,
-        portrait: localized?.fullPortrait ?? agent.fullPortrait,
+        // 배경 전신 이미지 제외, 요원 선택/프로필 등 UI에는 killfeedPortrait(초상화) 사용
+        portrait: localized?.killfeedPortrait ?? agent.killfeedPortrait ?? localized?.fullPortrait ?? agent.fullPortrait,
+        fullPortrait: localized?.fullPortrait ?? agent.fullPortrait,
         role: roleKey,
         roleLabel: ROLE_LABELS[roleKey] ?? roleKey,
         roleIcon: agent.role?.displayIcon ?? null,

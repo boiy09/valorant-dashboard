@@ -423,10 +423,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
         </section>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
-        <aside className="space-y-4">
-          <TeamCaptainRail teamIds={teamIds} teamNames={teamNames} players={scrim.players} onDrop={(pId, tId) => movePlayer(pId, tId, "captain")} onRename={updateTeamName} />
-        </aside>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <main className="space-y-5">
           <DropArea title={`참가자 목록 (${participantPlayers.length}명)`} subtitle="드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

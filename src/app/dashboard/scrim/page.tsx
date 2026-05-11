@@ -275,117 +275,80 @@ export default function ScrimPage() {
       {loading ? (
         <div className="val-card p-12 text-center text-[#7b8a96]">불러오는 중...</div>
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
-          <section>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-black uppercase tracking-[0.18em] text-[#7b8a96]">생성된 내전 목록</h2>
-              <span className="text-xs text-[#7b8a96]">{visibleScrims.length}개</span>
-            </div>
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-black uppercase tracking-[0.18em] text-[#7b8a96]">생성된 내전 목록</h2>
+            <span className="text-xs text-[#7b8a96]">{visibleScrims.length}개</span>
+          </div>
 
-            {visibleScrims.length === 0 ? (
-              <div className="val-card p-12 text-center text-[#7b8a96]">아직 내전 기록이 없습니다.</div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {visibleScrims.map((scrim) => {
-                  const teamA = scrim.players?.filter((player) => player.team === "team_a") ?? [];
-                  const teamB = scrim.players?.filter((player) => player.team === "team_b") ?? [];
-                  const settings = parseSettings(scrim.settings);
+          {visibleScrims.length === 0 ? (
+            <div className="val-card p-12 text-center text-[#7b8a96]">아직 내전 기록이 없습니다.</div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleScrims.map((scrim) => {
+                const teamA = scrim.players?.filter((player) => player.team === "team_a") ?? [];
+                const teamB = scrim.players?.filter((player) => player.team === "team_b") ?? [];
+                const settings = parseSettings(scrim.settings);
 
-                  return (
-                    <article key={scrim.id} className="val-card p-5">
-                      <div className="mb-4 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="truncate text-base font-black text-white">{scrim.title}</h3>
-                            {scrim.mode === "auction" ? (
-                              <span className="rounded bg-[#f6c945]/15 px-2 py-0.5 text-[10px] font-black text-[#f6c945]">🏷 경매</span>
-                            ) : (
-                              <span className="rounded bg-[#ff4655]/10 px-2 py-0.5 text-[10px] font-black text-[#ff8a95]">⚔ 일반</span>
-                            )}
-                          </div>
-                          <div className="mt-1 text-xs text-[#7b8a96]">
-                            생성 {formatDate(scrim.createdAt)}
-                            {scrim.scheduledAt ? ` · 시작 ${new Date(scrim.scheduledAt).toLocaleString("ko-KR")}` : ""}
-                          </div>
-                        </div>
-                        <div className="flex flex-shrink-0 items-center gap-2">
-                          <span className="rounded bg-[#ff4655]/10 px-3 py-1 text-xs font-black text-[#ff4655]">
-                            {getWinnerLabel(scrim.winnerId)}
-                          </span>
-                          <a
-                            href={`/dashboard/scrim/${scrim.id}`}
-                            className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-1 text-xs font-black text-[#c8d3db] hover:border-[#ff4655]/50 hover:text-white"
-                          >
-                            열기
-                          </a>
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              onClick={() => deleteScrim(scrim.id)}
-                              disabled={deletingId === scrim.id}
-                              className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-3 py-1 text-xs font-black text-[#ff8a95] transition-colors hover:border-[#ff4655] hover:text-white disabled:opacity-50"
-                            >
-                              {deletingId === scrim.id ? "삭제 중" : "삭제"}
-                            </button>
+                return (
+                  <article key={scrim.id} className="val-card flex flex-col p-5">
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="truncate text-base font-black text-white">{scrim.title}</h3>
+                          {scrim.mode === "auction" ? (
+                            <span className="rounded bg-[#f6c945]/15 px-2 py-0.5 text-[10px] font-black text-[#f6c945]">🏷 경매</span>
+                          ) : (
+                            <span className="rounded bg-[#ff4655]/10 px-2 py-0.5 text-[10px] font-black text-[#ff8a95]">⚔ 일반</span>
                           )}
                         </div>
+                        <div className="mt-1 text-[10px] text-[#7b8a96]">
+                          {formatDate(scrim.createdAt)} 생성
+                          {scrim.scheduledAt ? ` · 시작 ${new Date(scrim.scheduledAt).toLocaleString("ko-KR")}` : ""}
+                        </div>
                       </div>
+                    </div>
 
-                      <div className="mb-4 flex flex-wrap gap-1.5">
-                        {SETTING_LABELS.filter((item) => settings[item.key]).map((item) => (
-                          <span key={item.key} className="rounded bg-[#ff4655]/10 px-2 py-1 text-[11px] font-black text-[#ff8a95]">
-                            {item.label}
-                          </span>
-                        ))}
+                    <div className="mb-4 flex flex-wrap gap-1.5">
+                      {SETTING_LABELS.filter((item) => settings[item.key]).map((item) => (
+                        <span key={item.key} className="rounded bg-[#ff4655]/10 px-2 py-0.5 text-[10px] font-black text-[#ff8a95]">
+                          {item.label}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+                      <div className="text-[11px] font-bold text-[#7b8a96]">
+                        참가자 {scrim.players.length}명
                       </div>
-
-                      <div className="text-xs text-[#7b8a96]">
-                        참가자 {scrim.players.length}명 · Team A {teamA.length}명 · Team B {teamB.length}명
+                      <div className="flex items-center gap-2">
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => deleteScrim(scrim.id)}
+                            disabled={deletingId === scrim.id}
+                            className="flex h-7 w-7 items-center justify-center rounded border border-[#ff4655]/35 bg-[#ff4655]/10 text-[#ff8a95] transition-colors hover:border-[#ff4655] hover:text-white disabled:opacity-50"
+                            title="삭제"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
+                        <a
+                          href={`/dashboard/scrim/${scrim.id}`}
+                          className="val-btn bg-[#ff4655] px-4 py-1 text-xs font-black text-white"
+                        >
+                          열기
+                        </a>
                       </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          <aside className="val-card h-fit p-5">
-            <div className="mb-4">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-[#ff4655]">SCRIM KD BOARD</div>
-              <h2 className="mt-1 text-xl font-black text-white">내전 KD 랭킹</h2>
-              <p className="mt-1 text-xs text-[#7b8a96]">기록된 내전 매치의 킬/데스 기준입니다.</p>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
-
-            {kdRanking.length === 0 ? (
-              <div className="rounded border border-dashed border-[#2a3540] bg-[#0f1923]/45 px-3 py-8 text-center text-xs text-[#7b8a96]">
-                아직 KD 기록이 없습니다.
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {kdRanking.map((player, index) => (
-                  <div key={player.userId} className="flex items-center gap-3 rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2">
-                    <span className="w-6 text-center text-sm font-black text-[#ff4655]">{index + 1}</span>
-                    {player.image ? (
-                      <img src={player.image} alt="" className="h-8 w-8 rounded-full object-cover" />
-                    ) : (
-                      <div className="h-8 w-8 rounded-full bg-[#24313c]" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-black text-white">{player.name ?? "이름 없음"}</div>
-                      <div className="text-[11px] text-[#7b8a96]">
-                        {player.kills}K / {player.deaths}D / {player.assists}A · {player.matches}경기
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-black text-white">{player.kd.toFixed(2)}</div>
-                      <div className="text-[10px] text-[#7b8a96]">KD</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </aside>
-        </div>
+          )}
+        </section>
       )}
 
       {createOpen && (

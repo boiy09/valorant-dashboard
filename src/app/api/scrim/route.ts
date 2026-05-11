@@ -225,6 +225,7 @@ export async function GET(req: NextRequest) {
       riotAccounts: {
         select: {
           cachedTierName: true,
+          region: true,
         },
       },
     },
@@ -255,14 +256,19 @@ export async function GET(req: NextRequest) {
 
   const finalKdRanking = kdRanking.slice(0, 20).map(player => {
     const userDetail = userDetailsMap.get(player.userId);
-    const tierName = userDetail?.riotAccounts?.[0]?.cachedTierName || "언랭크";
+    const primaryAccount = userDetail?.riotAccounts?.[0];
+    const tierName = primaryAccount?.cachedTierName || "언랭크";
+    const region = primaryAccount?.region || "KR";
     const tierIconUrl = getTierIconUrl(tierName);
+    const regionLabel = region === "KR" ? "한섭" : "아섭";
 
     return {
       ...player,
       name: userDetail?.name || player.name, // Use Discord nickname if available
       tierName,
       tierIconUrl,
+      region,
+      regionLabel,
     };
   });
 

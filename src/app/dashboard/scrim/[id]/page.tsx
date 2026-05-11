@@ -56,7 +56,7 @@ interface ScrimGame {
   matchId: string | null;
   teamSnapshot: string; // JSON: { team_a: userId[], team_b: userId[] }
   kdaSnapshot: string;  // JSON: [{ userId, kills, deaths, assists }]
-  roundResults: string | null; // JSON: [{ round, result, winner, plant, defuse }]
+  roundResults: string | null | unknown; // JSON: [{ round, result, winner, plant, defuse }] - Prisma가 이미 파싱된 객체로 반환할 수 있음
   playedAt: string | null;
   createdAt: string;
 }
@@ -107,8 +107,8 @@ function normalizeTierNameLocal(name: string | null | undefined, tierId?: number
       10: "골드 1", 11: "골드 2", 12: "골드 3",
       13: "플래티넘 1", 14: "플래티넘 2", 15: "플래티넘 3",
       16: "다이아몬드 1", 17: "다이아몬드 2", 18: "다이아몬드 3",
-      19: "어센던트 1", 20: "어센던트 2", 21: "어센던트 3",
-      22: "이모탈 1", 23: "이모탈 2", 24: "이모탈 3",
+      19: "초월자 1", 20: "초월자 2", 21: "초월자 3",
+      22: "불멸 1", 23: "불멸 2", 24: "불멸 3",
       25: "레디언트",
     };
     if (map[tierId]) return map[tierId];
@@ -308,8 +308,11 @@ function parseSettings(value: string | null | undefined): ScrimDetailSettings {
   try { const p = JSON.parse(value); return p && typeof p === "object" ? (p as ScrimDetailSettings) : {}; }
   catch { return {}; }
 }
-function parseJson<T>(value: string | null | undefined, fallback: T): T {
-  if (!value) return fallback;
+function parseJson<T>(value: string | null | undefined | T, fallback: T): T {
+  if (value === null || value === undefined) return fallback;
+  // Prisma $queryRawUnsafe는 JSON 콼럼을 이미 파싱된 객체로 반환함
+  if (typeof value !== "string") return value as T;
+  if (value === "") return fallback;
   try { return JSON.parse(value) as T; } catch { return fallback; }
 }
 function toRoleLabels(value: string | null) {
@@ -855,8 +858,14 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                           {/* 라운드 타임라인 (전적탭 bg-[#07131e] 스타일) */}
                           {(() => {
                             const roundData = parseJson<Array<{ round: number; result: string; winner: string; plant: boolean; defuse: boolean }>>(game.roundResults, []);
-                            if (roundData.length === 0) return null;
                             const myTeamId = "Blue"; // Blue = Team A
+                            if (roundData.length === 0) {
+                              return (
+                                <div className="bg-[#07131e] px-3 py-4 text-center text-xs text-[#6f8291]">
+                                  라운드 데이터를 불러오는 중...
+                                </div>
+                              );
+                            }
                             return (
                               <div className="bg-[#07131e] px-3 py-4">
                                 <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">

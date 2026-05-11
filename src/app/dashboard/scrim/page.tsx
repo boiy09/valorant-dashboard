@@ -114,13 +114,13 @@ export default function ScrimPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState("");
   const [createDescription, setCreateDescription] = useState("");
-  const [createScheduledAt, setCreateScheduledAt] = useState("");
+  const [createScheduledDate, setCreateScheduledDate] = useState("");
+  const [createScheduledTime, setCreateScheduledTime] = useState("");
   const [channels, setChannels] = useState<DiscordChannel[]>([]);
   const [selectedChannelId, setSelectedChannelId] = useState("");
   const [manualChannelId, setManualChannelId] = useState("");
   const [channelLoading, setChannelLoading] = useState(false);
   const [channelError, setChannelError] = useState<string | null>(null);
-  const [channelStep, setChannelStep] = useState(false);
   const [createSettings, setCreateSettings] = useState<ScrimSettings>(DEFAULT_SETTINGS);
   const [createMode, setCreateMode] = useState<"normal" | "auction">("normal");
   const [creating, setCreating] = useState(false);
@@ -189,14 +189,17 @@ export default function ScrimPage() {
       setMessage("내전 제목을 입력해 주세요.");
       return;
     }
-    if (!channelStep) {
-      setChannelStep(true);
-      return;
-    }
     const channelId = selectedChannelId || manualChannelId.trim();
     if (!channelId) {
-      setMessage("모집 글을 올릴 채널을 선택해 주세요.");
+      setMessage("모집 글을 올릴 채널을 선택하거나 채널 ID를 입력해 주세요.");
       return;
+    }
+
+    // 날짜 + 시간 합산하여 scheduledAt 생성
+    let scheduledAt: string | null = null;
+    if (createScheduledDate) {
+      const timeStr = createScheduledTime || "00:00";
+      scheduledAt = `${createScheduledDate}T${timeStr}:00`;
     }
 
     setCreating(true);
@@ -209,7 +212,7 @@ export default function ScrimPage() {
         body: JSON.stringify({
           title,
           description: createDescription,
-          scheduledAt: createScheduledAt || null,
+          scheduledAt,
           channelId,
           settings: createSettings,
           mode: createMode,
@@ -222,10 +225,10 @@ export default function ScrimPage() {
       setCreateOpen(false);
       setCreateTitle("");
       setCreateDescription("");
-      setCreateScheduledAt("");
+      setCreateScheduledDate("");
+      setCreateScheduledTime("");
       setSelectedChannelId("");
       setManualChannelId("");
-      setChannelStep(false);
       setCreateSettings(DEFAULT_SETTINGS);
       setCreateMode("normal");
       setMessage("내전 카드를 생성했습니다.");
@@ -467,13 +470,36 @@ export default function ScrimPage() {
               </section>
 
               <section>
-                <h3 className="mb-2 text-sm font-black text-white">시작 시간</h3>
-                <input
-                  type="datetime-local"
-                  value={createScheduledAt}
-                  onChange={(event) => setCreateScheduledAt(event.target.value)}
-                  className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors focus:border-[#ff4655]"
-                />
+                <h3 className="mb-2 text-sm font-black text-white">시작 시간 <span className="text-[11px] font-normal text-[#7b8a96]">(optional)</span></h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">날짜</label>
+                    <input
+                      type="date"
+                      value={createScheduledDate}
+                      onChange={(e) => setCreateScheduledDate(e.target.value)}
+                      className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors focus:border-[#ff4655] [color-scheme:dark]"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">시간</label>
+                    <input
+                      type="time"
+                      value={createScheduledTime}
+                      onChange={(e) => setCreateScheduledTime(e.target.value)}
+                      disabled={!createScheduledDate}
+                      className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors focus:border-[#ff4655] disabled:opacity-40 [color-scheme:dark]"
+                    />
+                  </div>
+                </div>
+                {createScheduledDate && (
+                  <div className="mt-2 flex items-center justify-between">
+                    <p className="text-[11px] text-[#7b8a96]">
+                      선택된 시간: {new Date(`${createScheduledDate}T${createScheduledTime || "00:00"}:00`).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
+                    </p>
+                    <button type="button" onClick={() => { setCreateScheduledDate(""); setCreateScheduledTime(""); }} className="text-[11px] text-[#7b8a96] hover:text-[#ff4655]">시간 제거</button>
+                  </div>
+                )}
               </section>
 
               <section>
@@ -511,31 +537,29 @@ export default function ScrimPage() {
                 </div>
               </section>
 
-              {channelStep && (
-                <section className="rounded border border-[#ff4655]/35 bg-[#ff4655]/[0.06] p-4">
-                  <h3 className="mb-2 text-sm font-black text-white">모집 글을 올릴 채널</h3>
-                  <p className="mb-3 text-xs text-[#9aa8b3]">
-                    확인을 누르면 발로세끼 봇이 선택한 채널에 제목/설명과 참가 이모지 안내를 올립니다.
-                  </p>
-                  {channelLoading && (
-                    <div className="mb-3 rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-xs font-bold text-[#9aa8b3]">
-                      채널 목록을 불러오는 중...
-                    </div>
-                  )}
-                  {channelError && (
-                    <div className="mb-3 rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-3 py-2 text-xs font-bold leading-relaxed text-[#ff8a95]">
-                      {channelError}
-                      <br />
-                      목록이 계속 비어 있으면 Discord 채널 ID를 직접 입력해서 진행할 수 있습니다.
-                    </div>
-                  )}
+              <section>
+                <h3 className="mb-2 text-sm font-black text-white">모집 글을 올릴 채널</h3>
+                <p className="mb-3 text-xs text-[#9aa8b3]">
+                  발로세끼 봇이 선택한 채널에 제목/설명과 참가 이모지 안내를 올립니다.
+                </p>
+                {channelLoading && (
+                  <div className="mb-3 rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-xs font-bold text-[#9aa8b3]">
+                    채널 목록을 불러오는 중...
+                  </div>
+                )}
+                {channelError && (
+                  <div className="mb-2 rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-xs text-[#7b8a96]">
+                    {channelError} — 아래에 채널 ID를 직접 입력하세요.
+                  </div>
+                )}
+                {channels.length > 0 && (
                   <select
                     value={selectedChannelId}
                     onChange={(event) => {
                       setSelectedChannelId(event.target.value);
                       if (event.target.value) setManualChannelId("");
                     }}
-                    className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors focus:border-[#ff4655]"
+                    className="mb-3 w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors focus:border-[#ff4655]"
                   >
                     <option value="">채널 선택</option>
                     {channels.map((channel) => (
@@ -544,22 +568,22 @@ export default function ScrimPage() {
                       </option>
                     ))}
                   </select>
-                  <div className="mt-3">
-                    <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">
-                      채널 ID 직접 입력
-                    </label>
-                    <input
-                      value={manualChannelId}
-                      onChange={(event) => {
-                        setManualChannelId(event.target.value);
-                        if (event.target.value) setSelectedChannelId("");
-                      }}
-                      placeholder="예: 123456789012345678"
-                      className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors placeholder:text-[#56636f] focus:border-[#ff4655]"
-                    />
-                  </div>
-                </section>
-              )}
+                )}
+                <div>
+                  <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">
+                    채널 ID 직접 입력 <span className="font-normal text-[#56636f]">(Discord 채널 우클릭 → ID 복사)</span>
+                  </label>
+                  <input
+                    value={manualChannelId}
+                    onChange={(event) => {
+                      setManualChannelId(event.target.value);
+                      if (event.target.value) setSelectedChannelId("");
+                    }}
+                    placeholder="예: 123456789012345678"
+                    className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 font-mono text-sm font-bold text-white outline-none transition-colors placeholder:text-[#56636f] focus:border-[#ff4655]"
+                  />
+                </div>
+              </section>
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
@@ -576,7 +600,7 @@ export default function ScrimPage() {
                 disabled={creating}
                 className="val-btn bg-[#ff4655] px-5 py-2 text-sm font-black text-white disabled:opacity-50"
               >
-                {creating ? "생성 중" : channelStep ? "채널 확인 후 생성" : "생성"}
+                {creating ? "생성 중" : "생성"}
               </button>
             </div>
           </div>

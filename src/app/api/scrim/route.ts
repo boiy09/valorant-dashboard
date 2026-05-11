@@ -239,8 +239,9 @@ export async function POST(req: NextRequest) {
   if (scheduledAt && Number.isNaN(scheduledAt.getTime())) {
     return Response.json({ error: "시작 시간이 올바르지 않습니다." }, { status: 400 });
   }
-  if (!(await validateRecruitmentChannel(channelId, guild.id))) {
-    return Response.json({ error: "내전 모집 글은 이벤트 공지 또는 구인-구직 채널에만 올릴 수 있습니다. (관리자 설정에서 허용 채널 ID를 추가하면 모든 채널에서 사용 가능합니다.)" }, { status: 400 });
+  // 관리자/발로네끼 역할이면 채널 이름 검증 없이 어떤 채널이든 허용
+  if (!isAdmin && !(await validateRecruitmentChannel(channelId, guild.id))) {
+    return Response.json({ error: "내전 모집 글은 이벤트 공지 또는 구인-구직 채널에만 올릴 수 있습니다." }, { status: 400 });
   }
 
   const scrim = await prisma.scrimSession.create({
@@ -299,7 +300,8 @@ export async function PUT(req: NextRequest) {
   if (!scrim.recruitmentChannelId) {
     return Response.json({ error: "기존 모집 채널 정보가 없습니다." }, { status: 400 });
   }
-  if (!(await validateRecruitmentChannel(scrim.recruitmentChannelId, guild.id))) {
+  // 관리자/발로네끼 역할이면 채널 이름 검증 없이 어떤 채널이든 허용
+  if (!isAdmin && !(await validateRecruitmentChannel(scrim.recruitmentChannelId, guild.id))) {
     return Response.json({ error: "추가 모집은 이벤트 공지 또는 구인-구직 채널에서만 가능합니다." }, { status: 400 });
   }
 

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+// ─── 인터페이스 ────────────────────────────────────────────────────────────────
 interface RiotAccount {
   gameName: string;
   tagLine: string;
@@ -49,62 +50,53 @@ interface ScrimDetailSettings {
   teamNames?: Record<string, string>;
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  Duelist: "타격대",
-  Initiator: "척후대",
-  Controller: "전략가",
-  Sentinel: "감시자",
-  duelist: "타격대",
-  initiator: "척후대",
-  controller: "전략가",
-  sentinel: "감시자",
-};
+interface AuctionState {
+  id: string;
+  sessionId: string;
+  phase: string; // setup | auction | reauction | done
+  captainPoints: string; // JSON: { userId: points }
+  queue: string; // JSON: userId[]
+  currentUserId: string | null;
+  currentBids: string; // JSON: { captainUserId: bidAmount }
+  auctionStartAt: string | null;
+  auctionDuration: number;
+  failedQueue: string; // JSON: userId[]
+}
 
+// ─── 상수 ──────────────────────────────────────────────────────────────────────
+const ROLE_LABELS: Record<string, string> = {
+  Duelist: "타격대", Initiator: "척후대", Controller: "전략가", Sentinel: "감시자",
+  duelist: "타격대", initiator: "척후대", controller: "전략가", sentinel: "감시자",
+};
 const TEAM_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const TEAM_COLORS = ["#00e7c2", "#ff4655", "#f6c945", "#9b7cff", "#4da3ff", "#ff8d4d", "#66e08a", "#d45bff"];
 
-function getTeamId(index: number) {
-  return `team_${TEAM_LETTERS[index].toLowerCase()}`;
-}
-
-function getDefaultTeamName(index: number) {
-  return `TEAM ${TEAM_LETTERS[index]}`;
-}
-
+function getTeamId(index: number) { return `team_${TEAM_LETTERS[index].toLowerCase()}`; }
+function getDefaultTeamName(index: number) { return `TEAM ${TEAM_LETTERS[index]}`; }
 function parseAgents(value: string) {
   if (!value) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-  } catch {
-    return value.split(",").map((item) => item.trim()).filter(Boolean);
-  }
+  try { const p = JSON.parse(value); return Array.isArray(p) ? p.filter((x): x is string => typeof x === "string") : []; }
+  catch { return value.split(",").map((x) => x.trim()).filter(Boolean); }
 }
-
 function formatDateTime(value: string | null) {
   if (!value) return "시작 시간 미정";
   return new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
 }
-
 function parseSettings(value: string | null | undefined): ScrimDetailSettings {
   if (!value) return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" ? (parsed as ScrimDetailSettings) : {};
-  } catch {
-    return {};
-  }
+  try { const p = JSON.parse(value); return p && typeof p === "object" ? (p as ScrimDetailSettings) : {}; }
+  catch { return {}; }
 }
-
+function parseJson<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try { return JSON.parse(value) as T; } catch { return fallback; }
+}
 function toRoleLabels(value: string | null) {
   if (!value) return [];
-  return value
-    .split(",")
-    .map((role) => role.trim())
-    .filter(Boolean)
-    .map((role) => ROLE_LABELS[role] ?? role);
+  return value.split(",").map((r) => r.trim()).filter(Boolean).map((r) => ROLE_LABELS[r] ?? r);
 }
 
+// ─── 메인 페이지 ───────────────────────────────────────────────────────────────
 export default function ScrimDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [scrim, setScrim] = useState<ScrimDetail | null>(null);
@@ -116,266 +108,178 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const [newManagerId, setNewManagerId] = useState("");
 
   const settings = useMemo(() => parseSettings(scrim?.settings), [scrim?.settings]);
-
   const teamIds = useMemo(() => {
-    const fromSettings = Object.keys(settings.teamNames ?? {}).filter((teamId) => teamId.startsWith("team_"));
-    const fromPlayers = (scrim?.players ?? [])
-      .map((player) => player.team)
-      .filter((team) => team.startsWith("team_"));
-    const merged = Array.from(new Set([...fromSettings, ...fromPlayers, "team_a", "team_b"]));
-    return merged.sort((a, b) => a.localeCompare(b));
+    const fromSettings = Object.keys(settings.teamNames ?? {}).filter((t) => t.startsWith("team_"));
+    const fromPlayers = (scrim?.players ?? []).map((p) => p.team).filter((t) => t.startsWith("team_"));
+    return Array.from(new Set([...fromSettings, ...fromPlayers, "team_a", "team_b"])).sort((a, b) => a.localeCompare(b));
   }, [scrim?.players, settings.teamNames]);
-
   const teamNames = useMemo(() => {
     const names = { ...(settings.teamNames ?? {}) };
-    teamIds.forEach((teamId, index) => {
-      if (!names[teamId]) names[teamId] = getDefaultTeamName(index);
-    });
+    teamIds.forEach((t, i) => { if (!names[t]) names[t] = getDefaultTeamName(i); });
     return names;
   }, [settings.teamNames, teamIds]);
 
-  const isTeamCaptain = useCallback((player: ScrimPlayer) => player.team.startsWith("team_") && player.role === "captain", []);
-  const isTeamMember = useCallback((player: ScrimPlayer) => player.team.startsWith("team_") && player.role === "member", []);
-
+  const isTeamCaptain = useCallback((p: ScrimPlayer) => p.team.startsWith("team_") && p.role === "captain", []);
+  const isTeamMember = useCallback((p: ScrimPlayer) => p.team.startsWith("team_") && p.role === "member", []);
   const participantPlayers = useMemo(
-    () => (scrim?.players ?? []).filter((player) => !player.team.startsWith("team_") || player.role === "participant"),
+    () => (scrim?.players ?? []).filter((p) => !p.team.startsWith("team_") || p.role === "participant"),
     [scrim?.players]
   );
-
   const assignedPlayers = useMemo(
-    () => (scrim?.players ?? []).filter((player) => isTeamCaptain(player) || isTeamMember(player)),
+    () => (scrim?.players ?? []).filter((p) => isTeamCaptain(p) || isTeamMember(p)),
     [isTeamCaptain, isTeamMember, scrim?.players]
   );
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadScrim({ silent = false } = {}) {
       if (!silent) setLoading(true);
       try {
-        const response = await fetch(`/api/scrim/${id}`, { cache: "no-store" });
-        const data = await response.json();
+        const res = await fetch(`/api/scrim/${id}`, { cache: "no-store" });
+        const data = await res.json();
         if (cancelled) return;
         setScrim(data.scrim ?? null);
         setManagerIds(data.managerIds ?? []);
         setGuildMembers(data.guildMembers ?? []);
-      } finally {
-        if (!cancelled && !silent) setLoading(false);
-      }
+      } finally { if (!cancelled && !silent) setLoading(false); }
     }
-
     loadScrim();
     const timer = window.setInterval(() => loadScrim({ silent: true }), 5000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, [id]);
 
   async function patchScrim(payload: { players?: ScrimPlayer[]; managerIds?: string[]; settings?: ScrimDetailSettings }) {
-    setSaving(true);
-    setMessage(null);
+    setSaving(true); setMessage(null);
     try {
-      const response = await fetch(`/api/scrim/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch(`/api/scrim/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          players: payload.players?.map((player) => ({ id: player.id, team: player.team, role: player.role })),
-          managerIds: payload.managerIds,
-          settings: payload.settings,
+          players: payload.players?.map((p) => ({ id: p.id, team: p.team, role: p.role })),
+          managerIds: payload.managerIds, settings: payload.settings,
         }),
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error ?? "저장에 실패했습니다.");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "저장에 실패했습니다.");
       setScrim(data.scrim);
       if (payload.managerIds) setManagerIds(payload.managerIds);
       setMessage("저장했습니다.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "저장에 실패했습니다.");
-    } finally {
-      setSaving(false);
-    }
+    } catch (e) { setMessage(e instanceof Error ? e.message : "저장에 실패했습니다."); }
+    finally { setSaving(false); }
   }
 
   function movePlayer(playerId: string, team: string, role: string) {
     if (!scrim) return;
-    const nextPlayers = scrim.players.map((player) => (player.id === playerId ? { ...player, team, role } : player));
-    setScrim({ ...scrim, players: nextPlayers });
-    void patchScrim({ players: nextPlayers });
+    const next = scrim.players.map((p) => (p.id === playerId ? { ...p, team, role } : p));
+    setScrim({ ...scrim, players: next });
+    void patchScrim({ players: next });
   }
 
   async function addRecruitment() {
-    setSaving(true);
-    setMessage(null);
+    setSaving(true); setMessage(null);
     try {
-      const response = await fetch("/api/scrim", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error ?? "추가 모집 글 작성에 실패했습니다.");
+      const res = await fetch("/api/scrim", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "추가 모집 글 작성에 실패했습니다.");
       setMessage("추가 모집 글을 작성했습니다.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "추가 모집 글 작성에 실패했습니다.");
-    } finally {
-      setSaving(false);
-    }
+    } catch (e) { setMessage(e instanceof Error ? e.message : "추가 모집 글 작성에 실패했습니다."); }
+    finally { setSaving(false); }
   }
 
   function addManager() {
     if (!newManagerId || managerIds.includes(newManagerId) || managerIds.length >= 5) return;
-    const nextManagers = [...managerIds, newManagerId];
-    setManagerIds(nextManagers);
-    void patchScrim({ managerIds: nextManagers });
-    setNewManagerId("");
+    const next = [...managerIds, newManagerId];
+    setManagerIds(next); void patchScrim({ managerIds: next }); setNewManagerId("");
   }
 
   function updateTeamName(teamId: string, name: string) {
     if (!scrim) return;
-    const nextSettings = {
-      ...settings,
-      teamNames: {
-        ...teamNames,
-        [teamId]: name || teamNames[teamId],
-      },
-    };
-    setScrim({ ...scrim, settings: JSON.stringify(nextSettings) });
-    void patchScrim({ settings: nextSettings });
+    const next = { ...settings, teamNames: { ...teamNames, [teamId]: name || teamNames[teamId] } };
+    setScrim({ ...scrim, settings: JSON.stringify(next) }); void patchScrim({ settings: next });
   }
 
   function addTeam() {
     if (!scrim || teamIds.length >= TEAM_LETTERS.length) return;
-    const nextTeamId = getTeamId(teamIds.length);
-    const nextSettings = {
-      ...settings,
-      teamNames: {
-        ...teamNames,
-        [nextTeamId]: getDefaultTeamName(teamIds.length),
-      },
-    };
-    setScrim({ ...scrim, settings: JSON.stringify(nextSettings) });
-    void patchScrim({ settings: nextSettings });
+    const nextId = getTeamId(teamIds.length);
+    const next = { ...settings, teamNames: { ...teamNames, [nextId]: getDefaultTeamName(teamIds.length) } };
+    setScrim({ ...scrim, settings: JSON.stringify(next) }); void patchScrim({ settings: next });
   }
 
   if (loading) return <div className="val-card p-12 text-center text-[#7b8a96]">불러오는 중...</div>;
   if (!scrim) return <div className="val-card p-12 text-center text-[#7b8a96]">내전을 찾을 수 없습니다.</div>;
 
-  const captainCount = assignedPlayers.filter((player) => player.role === "captain").length;
-  const memberCount = assignedPlayers.filter((player) => player.role === "member").length;
+  // 경매 내전이면 경매 전용 UI 렌더링
+  if (scrim.mode === "auction") {
+    return (
+      <AuctionScrimPage
+        scrim={scrim}
+        guildMembers={guildMembers}
+        managerIds={managerIds}
+        newManagerId={newManagerId}
+        setNewManagerId={setNewManagerId}
+        addManager={addManager}
+        saving={saving}
+        message={message}
+        setMessage={setMessage}
+        onScrimUpdate={setScrim}
+        addRecruitment={addRecruitment}
+      />
+    );
+  }
+
+  // 일반 내전 UI
+  const captainCount = assignedPlayers.filter((p) => p.role === "captain").length;
+  const memberCount = assignedPlayers.filter((p) => p.role === "member").length;
 
   return (
     <div className="mx-auto max-w-[1400px]">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href="/dashboard/scrim" className="text-xs font-bold text-[#7b8a96] hover:text-white">
-            ← 내전 목록
-          </Link>
+          <Link href="/dashboard/scrim" className="text-xs font-bold text-[#7b8a96] hover:text-white">← 내전 목록</Link>
           <div className="mt-4 text-[10px] uppercase tracking-[0.32em] text-[#ff4655]">SCRIM WAITING ROOM</div>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-4xl font-black text-white">{scrim.title}</h1>
-            {scrim.mode === "auction" ? (
-              <span className="rounded border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-1 text-sm font-black text-[#f6c945]">🏷 경매 내전</span>
-            ) : (
-              <span className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-3 py-1 text-sm font-black text-[#ff8a95]">⚔ 일반 내전</span>
-            )}
+            <span className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-3 py-1 text-sm font-black text-[#ff8a95]">⚔ 일반 내전</span>
           </div>
           <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={addTeam}
-            disabled={saving}
-            className="val-btn border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50"
-          >
-            팀 추가
-          </button>
-          <button
-            type="button"
-            onClick={addRecruitment}
-            disabled={saving}
-            className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white disabled:opacity-50"
-          >
-            추가 모집
-          </button>
+          <button type="button" onClick={addTeam} disabled={saving} className="val-btn border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50">팀 추가</button>
+          <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
         </div>
       </div>
-
-      {message && (
-        <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">
-          {message}
-        </div>
-      )}
-
+      {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
       <section className="mb-5 grid gap-3 md:grid-cols-3">
         <StatCard label="참가자" value={`${scrim.players.length}`} suffix="명" />
         <StatCard label="팀장" value={`${captainCount}`} suffix="명" />
         <StatCard label="팀원" value={`${memberCount}`} suffix="명" />
       </section>
-
       {scrim.description && (
         <section className="val-card mb-5 p-5">
           <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">Description</div>
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#c8d3db]">{scrim.description}</p>
         </section>
       )}
-
       <div className="grid gap-5 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
         <aside className="space-y-4">
-          <TeamCaptainRail
-            teamIds={teamIds}
-            teamNames={teamNames}
-            players={scrim.players}
-            onDrop={(playerId, teamId) => movePlayer(playerId, teamId, "captain")}
-            onRename={updateTeamName}
-          />
+          <TeamCaptainRail teamIds={teamIds} teamNames={teamNames} players={scrim.players} onDrop={(pId, tId) => movePlayer(pId, tId, "captain")} onRename={updateTeamName} />
         </aside>
-
         <main className="space-y-5">
-          <DropArea
-            title={`참가자 목록 (${participantPlayers.length}명)`}
-            subtitle="드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요."
-            onDrop={(playerId) => movePlayer(playerId, "participant", "participant")}
-          >
+          <DropArea title={`참가자 목록 (${participantPlayers.length}명)`} subtitle="드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {participantPlayers.map((player) => (
-                <PlayerCard key={player.id} player={player} compact />
-              ))}
+              {participantPlayers.map((p) => <PlayerCard key={p.id} player={p} compact />)}
               {participantPlayers.length === 0 && <EmptyState text="대기 중인 참가자가 없습니다." />}
             </div>
           </DropArea>
-
           <section className="grid gap-4 lg:grid-cols-2">
-            {teamIds.map((teamId, index) => {
-              const captain = scrim.players.find((player) => player.team === teamId && player.role === "captain");
-              const members = scrim.players.filter((player) => player.team === teamId && player.role === "member");
-              return (
-                <TeamBoard
-                  key={teamId}
-                  teamId={teamId}
-                  name={teamNames[teamId] ?? getDefaultTeamName(index)}
-                  color={TEAM_COLORS[index % TEAM_COLORS.length]}
-                  captain={captain}
-                  members={members}
-                  onDropCaptain={(playerId) => movePlayer(playerId, teamId, "captain")}
-                  onDropMember={(playerId) => movePlayer(playerId, teamId, "member")}
-                  onRename={(name) => updateTeamName(teamId, name)}
-                />
-              );
+            {teamIds.map((tId, i) => {
+              const captain = scrim.players.find((p) => p.team === tId && p.role === "captain");
+              const members = scrim.players.filter((p) => p.team === tId && p.role === "member");
+              return <TeamBoard key={tId} teamId={tId} name={teamNames[tId] ?? getDefaultTeamName(i)} color={TEAM_COLORS[i % TEAM_COLORS.length]} captain={captain} members={members} onDropCaptain={(pId) => movePlayer(pId, tId, "captain")} onDropMember={(pId) => movePlayer(pId, tId, "member")} onRename={(n) => updateTeamName(tId, n)} />;
             })}
           </section>
         </main>
-
         <aside className="space-y-4">
-          <ManagerPanel
-            managerIds={managerIds}
-            guildMembers={guildMembers}
-            newManagerId={newManagerId}
-            setNewManagerId={setNewManagerId}
-            addManager={addManager}
-          />
+          <ManagerPanel managerIds={managerIds} guildMembers={guildMembers} newManagerId={newManagerId} setNewManagerId={setNewManagerId} addManager={addManager} />
           <div className="val-card p-5 text-xs leading-relaxed text-[#9aa8b3]">
             <div className="mb-2 font-black text-white">사용 방법</div>
             <p>디스코드 모집 글에 아무 이모지를 누른 멤버가 참가자 목록에 자동 등록됩니다.</p>
@@ -387,6 +291,471 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   );
 }
 
+// ─── 경매 내전 전용 페이지 ─────────────────────────────────────────────────────
+function AuctionScrimPage({
+  scrim, guildMembers, managerIds, newManagerId, setNewManagerId, addManager,
+  saving, message, setMessage, onScrimUpdate, addRecruitment,
+}: {
+  scrim: ScrimDetail;
+  guildMembers: GuildMemberOption[];
+  managerIds: string[];
+  newManagerId: string;
+  setNewManagerId: (v: string) => void;
+  addManager: () => void;
+  saving: boolean;
+  message: string | null;
+  setMessage: (v: string | null) => void;
+  onScrimUpdate: (s: ScrimDetail) => void;
+  addRecruitment: () => void;
+}) {
+  const [auction, setAuction] = useState<AuctionState | null>(null);
+  const [auctionLoading, setAuctionLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // 설정 단계 상태
+  const [captainSelections, setCaptainSelections] = useState<Record<string, number>>({}); // userId → points
+  const [defaultPoints, setDefaultPoints] = useState(1000);
+  const [timerSeconds, setTimerSeconds] = useState(30);
+
+  // 입찰 상태
+  const [bidAmounts, setBidAmounts] = useState<Record<string, string>>({}); // captainId → input string
+  const [bidding, setBidding] = useState(false);
+
+  // 타이머
+  const [timeLeft, setTimeLeft] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    fetch("/api/me/roles", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setIsAdmin(Boolean(d.isAdmin)))
+      .catch(() => {});
+  }, []);
+
+  // 경매 상태 폴링
+  useEffect(() => {
+    let cancelled = false;
+    async function poll(silent = false) {
+      if (!silent) setAuctionLoading(true);
+      try {
+        const res = await fetch(`/api/scrim/auction?sessionId=${scrim.id}`, { cache: "no-store" });
+        const data = await res.json();
+        if (cancelled) return;
+        setAuction(data.auction ?? null);
+        // 낙찰/유찰 처리 후 scrim 플레이어 목록 갱신
+        if (data.auction?.phase !== "setup") {
+          const scrimRes = await fetch(`/api/scrim/${scrim.id}`, { cache: "no-store" });
+          const scrimData = await scrimRes.json();
+          if (!cancelled && scrimData.scrim) onScrimUpdate(scrimData.scrim);
+        }
+      } finally { if (!silent) setAuctionLoading(false); }
+    }
+    poll();
+    const t = window.setInterval(() => poll(true), 3000);
+    return () => { cancelled = true; window.clearInterval(t); };
+  }, [scrim.id, onScrimUpdate]);
+
+  // 타이머 카운트다운
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (!auction?.auctionStartAt || (auction.phase !== "auction" && auction.phase !== "reauction")) {
+      setTimeLeft(0); return;
+    }
+    function tick() {
+      if (!auction?.auctionStartAt) return;
+      const elapsed = (Date.now() - new Date(auction.auctionStartAt).getTime()) / 1000;
+      const left = Math.max(0, auction.auctionDuration - elapsed);
+      setTimeLeft(Math.ceil(left));
+    }
+    tick();
+    timerRef.current = setInterval(tick, 200);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [auction?.auctionStartAt, auction?.auctionDuration, auction?.phase]);
+
+  const captainPoints = parseJson<Record<string, number>>(auction?.captainPoints, {});
+  const currentBids = parseJson<Record<string, number>>(auction?.currentBids, {});
+  const failedQueue = parseJson<string[]>(auction?.failedQueue, []);
+  const queue = parseJson<string[]>(auction?.queue, []);
+  const captainIds = Object.keys(captainPoints);
+
+  const playerMap = useMemo(() => {
+    const m = new Map<string, ScrimPlayer>();
+    scrim.players.forEach((p) => m.set(p.user.id, p));
+    return m;
+  }, [scrim.players]);
+
+  const currentPlayer = auction?.currentUserId ? playerMap.get(auction.currentUserId) : null;
+
+  // 팀장 선택 토글
+  function toggleCaptain(userId: string) {
+    setCaptainSelections((prev) => {
+      const next = { ...prev };
+      if (next[userId] !== undefined) { delete next[userId]; }
+      else { next[userId] = defaultPoints; }
+      return next;
+    });
+  }
+
+  function setCaptainPoint(userId: string, points: number) {
+    setCaptainSelections((prev) => ({ ...prev, [userId]: points }));
+  }
+
+  async function startAuction() {
+    if (Object.keys(captainSelections).length < 2) {
+      setMessage("팀장을 2명 이상 선택해야 합니다."); return;
+    }
+    setMessage(null);
+    const res = await fetch("/api/scrim/auction", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: scrim.id, captainPoints: captainSelections, auctionDuration: timerSeconds }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setMessage(data.error ?? "경매 시작에 실패했습니다."); return; }
+    setAuction(data.auction);
+  }
+
+  async function submitBid(captainId: string) {
+    const amount = parseInt(bidAmounts[captainId] ?? "0", 10);
+    if (!amount || amount <= 0) { setMessage("입찰 금액을 입력해 주세요."); return; }
+    setBidding(true); setMessage(null);
+    const res = await fetch("/api/scrim/auction", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: scrim.id, bidAmount: amount, captainId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setMessage(data.error ?? "입찰에 실패했습니다."); }
+    else { setAuction(data.auction); setBidAmounts((prev) => ({ ...prev, [captainId]: "" })); }
+    setBidding(false);
+  }
+
+  async function resetAuction() {
+    if (!window.confirm("경매를 초기화하고 처음부터 다시 시작할까요?")) return;
+    const res = await fetch(`/api/scrim/auction?sessionId=${scrim.id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setMessage(data.error ?? "초기화에 실패했습니다."); return; }
+    setAuction(null); setCaptainSelections({});
+  }
+
+  const timerPct = auction?.auctionDuration ? (timeLeft / auction.auctionDuration) * 100 : 0;
+  const timerColor = timerPct > 50 ? "#00e7c2" : timerPct > 25 ? "#f6c945" : "#ff4655";
+
+  // ── 설정 단계 ──
+  if (!auction || auction.phase === "setup") {
+    const participants = scrim.players.filter((p) => p.team === "participant" || p.role === "participant");
+    return (
+      <div className="mx-auto max-w-[1100px]">
+        <div className="mb-6">
+          <Link href="/dashboard/scrim" className="text-xs font-bold text-[#7b8a96] hover:text-white">← 내전 목록</Link>
+          <div className="mt-4 text-[10px] uppercase tracking-[0.32em] text-[#f6c945]">AUCTION SCRIM</div>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-4xl font-black text-white">{scrim.title}</h1>
+            <span className="rounded border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-1 text-sm font-black text-[#f6c945]">🏷 경매 내전</span>
+          </div>
+          <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
+        </div>
+        {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
+
+        <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+          <div className="space-y-5">
+            {/* 경매 설정 */}
+            {isAdmin && (
+              <section className="val-card p-5">
+                <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#f6c945]">경매 설정</div>
+                <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">팀장 기본 포인트</label>
+                    <input
+                      type="number" min={100} max={9999} step={50} value={defaultPoints}
+                      onChange={(e) => { const v = parseInt(e.target.value, 10); setDefaultPoints(v); setCaptainSelections((prev) => { const next = { ...prev }; Object.keys(next).forEach((k) => { next[k] = v; }); return next; }); }}
+                      className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">입찰 타이머 (초)</label>
+                    <input
+                      type="number" min={10} max={120} step={5} value={timerSeconds}
+                      onChange={(e) => setTimerSeconds(parseInt(e.target.value, 10))}
+                      className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
+                    />
+                  </div>
+                </div>
+                <div className="mb-2 text-xs font-black text-white">팀장 선택 <span className="ml-1 text-[#7b8a96]">({Object.keys(captainSelections).length}명 선택됨)</span></div>
+                <p className="mb-3 text-[11px] text-[#7b8a96]">팀장으로 지정할 참가자를 선택하고 각자의 초기 포인트를 설정하세요.</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {participants.map((p) => {
+                    const selected = captainSelections[p.user.id] !== undefined;
+                    return (
+                      <div key={p.id} className={`rounded border p-3 transition-colors ${selected ? "border-[#f6c945] bg-[#f6c945]/8" : "border-[#2a3540] bg-[#0f1923]/70"}`}>
+                        <div className="flex items-center gap-2">
+                          {p.user.image ? <img src={p.user.image} alt="" className="h-8 w-8 rounded-full object-cover" /> : <div className="h-8 w-8 rounded-full bg-[#24313c]" />}
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-black text-white">{p.user.name ?? "이름 없음"}</div>
+                            <div className="truncate text-[11px] text-[#7b8a96]">{p.user.riotAccounts[0] ? `${p.user.riotAccounts[0].gameName}#${p.user.riotAccounts[0].tagLine}` : "Riot 미연동"}</div>
+                          </div>
+                          <button type="button" onClick={() => toggleCaptain(p.user.id)} className={`rounded px-2 py-1 text-[11px] font-black transition-colors ${selected ? "bg-[#f6c945] text-black" : "bg-[#2a3540] text-[#9aa8b3] hover:bg-[#f6c945]/30"}`}>
+                            {selected ? "✓ 팀장" : "선택"}
+                          </button>
+                        </div>
+                        {selected && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <label className="text-[11px] text-[#7b8a96]">포인트</label>
+                            <input
+                              type="number" min={100} max={9999} step={50} value={captainSelections[p.user.id]}
+                              onChange={(e) => setCaptainPoint(p.user.id, parseInt(e.target.value, 10))}
+                              className="w-24 rounded border border-[#2a3540] bg-[#0b141c] px-2 py-1 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
+                            />
+                            <span className="text-[11px] text-[#7b8a96]">P</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <button type="button" onClick={addRecruitment} disabled={saving} className="rounded border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
+                  <button type="button" onClick={startAuction} disabled={Object.keys(captainSelections).length < 2} className="val-btn bg-[#f6c945] px-5 py-2 text-sm font-black text-black disabled:opacity-40">
+                    🏷 경매 시작
+                  </button>
+                </div>
+              </section>
+            )}
+
+            {/* 참가자 목록 */}
+            <section className="val-card p-5">
+              <div className="mb-3 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">참가자 목록 ({participants.length}명)</div>
+              {participants.length === 0
+                ? <div className="rounded border border-dashed border-[#2a3540] py-8 text-center text-xs text-[#7b8a96]">아직 참가자가 없습니다. 디스코드 모집 글에 이모지를 달면 자동 등록됩니다.</div>
+                : <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{participants.map((p) => <PlayerCard key={p.id} player={p} compact />)}</div>
+              }
+            </section>
+          </div>
+
+          {/* 사이드바 */}
+          <aside className="space-y-4">
+            <ManagerPanel managerIds={managerIds} guildMembers={guildMembers} newManagerId={newManagerId} setNewManagerId={setNewManagerId} addManager={addManager} />
+            <div className="val-card p-5 text-xs leading-relaxed text-[#9aa8b3]">
+              <div className="mb-2 font-black text-[#f6c945]">경매 내전 진행 방법</div>
+              <ol className="list-decimal space-y-1.5 pl-4">
+                <li>디스코드 모집 글에 이모지를 단 멤버가 참가자로 자동 등록됩니다.</li>
+                <li>팀장 2명 이상을 선택하고 각자의 초기 포인트를 설정합니다.</li>
+                <li>경매 시작 버튼을 누르면 참가자가 랜덤 순서로 1명씩 공개됩니다.</li>
+                <li>팀장들이 타이머 내에 포인트를 입력해 입찰합니다.</li>
+                <li>타이머 종료 시 최고가 팀장에게 낙찰됩니다.</li>
+                <li>아무도 입찰하지 않으면 유찰 → 1차 종료 후 재경매됩니다.</li>
+              </ol>
+            </div>
+          </aside>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 경매 진행 / 재경매 / 완료 단계 ──
+  const phaseLabel = auction.phase === "reauction" ? "재경매" : auction.phase === "done" ? "경매 완료" : "경매 진행 중";
+  const phaseColor = auction.phase === "done" ? "#00e7c2" : "#f6c945";
+
+  // 팀별 배정 결과
+  const teamAssignments: Record<string, ScrimPlayer[]> = {};
+  captainIds.forEach((cId, i) => {
+    const tId = `team_${String.fromCharCode(97 + i)}`;
+    teamAssignments[tId] = scrim.players.filter((p) => p.team === tId);
+  });
+
+  return (
+    <div className="mx-auto max-w-[1200px]">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <Link href="/dashboard/scrim" className="text-xs font-bold text-[#7b8a96] hover:text-white">← 내전 목록</Link>
+          <div className="mt-4 text-[10px] uppercase tracking-[0.32em]" style={{ color: phaseColor }}>AUCTION SCRIM · {phaseLabel}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-4xl font-black text-white">{scrim.title}</h1>
+            <span className="rounded border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-1 text-sm font-black text-[#f6c945]">🏷 경매 내전</span>
+          </div>
+        </div>
+        {isAdmin && (
+          <div className="flex gap-2">
+            <button type="button" onClick={resetAuction} className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-4 py-2 text-xs font-black text-[#ff8a95] hover:border-[#ff4655]">경매 초기화</button>
+          </div>
+        )}
+      </div>
+
+      {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
+
+      {/* 현재 경매 중인 참가자 */}
+      {(auction.phase === "auction" || auction.phase === "reauction") && (
+        <div className="mb-5">
+          {/* 타이머 바 */}
+          <div className="mb-4 overflow-hidden rounded-full bg-[#1d2732]" style={{ height: 8 }}>
+            <div className="h-full rounded-full transition-all duration-200" style={{ width: `${timerPct}%`, backgroundColor: timerColor }} />
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+            {/* 현재 매물 */}
+            <section className="val-card p-6">
+              <div className="mb-1 flex items-center justify-between">
+                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#f6c945]">
+                  {auction.phase === "reauction" ? "🔄 재경매" : "현재 경매 매물"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#7b8a96]">남은 시간</span>
+                  <span className="text-2xl font-black" style={{ color: timerColor }}>{timeLeft}s</span>
+                </div>
+              </div>
+              <div className="mb-1 text-xs text-[#7b8a96]">
+                대기 {queue.length}명 · 유찰 {failedQueue.length}명
+              </div>
+
+              {currentPlayer ? (
+                <div className="mt-4 flex items-start gap-4">
+                  {currentPlayer.user.image
+                    ? <img src={currentPlayer.user.image} alt="" className="h-20 w-20 rounded-lg object-cover" />
+                    : <div className="h-20 w-20 rounded-lg bg-[#24313c]" />
+                  }
+                  <div className="min-w-0 flex-1">
+                    <div className="text-2xl font-black text-white">{currentPlayer.user.name ?? "이름 없음"}</div>
+                    {currentPlayer.user.riotAccounts.map((a) => (
+                      <div key={a.gameName} className="mt-1 text-sm text-[#9aa8b3]">
+                        {a.region.toUpperCase()} · {a.gameName}#{a.tagLine}
+                        {a.cachedTierName && <span className="ml-2 rounded bg-[#ff4655]/12 px-2 py-0.5 text-xs font-bold text-[#ff8a95]">{a.cachedTierName}</span>}
+                      </div>
+                    ))}
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {toRoleLabels(currentPlayer.user.valorantRole).map((r) => (
+                        <span key={r} className="rounded bg-[#24313c] px-2 py-0.5 text-[11px] font-bold text-[#c8d3db]">{r}</span>
+                      ))}
+                      {parseAgents(currentPlayer.user.favoriteAgents).slice(0, 3).map((a) => (
+                        <span key={a} className="rounded bg-[#0b141c] px-2 py-0.5 text-[11px] font-bold text-[#9aa8b3]">{a}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 py-8 text-center text-[#7b8a96]">경매 대상자를 불러오는 중...</div>
+              )}
+            </section>
+
+            {/* 팀장 입찰 패널 */}
+            <section className="space-y-3">
+              {captainIds.map((cId, i) => {
+                const tId = `team_${String.fromCharCode(97 + i)}`;
+                const captain = playerMap.get(cId);
+                const myBid = currentBids[cId] ?? 0;
+                const myPoints = captainPoints[cId] ?? 0;
+                const color = TEAM_COLORS[i % TEAM_COLORS.length];
+                const teamMembers = scrim.players.filter((p) => p.team === tId && (p.role === "member" || p.role === "captain"));
+
+                return (
+                  <div key={cId} className="val-card p-4" style={{ borderTop: `3px solid ${color}` }}>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        {captain?.user.image ? <img src={captain.user.image} alt="" className="h-8 w-8 rounded-full object-cover" /> : <div className="h-8 w-8 rounded-full bg-[#24313c]" />}
+                        <div>
+                          <div className="text-sm font-black text-white">{captain?.user.name ?? "팀장"}</div>
+                          <div className="text-[11px]" style={{ color }}>{getDefaultTeamName(i)}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-black text-white">{myPoints.toLocaleString()}<span className="ml-1 text-xs text-[#7b8a96]">P</span></div>
+                        {myBid > 0 && <div className="text-xs font-bold text-[#f6c945]">입찰: {myBid}P</div>}
+                      </div>
+                    </div>
+                    <div className="mb-2 text-[11px] text-[#7b8a96]">팀원 {teamMembers.length - 1}명 배정됨</div>
+                    {isAdmin && (
+                      <div className="flex gap-2">
+                        <input
+                          type="number" min={1} max={myPoints} placeholder="입찰 금액"
+                          value={bidAmounts[cId] ?? ""}
+                          onChange={(e) => setBidAmounts((prev) => ({ ...prev, [cId]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === "Enter") void submitBid(cId); }}
+                          className="min-w-0 flex-1 rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
+                        />
+                        <button type="button" onClick={() => void submitBid(cId)} disabled={bidding} className="rounded bg-[#f6c945] px-3 py-2 text-xs font-black text-black disabled:opacity-50">입찰</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* 경매 완료 결과 */}
+      {auction.phase === "done" && (
+        <div className="mb-5 val-card p-5">
+          <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#00e7c2]">🎉 경매 완료 · 팀 구성 결과</div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {captainIds.map((cId, i) => {
+              const tId = `team_${String.fromCharCode(97 + i)}`;
+              const color = TEAM_COLORS[i % TEAM_COLORS.length];
+              const members = scrim.players.filter((p) => p.team === tId);
+              const remainPoints = captainPoints[cId] ?? 0;
+              return (
+                <div key={cId} className="rounded border border-[#2a3540] overflow-hidden">
+                  <div className="px-4 py-3" style={{ borderTop: `3px solid ${color}`, background: "#1d2732" }}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-white" style={{ color }}>{getDefaultTeamName(i)}</span>
+                      <span className="text-xs text-[#7b8a96]">잔여 {remainPoints}P</span>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-[#2a3540]">
+                    {members.map((p) => (
+                      <div key={p.id} className="flex items-center gap-2 px-4 py-2">
+                        {p.user.image ? <img src={p.user.image} alt="" className="h-7 w-7 rounded-full object-cover" /> : <div className="h-7 w-7 rounded-full bg-[#24313c]" />}
+                        <span className="flex-1 truncate text-sm font-bold text-white">{p.user.name ?? "이름 없음"}</span>
+                        {p.role === "captain" && <span className="rounded bg-[#f6c945]/15 px-2 py-0.5 text-[10px] font-black text-[#f6c945]">팀장</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 포인트 현황 (진행 중일 때) */}
+      {(auction.phase === "auction" || auction.phase === "reauction") && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-5">
+          {captainIds.map((cId, i) => {
+            const captain = playerMap.get(cId);
+            const color = TEAM_COLORS[i % TEAM_COLORS.length];
+            const tId = `team_${String.fromCharCode(97 + i)}`;
+            const memberCount = scrim.players.filter((p) => p.team === tId && p.role === "member").length;
+            return (
+              <div key={cId} className="val-card p-4" style={{ borderTop: `3px solid ${color}` }}>
+                <div className="text-xs font-black" style={{ color }}>{getDefaultTeamName(i)}</div>
+                <div className="mt-1 text-sm font-bold text-white truncate">{captain?.user.name ?? "팀장"}</div>
+                <div className="mt-2 text-2xl font-black text-white">{(captainPoints[cId] ?? 0).toLocaleString()}<span className="ml-1 text-xs text-[#7b8a96]">P</span></div>
+                <div className="mt-1 text-[11px] text-[#7b8a96]">팀원 {memberCount}명</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 유찰 목록 */}
+      {failedQueue.length > 0 && auction.phase !== "done" && (
+        <div className="val-card mb-5 p-4">
+          <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">유찰 대기 ({failedQueue.length}명)</div>
+          <div className="flex flex-wrap gap-2">
+            {failedQueue.map((uid) => {
+              const p = playerMap.get(uid);
+              return (
+                <div key={uid} className="flex items-center gap-1.5 rounded border border-[#2a3540] bg-[#0f1923]/70 px-2 py-1">
+                  {p?.user.image ? <img src={p.user.image} alt="" className="h-5 w-5 rounded-full object-cover" /> : <div className="h-5 w-5 rounded-full bg-[#24313c]" />}
+                  <span className="text-xs font-bold text-[#9aa8b3]">{p?.user.name ?? uid}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── 공통 컴포넌트 ─────────────────────────────────────────────────────────────
 function StatCard({ label, value, suffix }: { label: string; value: string; suffix: string }) {
   return (
     <div className="val-card p-5">
@@ -399,27 +768,9 @@ function StatCard({ label, value, suffix }: { label: string; value: string; suff
   );
 }
 
-function DropArea({
-  title,
-  subtitle,
-  children,
-  onDrop,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-  onDrop: (playerId: string) => void;
-}) {
+function DropArea({ title, subtitle, children, onDrop }: { title: string; subtitle?: string; children: React.ReactNode; onDrop: (playerId: string) => void }) {
   return (
-    <section
-      className="val-card p-5"
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        event.preventDefault();
-        const playerId = event.dataTransfer.getData("text/plain");
-        if (playerId) onDrop(playerId);
-      }}
-    >
+    <section className="val-card p-5" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDrop(id); }}>
       <div className="mb-4 flex items-end justify-between gap-3">
         <div>
           <h2 className="text-sm font-black text-white">{title}</h2>
@@ -431,41 +782,16 @@ function DropArea({
   );
 }
 
-function TeamCaptainRail({
-  teamIds,
-  teamNames,
-  players,
-  onDrop,
-  onRename,
-}: {
-  teamIds: string[];
-  teamNames: Record<string, string>;
-  players: ScrimPlayer[];
-  onDrop: (playerId: string, teamId: string) => void;
-  onRename: (teamId: string, name: string) => void;
-}) {
+function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename }: { teamIds: string[]; teamNames: Record<string, string>; players: ScrimPlayer[]; onDrop: (playerId: string, teamId: string) => void; onRename: (teamId: string, name: string) => void }) {
   return (
     <div className="val-card p-4">
       <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">Team Captains</div>
       <div className="space-y-3">
-        {teamIds.map((teamId, index) => {
-          const captain = players.find((player) => player.team === teamId && player.role === "captain");
+        {teamIds.map((tId, i) => {
+          const captain = players.find((p) => p.team === tId && p.role === "captain");
           return (
-            <div
-              key={teamId}
-              className="rounded border border-[#2a3540] bg-[#0f1923]/80 p-3"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                const playerId = event.dataTransfer.getData("text/plain");
-                if (playerId) onDrop(playerId, teamId);
-              }}
-            >
-              <input
-                defaultValue={teamNames[teamId] ?? getDefaultTeamName(index)}
-                onBlur={(event) => onRename(teamId, event.target.value.trim())}
-                className="mb-2 w-full rounded border border-[#384653] bg-[#111c24] px-2 py-1 text-xs font-black text-white outline-none focus:border-[#ff4655]"
-              />
+            <div key={tId} className="rounded border border-[#2a3540] bg-[#0f1923]/80 p-3" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDrop(id, tId); }}>
+              <input defaultValue={teamNames[tId] ?? getDefaultTeamName(i)} onBlur={(e) => onRename(tId, e.target.value.trim())} className="mb-2 w-full rounded border border-[#384653] bg-[#111c24] px-2 py-1 text-xs font-black text-white outline-none focus:border-[#ff4655]" />
               {captain ? <PlayerCard player={captain} compact /> : <EmptyState text="팀장 슬롯" small />}
             </div>
           );
@@ -475,48 +801,20 @@ function TeamCaptainRail({
   );
 }
 
-function TeamBoard({
-  teamId,
-  name,
-  color,
-  captain,
-  members,
-  onDropCaptain,
-  onDropMember,
-  onRename,
-}: {
-  teamId: string;
-  name: string;
-  color: string;
-  captain?: ScrimPlayer;
-  members: ScrimPlayer[];
-  onDropCaptain: (playerId: string) => void;
-  onDropMember: (playerId: string) => void;
-  onRename: (name: string) => void;
-}) {
+function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void }) {
   return (
     <article className="val-card overflow-hidden">
       <div className="border-b border-[#2a3540] bg-[#1d2732] px-5 py-4" style={{ borderTop: `3px solid ${color}` }}>
         <div className="flex items-center justify-between gap-3">
-          <input
-            defaultValue={name}
-            onBlur={(event) => onRename(event.target.value.trim())}
-            className="min-w-0 flex-1 bg-transparent text-lg font-black text-white outline-none"
-          />
-          <span className="rounded border border-[#2a3540] px-2 py-1 text-[11px] font-black text-[#7b8a96]">
-            {members.length + (captain ? 1 : 0)}명
-          </span>
+          <input defaultValue={name} onBlur={(e) => onRename(e.target.value.trim())} className="min-w-0 flex-1 bg-transparent text-lg font-black text-white outline-none" />
+          <span className="rounded border border-[#2a3540] px-2 py-1 text-[11px] font-black text-[#7b8a96]">{members.length + (captain ? 1 : 0)}명</span>
         </div>
       </div>
       <div className="grid gap-4 p-4">
-        <DropAreaMini label="팀장" onDrop={onDropCaptain}>
-          {captain ? <PlayerCard player={captain} /> : <EmptyState text="팀장 배치" />}
-        </DropAreaMini>
+        <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
         <DropAreaMini label="팀원" onDrop={onDropMember}>
           <div className="grid gap-2">
-            {members.map((player) => (
-              <PlayerCard key={player.id} player={player} />
-            ))}
+            {members.map((p) => <PlayerCard key={p.id} player={p} />)}
             {members.length === 0 && <EmptyState text="팀원 배치" />}
           </div>
         </DropAreaMini>
@@ -526,17 +824,9 @@ function TeamBoard({
   );
 }
 
-function DropAreaMini({ label, children, onDrop }: { label: string; children: React.ReactNode; onDrop: (playerId: string) => void }) {
+function DropAreaMini({ label, children, onDrop }: { label: string; children: React.ReactNode; onDrop: (id: string) => void }) {
   return (
-    <div
-      className="rounded border border-dashed border-[#33414e] bg-[#0b141c]/60 p-3"
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        event.preventDefault();
-        const playerId = event.dataTransfer.getData("text/plain");
-        if (playerId) onDrop(playerId);
-      }}
-    >
+    <div className="rounded border border-dashed border-[#33414e] bg-[#0b141c]/60 p-3" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDrop(id); }}>
       <div className="mb-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#7b8a96]">{label}</div>
       {children}
     </div>
@@ -544,73 +834,33 @@ function DropAreaMini({ label, children, onDrop }: { label: string; children: Re
 }
 
 function PlayerCard({ player, compact = false }: { player: ScrimPlayer; compact?: boolean }) {
-  const riotNames = player.user.riotAccounts.map((account) => `${account.region.toUpperCase()} · ${account.gameName}#${account.tagLine}`);
-  const tiers = player.user.riotAccounts.map((account) => account.cachedTierName).filter(Boolean);
+  const riotNames = player.user.riotAccounts.map((a) => `${a.region.toUpperCase()} · ${a.gameName}#${a.tagLine}`);
+  const tiers = player.user.riotAccounts.map((a) => a.cachedTierName).filter(Boolean);
   const agents = parseAgents(player.user.favoriteAgents);
   const roleLabels = toRoleLabels(player.user.valorantRole);
-
   return (
-    <div
-      draggable
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", player.id);
-      }}
-      className="cursor-grab rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing"
-    >
+    <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
       <div className="flex items-center gap-3">
-        {player.user.image ? (
-          <img src={player.user.image} alt="" className={compact ? "h-9 w-9 rounded-full object-cover" : "h-12 w-12 rounded object-cover"} />
-        ) : (
-          <div className={compact ? "h-9 w-9 rounded-full bg-[#24313c]" : "h-12 w-12 rounded bg-[#24313c]"} />
-        )}
+        {player.user.image ? <img src={player.user.image} alt="" className={compact ? "h-9 w-9 rounded-full object-cover" : "h-12 w-12 rounded object-cover"} /> : <div className={compact ? "h-9 w-9 rounded-full bg-[#24313c]" : "h-12 w-12 rounded bg-[#24313c]"} />}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-black text-white">{player.user.name ?? "이름 없음"}</div>
           <div className="truncate text-[11px] text-[#7b8a96]">{riotNames.join(" · ") || "Riot 계정 미연동"}</div>
         </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-        {tiers.slice(0, 2).map((tier) => (
-          <span key={tier} className="rounded bg-[#ff4655]/12 px-2 py-0.5 font-bold text-[#ff8a95]">
-            {tier}
-          </span>
-        ))}
-        {roleLabels.map((role) => (
-          <span key={role} className="rounded bg-[#24313c] px-2 py-0.5 font-bold text-[#c8d3db]">
-            {role}
-          </span>
-        ))}
-        {agents.slice(0, 3).map((agent) => (
-          <span key={agent} className="rounded bg-[#0b141c] px-2 py-0.5 font-bold text-[#9aa8b3]">
-            {agent}
-          </span>
-        ))}
+        {tiers.slice(0, 2).map((t) => <span key={t} className="rounded bg-[#ff4655]/12 px-2 py-0.5 font-bold text-[#ff8a95]">{t}</span>)}
+        {roleLabels.map((r) => <span key={r} className="rounded bg-[#24313c] px-2 py-0.5 font-bold text-[#c8d3db]">{r}</span>)}
+        {agents.slice(0, 3).map((a) => <span key={a} className="rounded bg-[#0b141c] px-2 py-0.5 font-bold text-[#9aa8b3]">{a}</span>)}
       </div>
     </div>
   );
 }
 
 function EmptyState({ text, small = false }: { text: string; small?: boolean }) {
-  return (
-    <div className={`rounded border border-dashed border-[#2a3540] bg-[#0f1923]/45 text-center text-xs text-[#7b8a96] ${small ? "px-2 py-3" : "px-3 py-8"}`}>
-      {text}
-    </div>
-  );
+  return <div className={`rounded border border-dashed border-[#2a3540] bg-[#0f1923]/45 text-center text-xs text-[#7b8a96] ${small ? "px-2 py-3" : "px-3 py-8"}`}>{text}</div>;
 }
 
-function ManagerPanel({
-  managerIds,
-  guildMembers,
-  newManagerId,
-  setNewManagerId,
-  addManager,
-}: {
-  managerIds: string[];
-  guildMembers: GuildMemberOption[];
-  newManagerId: string;
-  setNewManagerId: (value: string) => void;
-  addManager: () => void;
-}) {
+function ManagerPanel({ managerIds, guildMembers, newManagerId, setNewManagerId, addManager }: { managerIds: string[]; guildMembers: GuildMemberOption[]; newManagerId: string; setNewManagerId: (v: string) => void; addManager: () => void }) {
   return (
     <div className="val-card p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -618,32 +868,22 @@ function ManagerPanel({
         <span className="text-xs text-[#7b8a96]">{managerIds.length}/5</span>
       </div>
       <div className="mb-3 flex flex-col gap-2">
-        {managerIds.map((managerId) => {
-          const member = guildMembers.find((item) => item.discordId === managerId || item.userId === managerId);
+        {managerIds.map((mid) => {
+          const m = guildMembers.find((x) => x.discordId === mid || x.userId === mid);
           return (
-            <div key={managerId} className="flex items-center gap-2 rounded border border-[#2a3540] bg-[#0f1923]/70 px-2 py-2">
-              {member?.image ? <img src={member.image} alt="" className="h-7 w-7 rounded-full object-cover" /> : <div className="h-7 w-7 rounded-full bg-[#24313c]" />}
-              <span className="min-w-0 flex-1 truncate text-xs font-black text-white">{member?.name ?? managerId}</span>
+            <div key={mid} className="flex items-center gap-2 rounded border border-[#2a3540] bg-[#0f1923]/70 px-2 py-2">
+              {m?.image ? <img src={m.image} alt="" className="h-7 w-7 rounded-full object-cover" /> : <div className="h-7 w-7 rounded-full bg-[#24313c]" />}
+              <span className="min-w-0 flex-1 truncate text-xs font-black text-white">{m?.name ?? mid}</span>
             </div>
           );
         })}
       </div>
       <div className="flex gap-2">
-        <select
-          value={newManagerId}
-          onChange={(event) => setNewManagerId(event.target.value)}
-          className="min-w-0 flex-1 rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-xs font-bold text-white outline-none"
-        >
+        <select value={newManagerId} onChange={(e) => setNewManagerId(e.target.value)} className="min-w-0 flex-1 rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-xs font-bold text-white outline-none">
           <option value="">관리자 선택</option>
-          {guildMembers.map((member) => (
-            <option key={member.userId} value={member.discordId ?? member.userId}>
-              {member.name}
-            </option>
-          ))}
+          {guildMembers.map((m) => <option key={m.userId} value={m.discordId ?? m.userId}>{m.name}</option>)}
         </select>
-        <button type="button" onClick={addManager} disabled={managerIds.length >= 5} className="rounded bg-[#ff4655] px-3 py-2 text-xs font-black text-white disabled:opacity-50">
-          추가
-        </button>
+        <button type="button" onClick={addManager} disabled={managerIds.length >= 5} className="rounded bg-[#ff4655] px-3 py-2 text-xs font-black text-white disabled:opacity-50">추가</button>
       </div>
     </div>
   );

@@ -230,6 +230,22 @@ model ScrimPlayer {
   @@unique([sessionId, userId])
 }
 
+// 경매 내전 상태
+model AuctionState {
+  id              String   @id @default(cuid())
+  sessionId       String   @unique
+  phase           String   @default("setup") // setup | auction | reauction | done
+  captainPoints   String   @default("{}")   // JSON: { userId: points }
+  queue           String   @default("[]")   // JSON: userId[] 남은 경매 순서
+  currentUserId   String?                   // 현재 경매 중인 참가자 userId
+  currentBids     String   @default("{}")   // JSON: { captainUserId: bidAmount }
+  auctionStartAt  DateTime?
+  auctionDuration Int      @default(30)     // 초 단위 타이머
+  failedQueue     String   @default("[]")   // JSON: userId[] 유찰된 참가자
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+}
+
 // 내전 ELO
 model ScrimElo {
   id      String @id @default(cuid())

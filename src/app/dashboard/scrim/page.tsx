@@ -304,9 +304,6 @@ export default function ScrimPage() {
                           </div>
                         </div>
                         <div className="flex flex-shrink-0 items-center gap-2">
-                          <span className="rounded bg-[#ff4655]/10 px-3 py-1 text-xs font-black text-[#ff4655]">
-                            {getWinnerLabel(scrim.winnerId)}
-                          </span>
                           <a
                             href={`/dashboard/scrim/${scrim.id}`}
                             className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-1 text-xs font-black text-[#c8d3db] hover:border-[#ff4655]/50 hover:text-white"

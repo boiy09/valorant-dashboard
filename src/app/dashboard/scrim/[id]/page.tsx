@@ -117,6 +117,12 @@ function toRoleLabels(value: string | null) {
   return value.split(",").map((r) => r.trim()).filter(Boolean).map((r) => ROLE_LABELS[r] ?? r);
 }
 
+// ─── 서버닉 헬퍼 ─────────────────────────────────────────────────────────────
+function resolveServerNick(userId: string, guildMembers: GuildMemberOption[], fallback?: string | null): string {
+  const m = guildMembers.find((x) => x.userId === userId);
+  return m?.name ?? fallback ?? userId.slice(0, 8);
+}
+
 // ─── 메인 페이지 ───────────────────────────────────────────────────────────────
 export default function ScrimDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -461,8 +467,6 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-black text-white">{scrim.title}</h1>
             <span className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-3 py-1 text-sm font-black text-[#ff8a95]">⚔ 일반 내전</span>
-            <span className="rounded px-3 py-1 text-sm font-black" style={{ background: `${statusInfo.color}18`, color: statusInfo.color, border: `1px solid ${statusInfo.color}50` }}>{statusInfo.label}</span>
-            {scrim.map && <span className="rounded bg-[#24313c] px-3 py-1 text-sm font-black text-[#c8d3db]">🗺 {scrim.map}</span>}
           </div>
           <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
         </div>
@@ -498,7 +502,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
         <main className="space-y-5">
           <DropArea title={`참가자 목록 (${participantPlayers.length}명)`} subtitle="드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {participantPlayers.map((p) => <PlayerCard key={p.id} player={p} compact onRemove={() => removePlayer(p.id)} />)}
+              {participantPlayers.map((p) => <PlayerCard key={p.id} player={p} compact onRemove={() => removePlayer(p.id)} guildMembers={guildMembers} />)}
               {participantPlayers.length === 0 && <EmptyState text="대기 중인 참가자가 없습니다." />}
             </div>
           </DropArea>
@@ -644,56 +648,55 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                               <span className="text-[10px] text-[#00e7c2]">✓ 매치 연동됨</span>
                             </div>
                           </div>
-                          {/* 팀별 스코어보드 */}
+                          {/* 팀별 스코어보드 - 전적탭 스타일 */}
                           {["Blue", "Red"].map((teamColor) => {
                             const tColor = teamColor === "Blue" ? "#00e7c2" : "#ff4655";
+                            const teamLabel = teamColor === "Blue" ? "TEAM A" : "TEAM B";
                             const teamPlayers = kdaData.filter((k) => k.team === teamColor).sort((a, b) => b.score - a.score);
                             if (teamPlayers.length === 0) return null;
-                            const totalRounds = (() => {
-                              const allScores = kdaData.map(k => k.score);
-                              const maxScore = Math.max(...allScores);
-                              // 라운드 수 추정: 최고 ACS 기준
-                              return Math.max(13, Math.round(maxScore / 400));
-                            })();
+                            // 라운드 수 추정
+                            const allScores = kdaData.map(k => k.score);
+                            const maxScore = Math.max(...allScores, 1);
+                            const totalRounds = Math.max(13, Math.round(maxScore / 400));
                             return (
-                              <div key={teamColor} className="mb-3">
+                              <div key={teamColor} className="mb-4">
                                 {/* 팀 헤더 */}
-                                <div className="flex items-center gap-2 px-3 py-2 rounded-t" style={{ background: `${tColor}18` }}>
-                                  <div className="text-xs font-black" style={{ color: tColor }}>
-                                    {teamColor === "Blue" ? "Team A" : "Team B"} · {teamPlayers.length}R
+                                <div className="flex items-center px-3 py-2 rounded-t" style={{ background: `${tColor}20` }}>
+                                  <div className="text-xs font-black tracking-widest uppercase" style={{ color: tColor }}>
+                                    {teamLabel} · {teamPlayers.length}명
                                   </div>
-                                  <div className="ml-auto grid grid-cols-3 gap-4 text-[10px] font-black text-[#7b8a96]">
-                                    <span className="text-center">ACS</span>
-                                    <span className="text-center">K</span>
-                                    <span className="text-center">D</span>
+                                  <div className="ml-auto flex gap-6 text-[10px] font-black text-[#7b8a96] pr-1">
+                                    <span className="w-10 text-right">ACS</span>
+                                    <span className="w-6 text-right">K</span>
+                                    <span className="w-6 text-right">D</span>
+                                    <span className="w-6 text-right">A</span>
                                   </div>
                                 </div>
                                 {/* 플레이어 행 */}
-                                <div className="rounded-b border border-t-0 divide-y divide-[#1d2732]" style={{ borderColor: `${tColor}30` }}>
+                                <div className="divide-y divide-[#1d2732] rounded-b border border-t-0" style={{ borderColor: `${tColor}30` }}>
                                   {teamPlayers.map((k) => {
                                     const player = scrim.players.find((p) => p.user.id === k.userId);
-                                    const discordNick = player?.user.name ?? k.name;
+                                    const serverNick = resolveServerNick(k.userId, guildMembers, player?.user.name);
                                     const riotAcc = player?.user.riotAccounts?.[0];
                                     const inGameNick = riotAcc ? `${riotAcc.gameName}#${riotAcc.tagLine}` : k.name;
                                     const acs = Math.round(k.score / Math.max(totalRounds, 1));
                                     return (
-                                      <div key={k.userId} className="flex items-center gap-3 px-3 py-2 bg-[#0a1520]">
-                                        {/* 에이전트 */}
-                                        <div className="w-8 h-8 rounded bg-[#1d2732] flex items-center justify-center flex-shrink-0">
-                                          <span className="text-[10px] font-black text-[#7b8a96] truncate px-0.5">{k.agent ? k.agent.slice(0, 3) : "?"}</span>
+                                      <div key={k.userId} className="flex items-center gap-3 px-3 py-2.5 bg-[#0a1520] hover:bg-[#0f1e2c] transition-colors">
+                                        {/* 에이전트 아이콘 */}
+                                        <div className="w-9 h-9 rounded bg-[#1d2732] flex items-center justify-center flex-shrink-0 text-[11px] font-black text-[#9aa8b3]">
+                                          {k.agent ? k.agent.slice(0, 4) : "?"}
                                         </div>
                                         {/* 닉네임 */}
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-black text-white text-xs truncate">{inGameNick}</div>
-                                          {discordNick !== inGameNick && (
-                                            <div className="text-[10px] text-[#7b8a96] truncate">{discordNick}</div>
-                                          )}
+                                          <div className="font-black text-white text-sm truncate">{serverNick}</div>
+                                          <div className="text-[11px] text-[#7b8a96] truncate">{inGameNick}</div>
                                         </div>
-                                        {/* ACS / K / D */}
-                                        <div className="grid grid-cols-3 gap-4 text-xs flex-shrink-0">
-                                          <span className="text-center font-black text-white w-8">{acs}</span>
-                                          <span className="text-center font-black text-[#00e7c2] w-6">{k.kills}</span>
-                                          <span className="text-center font-black text-[#ff4655] w-6">{k.deaths}</span>
+                                        {/* ACS / K / D / A */}
+                                        <div className="flex gap-6 text-sm flex-shrink-0 pr-1">
+                                          <span className="w-10 text-right font-black text-white">{acs}</span>
+                                          <span className="w-6 text-right font-black text-[#00e7c2]">{k.kills}</span>
+                                          <span className="w-6 text-right font-black text-[#ff4655]">{k.deaths}</span>
+                                          <span className="w-6 text-right font-bold text-[#9aa8b3]">{k.assists}</span>
                                         </div>
                                       </div>
                                     );
@@ -1310,7 +1313,7 @@ function DropAreaMini({ label, children, onDrop }: { label: string; children: Re
   );
 }
 
-function PlayerCard({ player, compact = false, onRemove }: { player: ScrimPlayer; compact?: boolean; onRemove?: () => void }) {
+function PlayerCard({ player, compact = false, onRemove, guildMembers = [] }: { player: ScrimPlayer; compact?: boolean; onRemove?: () => void; guildMembers?: GuildMemberOption[] }) {
   const riotNames = player.user.riotAccounts.map((a) => `${a.region.toUpperCase()} · ${a.gameName}#${a.tagLine}`);
   const tiers = player.user.riotAccounts.map((a) => a.cachedTierName).filter(Boolean);
   const agents = parseAgents(player.user.favoriteAgents);
@@ -1320,7 +1323,7 @@ function PlayerCard({ player, compact = false, onRemove }: { player: ScrimPlayer
       <div className="flex items-center gap-3">
         {player.user.image ? <img src={player.user.image} alt="" className={compact ? "h-9 w-9 rounded-full object-cover" : "h-12 w-12 rounded object-cover"} /> : <div className={compact ? "h-9 w-9 rounded-full bg-[#24313c]" : "h-12 w-12 rounded bg-[#24313c]"} />}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-black text-white">{player.user.name ?? "이름 없음"}</div>
+          <div className="truncate text-sm font-black text-white">{resolveServerNick(player.user.id, guildMembers, player.user.name)}</div>
           <div className="truncate text-[11px] text-[#7b8a96]">{riotNames.join(" · ") || "Riot 계정 미연동"}</div>
         </div>
         {onRemove && (

@@ -284,7 +284,7 @@ export default function ScrimPage() {
           {visibleScrims.length === 0 ? (
             <div className="val-card p-12 text-center text-[#7b8a96]">아직 내전 기록이 없습니다.</div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="flex flex-col gap-3">
               {visibleScrims.map((scrim) => {
                 const teamA = scrim.players?.filter((player) => player.team === "team_a") ?? [];
                 const teamB = scrim.players?.filter((player) => player.team === "team_b") ?? [];

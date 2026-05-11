@@ -105,7 +105,7 @@ export default function ScrimRankingPage() {
                         {myRank.regionLabel && (
                           <span className="ml-1 rounded bg-[#ff4655]/20 px-1.5 py-0.5 text-[10px] font-bold">{myRank.regionLabel}</span>
                         )}
-                        <span className="ml-2 text-[#7b8a96]">{myRank.matches}경기</span>
+                        <span className="ml-2 text-[#7b8a96]">{myRank.gamesPlayed ?? myRank.matches}경기</span>
                       </div>
                     </div>
                     <div className="text-right">
@@ -125,16 +125,16 @@ export default function ScrimRankingPage() {
                   const isMe = myRank?.userId === player.userId;
                   const rankClass = isTop3
                     ? index === 0
-                      ? "bg-gradient-to-r from-yellow-500 to-yellow-300 text-black shadow-lg shadow-yellow-500/30"
+                      ? "border-2 border-yellow-500/50 bg-yellow-500/10 text-white shadow-lg shadow-yellow-500/10"
                       : index === 1
-                      ? "bg-gradient-to-r from-gray-400 to-gray-200 text-black shadow-lg shadow-gray-400/30"
-                      : "bg-gradient-to-r from-amber-700 to-amber-500 text-black shadow-lg shadow-amber-700/30"
+                      ? "border-2 border-gray-400/50 bg-gray-400/10 text-white shadow-lg shadow-gray-400/10"
+                      : "border-2 border-amber-700/50 bg-amber-700/10 text-white shadow-lg shadow-amber-700/10"
                     : isMe 
                       ? "border border-[#ff4655] bg-[#ff4655]/10 text-white"
                       : "border border-[#2a3540] bg-[#0f1923]/70 text-white";
 
-                  const subTextColor = isTop3 ? "text-black/60" : "text-[#7b8a96]";
-                  const mainTextColor = isTop3 ? "text-black" : "text-white";
+                  const subTextColor = "text-[#7b8a96]";
+                  const mainTextColor = "text-white";
 
                   return (
                     <div
@@ -158,9 +158,9 @@ export default function ScrimRankingPage() {
                           )}
                           <span>{player.tierName}</span>
                           {player.regionLabel && (
-                            <span className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${isTop3 ? 'bg-black/10' : 'bg-[#2a3540]'}`}>{player.regionLabel}</span>
+                            <span className="ml-1 rounded bg-[#2a3540] px-1.5 py-0.5 text-[10px] font-bold text-[#c8d3db]">{player.regionLabel}</span>
                           )}
-                          <span className="ml-2">{player.matches}경기</span>
+                          <span className="ml-2">{player.gamesPlayed ?? player.matches}경기</span>
                         </div>
                       </div>
                       <div className="text-right">

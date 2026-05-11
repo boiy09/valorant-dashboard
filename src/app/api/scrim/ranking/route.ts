@@ -63,7 +63,6 @@ export async function GET(req: NextRequest) {
   // Function to get tier icon URL based on tier name
   function getTierIconUrl(tierName: string | null): string | null {
     if (!tierName) return "/images/tiers/unranked.png";
-    // Map Korean tier names to standard Valorant tier icons
     const tierIcons: { [key: string]: string } = {
       "아이언": "/images/tiers/iron.png",
       "브론즈": "/images/tiers/bronze.png",
@@ -76,12 +75,9 @@ export async function GET(req: NextRequest) {
       "레디언트": "/images/tiers/radiant.png",
       "언랭크": "/images/tiers/unranked.png",
     };
-    
-    // Check if it contains the tier name
     for (const [key, url] of Object.entries(tierIcons)) {
       if (tierName && tierName.includes(key)) return url;
     }
-    
     return "/images/tiers/unranked.png";
   }
   // 4. 랭킹 데이터 구성 및 필터링
@@ -91,31 +87,29 @@ export async function GET(req: NextRequest) {
     const tierName = primaryAccount?.cachedTierName || "언랭크";
     const region = primaryAccount?.region || "KR";
     const tierIconUrl = getTierIconUrl(tierName);
-    const regionLabel = region === "KR" ? "한서버" : "아메리카";
+    const regionLabel = region === "KR" ? "한섭" : "아섭";
     
     return {
       ...s,
-      name: user?.name || "Unknown", // Discord nickname
+      name: user?.name || "Unknown",
       image: user?.image || null,
-      tier: tierName,
+      tierName,
       tierIconUrl,
       region,
       regionLabel,
+      matches: s.gamesPlayed,
+      gamesPlayed: s.gamesPlayed,
       kd: s.deaths === 0 ? s.kills : Number((s.kills / s.deaths).toFixed(2)),
     };
   });
-  // 티어 필터 적용
   if (tierFilter) {
-    ranking = ranking.filter(r => r.tier.includes(tierFilter));
+    ranking = ranking.filter(r => r.tierName.includes(tierFilter));
   }
-  // KD 순으로 정렬
   ranking.sort((a, b) => b.kd - a.kd || b.kills - a.kills);
-  // 순위 부여
   const finalRanking = ranking.map((r, index) => ({
     ...r,
     rank: index + 1,
   }));
-  // 5. 개인 순위 찾기 (타입 안정성 확보)
   let myRank = null;
   const myUserId = session?.user?.id;
   if (myUserId) {

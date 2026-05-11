@@ -141,7 +141,7 @@ export default function ScrimPage() {
   }, []);
 
   useEffect(() => {
-    if (!createOpen || !isAdmin || channels.length > 0) return;
+    if (!createOpen || channels.length > 0) return;
     setChannelLoading(true);
     setChannelError(null);
     fetch("/api/scrim/channels", { cache: "no-store" })
@@ -183,7 +183,7 @@ export default function ScrimPage() {
   }
 
   async function createScrim() {
-    if (!isAdmin || creating) return;
+    if (creating) return;
     const title = createTitle.trim();
     if (!title) {
       setMessage("내전 제목을 입력해 주세요.");
@@ -240,10 +240,6 @@ export default function ScrimPage() {
   }
 
   function openCreateModal() {
-    if (!isAdmin) {
-      setMessage("관리자만 내전을 생성할 수 있습니다.");
-      return;
-    }
     setMessage(null);
     setCreateOpen(true);
   }

@@ -222,9 +222,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   await ensureScrimSessionColumns();
 
-  const { session, isAdmin, guild } = await getAdminSession();
+  const { session, user, isAdmin, guild } = await getAdminSession();
   if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  if (!isAdmin) return Response.json({ error: "관리자 또는 발로네끼 권한이 필요합니다." }, { status: 403 });
+  if (!user) return Response.json({ error: "사용자 정보를 찾을 수 없습니다." }, { status: 401 });
   if (!guild) return Response.json({ error: "서버 정보를 찾을 수 없습니다." }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
@@ -239,10 +239,8 @@ export async function POST(req: NextRequest) {
   if (scheduledAt && Number.isNaN(scheduledAt.getTime())) {
     return Response.json({ error: "시작 시간이 올바르지 않습니다." }, { status: 400 });
   }
-  // 관리자/발로네끼 역할이면 채널 이름 검증 없이 어떤 채널이든 허용
-  if (!isAdmin && !(await validateRecruitmentChannel(channelId, guild.id))) {
-    return Response.json({ error: "내전 모집 글은 이벤트 공지 또는 구인-구직 채널에만 올릴 수 있습니다." }, { status: 400 });
-  }
+  // 관리자/발로네끼는 채널 이름 검증 없이 어떤 채널이든 허용, 일반 멤버도 어떤 채널이든 허용
+  // (모든 멤버 내전 생성 가능)
 
   const scrim = await prisma.scrimSession.create({
     data: {

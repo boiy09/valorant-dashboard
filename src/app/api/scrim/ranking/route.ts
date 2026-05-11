@@ -1,10 +1,9 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const tierFilter = req.nextUrl.searchParams.get("tier"); // e.g., "초월자", "불멸"
 
   // 1. 모든 내전 경기 데이터 가져오기

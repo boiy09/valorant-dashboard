@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
   // 타이머 만료 자동 처리
   if (
     auction &&
-    auction.phase === "auction" &&
+    (auction.phase === "auction" || auction.phase === "reauction") &&
     auction.auctionStartAt &&
     auction.currentUserId
   ) {

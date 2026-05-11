@@ -47,6 +47,19 @@ interface ScrimDetail {
   players: ScrimPlayer[];
 }
 
+interface ScrimGame {
+  id: string;
+  sessionId: string;
+  gameNumber: number;
+  map: string | null;
+  winnerId: string | null;
+  matchId: string | null;
+  teamSnapshot: string; // JSON: { team_a: userId[], team_b: userId[] }
+  kdaSnapshot: string;  // JSON: [{ userId, kills, deaths, assists }]
+  playedAt: string | null;
+  createdAt: string;
+}
+
 interface GuildMemberOption {
   userId: string;
   discordId: string | null;
@@ -114,6 +127,9 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [newManagerId, setNewManagerId] = useState("");
+  const [games, setGames] = useState<ScrimGame[]>([]);
+  const [activeGameId, setActiveGameId] = useState<string | null>(null);
+  const [gameKda, setGameKda] = useState<Record<string, Record<string, number>>>({});
 
   const settings = useMemo(() => parseSettings(scrim?.settings), [scrim?.settings]);
   const teamIds = useMemo(() => {
@@ -154,6 +170,21 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     loadScrim();
     const timer = window.setInterval(() => loadScrim({ silent: true }), 5000);
     return () => { cancelled = true; window.clearInterval(timer); };
+  }, [id]);
+
+  // 경기 목록 로드
+  useEffect(() => {
+    let cancelled = false;
+    async function loadGames() {
+      try {
+        const res = await fetch(`/api/scrim/${id}/games`, { cache: "no-store" });
+        const data = await res.json();
+        if (cancelled) return;
+        setGames(data.games ?? []);
+      } catch { /* silent */ }
+    }
+    loadGames();
+    return () => { cancelled = true; };
   }, [id]);
 
   async function patchScrim(payload: {
@@ -314,6 +345,74 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     void patchScrim({ removePlayerId: playerId, silent: true });
   }
 
+  // ─── 경기 관리 함수 ───────────────────────────────────────────────────────────
+  async function addGame() {
+    setSaving(true); setMessage(null);
+    try {
+      const res = await fetch(`/api/scrim/${id}/games`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "경기 추가에 실패했습니다.");
+      const newGame: ScrimGame = data.game;
+      setGames((prev) => [...prev, newGame]);
+      setActiveGameId(newGame.id);
+      setMessage(`${newGame.gameNumber}경기가 추가됐습니다.`);
+    } catch (e) { setMessage(e instanceof Error ? e.message : "경기 추가에 실패했습니다."); }
+    finally { setSaving(false); }
+  }
+
+  async function patchGame(gameId: string, payload: { map?: string; winnerId?: string | null; matchId?: string | null; kdaSnapshot?: unknown[] }) {
+    try {
+      const res = await fetch(`/api/scrim/${id}/games`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId, ...payload }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "저장에 실패했습니다.");
+      const updated: ScrimGame = data.game;
+      setGames((prev) => prev.map((g) => (g.id === gameId ? updated : g)));
+    } catch (e) { setMessage(e instanceof Error ? e.message : "저장에 실패했습니다."); }
+  }
+
+  async function deleteGame(gameId: string) {
+    if (!confirm("이 경기 기록을 삭제할까요?")) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/scrim/${id}/games`, {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "삭제에 실패했습니다.");
+      setGames((prev) => {
+        const next = prev.filter((g) => g.id !== gameId).map((g, i) => ({ ...g, gameNumber: i + 1 }));
+        return next;
+      });
+      if (activeGameId === gameId) setActiveGameId(null);
+    } catch (e) { setMessage(e instanceof Error ? e.message : "삭제에 실패했습니다."); }
+    finally { setSaving(false); }
+  }
+
+  async function syncGameMatch(gameId: string) {
+    setSaving(true); setMessage(null);
+    try {
+      const res = await fetch(`/api/scrim/${id}/sync-match`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "전적 연동에 실패했습니다.");
+      // 경기 목록 새로고침
+      const gRes = await fetch(`/api/scrim/${id}/games`, { cache: "no-store" });
+      const gData = await gRes.json();
+      setGames(gData.games ?? []);
+      setMessage(data.message ?? "전적 자동 연동 완료!");
+    } catch (e) { setMessage(e instanceof Error ? e.message : "전적 연동에 실패했습니다."); }
+    finally { setSaving(false); }
+  }
+
   // 전적 자동 연동
   async function syncMatch() {
     setSaving(true); setMessage(null);
@@ -460,6 +559,158 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           {assignedPlayers.length > 0 && (
             <KdaPanel players={assignedPlayers} teamNames={teamNames} onSave={(kdaPlayers) => void patchScrim({ kdaPlayers })} />
           )}
+
+          {/* 경기 기록 섹션 */}
+          <section className="val-card p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">경기 기록 ({games.length}경기)</div>
+              <button type="button" onClick={() => void addGame()} disabled={saving}
+                className="val-btn bg-[#ff4655] px-3 py-1.5 text-xs font-black text-white disabled:opacity-50">
+                + 경기 추가
+              </button>
+            </div>
+
+            {games.length === 0 && (
+              <div className="rounded border border-dashed border-[#2a3540] py-8 text-center text-sm text-[#7b8a96]">
+                아직 기록된 경기가 없습니다. &quot;경기 추가&quot; 버튼으로 경기를 추가하세요.
+              </div>
+            )}
+
+            {/* 경기 탭 */}
+            {games.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {games.map((g) => (
+                    <button key={g.id} type="button"
+                      onClick={() => setActiveGameId(activeGameId === g.id ? null : g.id)}
+                      className={`rounded px-3 py-1.5 text-xs font-black transition-colors ${
+                        activeGameId === g.id
+                          ? g.winnerId === "team_a" ? "bg-[#00e7c2] text-black"
+                            : g.winnerId === "team_b" ? "bg-[#ff4655] text-white"
+                            : g.winnerId === "draw" ? "bg-[#7b8a96] text-white"
+                            : "bg-[#f6c945] text-black"
+                          : "border border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3] hover:border-[#ff4655]/40"
+                      }`}>
+                      {g.gameNumber}경기
+                      {g.winnerId === "team_a" && " ✓A"}
+                      {g.winnerId === "team_b" && " ✓B"}
+                      {g.winnerId === "draw" && " ="}
+                      {g.map && ` · ${g.map}`}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 선택된 경기 상세 */}
+                {activeGameId && (() => {
+                  const game = games.find((g) => g.id === activeGameId);
+                  if (!game) return null;
+                  const kdaData = parseJson<Array<{ userId: string; kills: number; deaths: number; assists: number }>>(game.kdaSnapshot, []);
+                  const teamSnap = parseJson<Record<string, string[]>>(game.teamSnapshot, {});
+
+                  return (
+                    <div className="rounded border border-[#2a3540] bg-[#0a1520] p-4 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-black text-white">{game.gameNumber}경기</div>
+                        <button type="button" onClick={() => void deleteGame(game.id)}
+                          className="text-xs text-[#7b8a96] hover:text-[#ff4655]">삭제</button>
+                      </div>
+
+                      {/* 맵 선택 */}
+                      <div>
+                        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">맵</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {VALORANT_MAPS.map((m) => (
+                            <button key={m} type="button"
+                              onClick={() => void patchGame(game.id, { map: game.map === m ? undefined : m })}
+                              className={`rounded px-2 py-1 text-xs font-bold transition-colors ${
+                                game.map === m ? "bg-[#ff4655] text-white" : "border border-[#2a3540] bg-[#111c24] text-[#9aa8b3] hover:border-[#ff4655]/40"
+                              }`}>
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 승패 */}
+                      <div>
+                        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">승패</div>
+                        <div className="flex gap-2">
+                          {[
+                            { id: "team_a", label: `${teamNames.team_a ?? "TEAM A"} 승리`, color: TEAM_COLORS[0] },
+                            { id: "team_b", label: `${teamNames.team_b ?? "TEAM B"} 승리`, color: TEAM_COLORS[1] },
+                            { id: "draw", label: "무승부", color: "#7b8a96" },
+                          ].map((opt) => (
+                            <button key={opt.id} type="button"
+                              onClick={() => void patchGame(game.id, { winnerId: game.winnerId === opt.id ? null : opt.id })}
+                              className={`rounded px-3 py-1.5 text-xs font-black transition-colors ${
+                                game.winnerId === opt.id ? "text-black" : "border border-[#2a3540] bg-[#111c24] text-[#9aa8b3] hover:border-[#ff4655]/40"
+                              }`}
+                              style={game.winnerId === opt.id ? { background: opt.color } : {}}>
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 전적 자동 연동 */}
+                      <div className="flex items-center gap-3">
+                        <button type="button" onClick={() => void syncGameMatch(game.id)} disabled={saving}
+                          className="val-btn border border-[#00e7c2]/40 bg-[#00e7c2]/10 px-3 py-1.5 text-xs font-black text-[#00e7c2] disabled:opacity-50">
+                          🔄 전적 자동 연동
+                        </button>
+                        {game.matchId && (
+                          <span className="text-xs text-[#00e7c2]">✓ 매치 연동됨 ({game.matchId.slice(0, 8)}...)</span>
+                        )}
+                      </div>
+
+                      {/* 팀 구성 스냅샷 */}
+                      {Object.keys(teamSnap).length > 0 && (
+                        <div>
+                          <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">경기 당시 팀 구성</div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {Object.entries(teamSnap).map(([tId], ti) => {
+                              const tName = teamNames[tId] ?? `TEAM ${tId.replace("team_", "").toUpperCase()}`;
+                              const tColor = TEAM_COLORS[ti % TEAM_COLORS.length];
+                              const userIds = teamSnap[tId] ?? [];
+                              return (
+                                <div key={tId} className="rounded border p-2" style={{ borderColor: `${tColor}40` }}>
+                                  <div className="mb-1 text-xs font-black" style={{ color: tColor }}>{tName}</div>
+                                  <div className="space-y-1">
+                                    {userIds.map((uid) => {
+                                      const p = scrim.players.find((x) => x.user.id === uid);
+                                      const kda = kdaData.find((k) => k.userId === uid);
+                                      return (
+                                        <div key={uid} className="flex items-center justify-between text-xs text-[#c8d3db]">
+                                          <span>{p?.user.name ?? uid.slice(0, 8)}</span>
+                                          {kda && <span className="text-[#9aa8b3]">{kda.kills}/{kda.deaths}/{kda.assists}</span>}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* KDA 입력 */}
+                      {assignedPlayers.length > 0 && (
+                        <GameKdaPanel
+                          game={game}
+                          players={assignedPlayers}
+                          teamNames={teamNames}
+                          gameKda={gameKda}
+                          setGameKda={setGameKda}
+                          onSave={(kda) => void patchGame(game.id, { kdaSnapshot: kda })}
+                        />
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </section>
         </main>
         <aside className="space-y-4">
           <ManagerPanel managerIds={managerIds} guildMembers={guildMembers} newManagerId={newManagerId} setNewManagerId={setNewManagerId} addManager={addManager} />
@@ -1182,3 +1433,99 @@ function KdaPanel({
     </section>
   );
 }
+
+// ─── 경기별 KDA 입력 패널 ────────────────────────────────────────────────────────
+function GameKdaPanel({
+  game, players, teamNames, gameKda, setGameKda, onSave,
+}: {
+  game: ScrimGame;
+  players: ScrimPlayer[];
+  teamNames: Record<string, string>;
+  gameKda: Record<string, Record<string, number>>;
+  setGameKda: React.Dispatch<React.SetStateAction<Record<string, Record<string, number>>>>;
+  onSave: (kda: { userId: string; kills: number; deaths: number; assists: number }[]) => void;
+}) {
+  const [saved, setSaved] = useState(false);
+  const kdaData = parseJson<Array<{ userId: string; kills: number; deaths: number; assists: number }>>(game.kdaSnapshot, []);
+
+  // 초기값: DB에 저장된 값 또는 0
+  const getValue = (userId: string, field: "kills" | "deaths" | "assists") => {
+    if (gameKda[game.id]?.[`${userId}_${field}`] != null) return gameKda[game.id][`${userId}_${field}`];
+    const row = kdaData.find((k) => k.userId === userId);
+    return row ? row[field] : 0;
+  };
+
+  function update(userId: string, field: "kills" | "deaths" | "assists", val: string) {
+    setGameKda((prev) => ({
+      ...prev,
+      [game.id]: { ...(prev[game.id] ?? {}), [`${userId}_${field}`]: parseInt(val, 10) || 0 },
+    }));
+    setSaved(false);
+  }
+
+  function handleSave() {
+    const result = players.map((p) => ({
+      userId: p.user.id,
+      kills: getValue(p.user.id, "kills"),
+      deaths: getValue(p.user.id, "deaths"),
+      assists: getValue(p.user.id, "assists"),
+    }));
+    onSave(result);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  const teams = Array.from(new Set(players.map((p) => p.team))).sort();
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">KDA 입력</div>
+        <button type="button" onClick={handleSave}
+          className={`rounded px-3 py-1 text-xs font-black transition-colors ${saved ? "bg-[#00e7c2] text-black" : "bg-[#ff4655] text-white"}`}>
+          {saved ? "저장됨 ✓" : "저장"}
+        </button>
+      </div>
+      <div className="space-y-3">
+        {teams.map((tId, ti) => {
+          const teamPlayers = players.filter((p) => p.team === tId);
+          const color = TEAM_COLORS[ti % TEAM_COLORS.length];
+          return (
+            <div key={tId}>
+              <div className="mb-1 text-[10px] font-black uppercase" style={{ color }}>{teamNames[tId] ?? getDefaultTeamName(ti)}</div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-[#2a3540]">
+                    <th className="pb-1 text-left font-black text-[#7b8a96]">플레이어</th>
+                    <th className="pb-1 w-16 text-center font-black text-[#7b8a96]">K</th>
+                    <th className="pb-1 w-16 text-center font-black text-[#7b8a96]">D</th>
+                    <th className="pb-1 w-16 text-center font-black text-[#7b8a96]">A</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#1d2732]">
+                  {teamPlayers.map((p) => (
+                    <tr key={p.id}>
+                      <td className="py-1 pr-2 text-white truncate max-w-[100px]">{p.user.name ?? "이름 없음"}</td>
+                      {(["kills", "deaths", "assists"] as const).map((field) => (
+                        <td key={field} className="py-1 px-1">
+                          <input
+                            type="number" min={0} max={99}
+                            value={getValue(p.user.id, field)}
+                            onChange={(e) => update(p.user.id, field, e.target.value)}
+                            className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-1 py-1 text-center font-black text-white outline-none focus:border-[#ff4655]"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+

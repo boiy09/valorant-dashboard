@@ -231,6 +231,22 @@ model ScrimPlayer {
   @@unique([sessionId, userId])
 }
 
+// 내전 경기 단위 기록
+model ScrimGame {
+  id          String   @id @default(cuid())
+  sessionId   String
+  gameNumber  Int      // 1경기, 2경기, 3경기...
+  map         String?
+  winnerId    String?  // team_a | team_b | draw
+  matchId     String?  // Henrik API 매치 ID (자동 연동)
+  teamSnapshot String  @default("{}") // JSON: { team_a: userId[], team_b: userId[] } - 해당 경기 팀 구성 스냅샷
+  kdaSnapshot  String  @default("[]") // JSON: [{ userId, kills, deaths, assists }]
+  playedAt    DateTime?
+  createdAt   DateTime @default(now())
+  @@unique([sessionId, gameNumber])
+  @@index([sessionId])
+}
+
 // 경매 내전 상태
 model AuctionState {
   id              String   @id @default(cuid())
@@ -397,6 +413,17 @@ model MarketPost {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   @@index([guildId, status])
+}
+
+// 전적 캐시 (API 제한 방지용 DB 캐싱)
+model MatchCache {
+  id         String   @id @default(cuid())
+  puuid      String
+  region     String   // KR | AP | NA 등
+  matchesJson String  @default("[]") // JSON: MatchStats[]
+  cachedAt   DateTime @default(now())
+  @@unique([puuid, region])
+  @@index([puuid])
 }
 
 // 하이라이트 갤러리

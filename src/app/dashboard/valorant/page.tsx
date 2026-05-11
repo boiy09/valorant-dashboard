@@ -13,6 +13,8 @@ interface RegionStats {
   puuid: string;
   rank: (RankData & { tierId?: number }) | null;
   recentMatches: (Omit<MatchStats, "playedAt"> & { playedAt: string; scrimSessionId?: string | null; scrimTitle?: string | null })[];
+  fromCache?: boolean;
+  cacheAge?: number | null;
 }
 
 const REGION_LABELS: Record<RiotRegion, string> = { KR: "한섭", AP: "아섭" };
@@ -344,7 +346,7 @@ function RegionSkeleton() {
   );
 }
 
-function RegionSection({ data }: { data: RegionStats }) {
+function RegionSection({ data, onRefresh, refreshing }: { data: RegionStats; onRefresh?: () => void; refreshing?: boolean }) {
   const summary = buildSummary(data.recentMatches);
   const trackerUrl = buildTrackerUrl(data.riotId);
   const rank = data.rank;
@@ -359,7 +361,26 @@ function RegionSection({ data }: { data: RegionStats }) {
             <h2 className="text-lg font-black text-white">{data.riotId}</h2>
           </div>
         </div>
-        <a href={trackerUrl} target="_blank" rel="noopener noreferrer" className="text-[#7b8a96] text-xs hover:text-[#ff4655] transition-colors flex-shrink-0">tracker.gg</a>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {data.fromCache && data.cacheAge != null && (
+            <span className="text-[10px] text-[#7b8a96]">{Math.floor(data.cacheAge / 60)}분 전 캐시</span>
+          )}
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            title="전적 갱신"
+            className="flex items-center gap-1 rounded border border-[#2a3540] bg-[#111c24] px-2 py-1 text-[11px] font-bold text-[#7b8a96] transition-colors hover:border-[#ff4655]/40 hover:text-white disabled:opacity-50"
+          >
+            {refreshing ? (
+              <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10" /></svg>
+            ) : (
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 4v6h6M23 20v-6h-6" /><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15" /></svg>
+            )}
+            갱신
+          </button>
+          <a href={trackerUrl} target="_blank" rel="noopener noreferrer" className="text-[#7b8a96] text-xs hover:text-[#ff4655] transition-colors">tracker.gg</a>
+        </div>
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -429,6 +450,32 @@ function writeStatsCache(data: { accounts: RegionStats[] }) {
 export default function ValorantPage() {
   const [data, setData] = useState<{ accounts: RegionStats[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
+
+  async function handleRefresh(region: string) {
+    setRefreshing((prev) => ({ ...prev, [region]: true }));
+    try {
+      const res = await fetch(`/api/valorant/stats?forceRegion=${region}`, { cache: "no-store" });
+      const d = await res.json() as { accounts?: RegionStats[]; error?: string };
+      if (d.accounts) {
+        setData((prev) => {
+          if (!prev) return { accounts: d.accounts! };
+          const merged = prev.accounts.map((a) => {
+            const updated = d.accounts!.find((x) => x.region === a.region);
+            return updated ?? a;
+          });
+          d.accounts!.forEach((a) => {
+            if (!merged.find((x) => x.region === a.region)) merged.push(a);
+          });
+          return { accounts: merged };
+        });
+      }
+    } catch {
+      // ignore
+    } finally {
+      setRefreshing((prev) => ({ ...prev, [region]: false }));
+    }
+  }
 
   useEffect(() => {
     const cached = readStatsCache();
@@ -487,7 +534,12 @@ export default function ValorantPage() {
           {(["KR", "AP"] as RiotRegion[]).map((region) => {
             const section = sortedStats.find((item) => item.region === region);
             return section ? (
-              <RegionSection key={region} data={section} />
+              <RegionSection
+                key={region}
+                data={section}
+                onRefresh={() => void handleRefresh(region)}
+                refreshing={!!refreshing[region]}
+              />
             ) : (
               <div key={region}><EmptyRegionCard region={region} /></div>
             );

@@ -604,7 +604,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                 {activeGameId && (() => {
                   const game = games.find((g) => g.id === activeGameId);
                   if (!game) return null;
-                  const kdaData = parseJson<Array<{ userId: string; kills: number; deaths: number; assists: number }>>(game.kdaSnapshot, []);
+                  const kdaData = parseJson<Array<{ userId: string; kills: number; deaths: number; assists: number; team: string; agent: string; score: number; name: string }>>(game.kdaSnapshot, []);
                   const teamSnap = parseJson<Record<string, string[]>>(game.teamSnapshot, {});
 
                   return (
@@ -615,42 +615,44 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                           className="text-xs text-[#7b8a96] hover:text-[#ff4655]">삭제</button>
                       </div>
 
-                      {/* 맵 선택 */}
-                      <div>
-                        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">맵</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {VALORANT_MAPS.map((m) => (
-                            <button key={m} type="button"
-                              onClick={() => void patchGame(game.id, { map: game.map === m ? undefined : m })}
-                              className={`rounded px-2 py-1 text-xs font-bold transition-colors ${
-                                game.map === m ? "bg-[#ff4655] text-white" : "border border-[#2a3540] bg-[#111c24] text-[#9aa8b3] hover:border-[#ff4655]/40"
-                              }`}>
-                              {m}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* 승패 */}
-                      <div>
-                        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">승패</div>
-                        <div className="flex gap-2">
-                          {[
-                            { id: "team_a", label: `${teamNames.team_a ?? "TEAM A"} 승리`, color: TEAM_COLORS[0] },
-                            { id: "team_b", label: `${teamNames.team_b ?? "TEAM B"} 승리`, color: TEAM_COLORS[1] },
-                            { id: "draw", label: "무승부", color: "#7b8a96" },
-                          ].map((opt) => (
-                            <button key={opt.id} type="button"
-                              onClick={() => void patchGame(game.id, { winnerId: game.winnerId === opt.id ? null : opt.id })}
-                              className={`rounded px-3 py-1.5 text-xs font-black transition-colors ${
-                                game.winnerId === opt.id ? "text-black" : "border border-[#2a3540] bg-[#111c24] text-[#9aa8b3] hover:border-[#ff4655]/40"
-                              }`}
-                              style={game.winnerId === opt.id ? { background: opt.color } : {}}>
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      {/* 맵/승패: 매치 미연동 시에만 수동 입력 표시 */}
+                      {!game.matchId && (
+                        <>
+                          <div>
+                            <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">맵</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {VALORANT_MAPS.map((m) => (
+                                <button key={m} type="button"
+                                  onClick={() => void patchGame(game.id, { map: game.map === m ? undefined : m })}
+                                  className={`rounded px-2 py-1 text-xs font-bold transition-colors ${
+                                    game.map === m ? "bg-[#ff4655] text-white" : "border border-[#2a3540] bg-[#111c24] text-[#9aa8b3] hover:border-[#ff4655]/40"
+                                  }`}>
+                                  {m}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">승패</div>
+                            <div className="flex gap-2">
+                              {[
+                                { id: "team_a", label: `${teamNames.team_a ?? "TEAM A"} 승리`, color: TEAM_COLORS[0] },
+                                { id: "team_b", label: `${teamNames.team_b ?? "TEAM B"} 승리`, color: TEAM_COLORS[1] },
+                                { id: "draw", label: "무승부", color: "#7b8a96" },
+                              ].map((opt) => (
+                                <button key={opt.id} type="button"
+                                  onClick={() => void patchGame(game.id, { winnerId: game.winnerId === opt.id ? null : opt.id })}
+                                  className={`rounded px-3 py-1.5 text-xs font-black transition-colors ${
+                                    game.winnerId === opt.id ? "text-black" : "border border-[#2a3540] bg-[#111c24] text-[#9aa8b3] hover:border-[#ff4655]/40"
+                                  }`}
+                                  style={game.winnerId === opt.id ? { background: opt.color } : {}}>
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
 
                       {/* 전적 자동 연동 */}
                       <div className="flex items-center gap-3">
@@ -663,47 +665,103 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                         )}
                       </div>
 
-                      {/* 팀 구성 스냅샷 */}
-                      {Object.keys(teamSnap).length > 0 && (
+                      {/* 매치 연동 시: 전적탭 스타일 KDA 표시 */}
+                      {game.matchId && kdaData.length > 0 ? (
                         <div>
-                          <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">경기 당시 팀 구성</div>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {Object.entries(teamSnap).map(([tId], ti) => {
-                              const tName = teamNames[tId] ?? `TEAM ${tId.replace("team_", "").toUpperCase()}`;
-                              const tColor = TEAM_COLORS[ti % TEAM_COLORS.length];
-                              const userIds = teamSnap[tId] ?? [];
+                          <div className="mb-3 flex items-center gap-2">
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">경기 결과</div>
+                            {game.map && <span className="rounded bg-[#1d2732] px-2 py-0.5 text-[10px] font-black text-[#c8d3db]">{game.map}</span>}
+                            {game.winnerId && (
+                              <span className="rounded px-2 py-0.5 text-[10px] font-black" style={{ background: game.winnerId === "Blue" ? "#00e7c218" : "#ff465518", color: game.winnerId === "Blue" ? "#00e7c2" : "#ff4655" }}>
+                                {game.winnerId} 승리
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {["Blue", "Red"].map((teamColor, ti) => {
+                              const tColor = teamColor === "Blue" ? "#00e7c2" : "#ff4655";
+                              const teamPlayers = kdaData.filter((k) => k.team === teamColor).sort((a, b) => b.score - a.score);
+                              if (teamPlayers.length === 0) return null;
                               return (
-                                <div key={tId} className="rounded border p-2" style={{ borderColor: `${tColor}40` }}>
-                                  <div className="mb-1 text-xs font-black" style={{ color: tColor }}>{tName}</div>
-                                  <div className="space-y-1">
-                                    {userIds.map((uid) => {
-                                      const p = scrim.players.find((x) => x.user.id === uid);
-                                      const kda = kdaData.find((k) => k.userId === uid);
-                                      return (
-                                        <div key={uid} className="flex items-center justify-between text-xs text-[#c8d3db]">
-                                          <span>{p?.user.name ?? uid.slice(0, 8)}</span>
-                                          {kda && <span className="text-[#9aa8b3]">{kda.kills}/{kda.deaths}/{kda.assists}</span>}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
+                                <div key={teamColor} className="rounded border p-3" style={{ borderColor: `${tColor}40` }}>
+                                  <div className="mb-2 text-xs font-black" style={{ color: tColor }}>{teamColor === "Blue" ? "🔵 BLUE" : "🔴 RED"}</div>
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="border-b border-[#2a3540]">
+                                        <th className="pb-1 text-left font-black text-[#7b8a96]">플레이어</th>
+                                        <th className="pb-1 w-8 text-center font-black text-[#7b8a96]">K</th>
+                                        <th className="pb-1 w-8 text-center font-black text-[#7b8a96]">D</th>
+                                        <th className="pb-1 w-8 text-center font-black text-[#7b8a96]">A</th>
+                                        <th className="pb-1 w-12 text-center font-black text-[#7b8a96]">ACS</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-[#1d2732]">
+                                      {teamPlayers.map((k) => {
+                                        const rounds = 13;
+                                        const acs = Math.round(k.score / rounds);
+                                        return (
+                                          <tr key={k.userId}>
+                                            <td className="py-1.5 pr-2">
+                                              <div className="font-black text-white truncate max-w-[90px]">{k.name}</div>
+                                              {k.agent && <div className="text-[10px] text-[#7b8a96]">{k.agent}</div>}
+                                            </td>
+                                            <td className="py-1.5 text-center font-black text-[#00e7c2]">{k.kills}</td>
+                                            <td className="py-1.5 text-center font-black text-[#ff4655]">{k.deaths}</td>
+                                            <td className="py-1.5 text-center font-black text-[#f6c945]">{k.assists}</td>
+                                            <td className="py-1.5 text-center text-[#9aa8b3]">{acs}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
                                 </div>
                               );
                             })}
                           </div>
                         </div>
-                      )}
-
-                      {/* KDA 입력 */}
-                      {assignedPlayers.length > 0 && (
-                        <GameKdaPanel
-                          game={game}
-                          players={assignedPlayers}
-                          teamNames={teamNames}
-                          gameKda={gameKda}
-                          setGameKda={setGameKda}
-                          onSave={(kda) => void patchGame(game.id, { kdaSnapshot: kda })}
-                        />
+                      ) : (
+                        /* 미연동 시: 기존 팀 구성 스냅샷 + KDA 입력 */
+                        <>
+                          {Object.keys(teamSnap).length > 0 && (
+                            <div>
+                              <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">경기 당시 팀 구성</div>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {Object.entries(teamSnap).map(([tId], ti) => {
+                                  const tName = teamNames[tId] ?? `TEAM ${tId.replace("team_", "").toUpperCase()}`;
+                                  const tColor = TEAM_COLORS[ti % TEAM_COLORS.length];
+                                  const userIds = teamSnap[tId] ?? [];
+                                  return (
+                                    <div key={tId} className="rounded border p-2" style={{ borderColor: `${tColor}40` }}>
+                                      <div className="mb-1 text-xs font-black" style={{ color: tColor }}>{tName}</div>
+                                      <div className="space-y-1">
+                                        {userIds.map((uid) => {
+                                          const p = scrim.players.find((x) => x.user.id === uid);
+                                          const kda = kdaData.find((k) => k.userId === uid);
+                                          return (
+                                            <div key={uid} className="flex items-center justify-between text-xs text-[#c8d3db]">
+                                              <span>{p?.user.name ?? uid.slice(0, 8)}</span>
+                                              {kda && <span className="text-[#9aa8b3]">{kda.kills}/{kda.deaths}/{kda.assists}</span>}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {assignedPlayers.length > 0 && (
+                            <GameKdaPanel
+                              game={game}
+                              players={assignedPlayers}
+                              teamNames={teamNames}
+                              gameKda={gameKda}
+                              setGameKda={setGameKda}
+                              onSave={(kda) => void patchGame(game.id, { kdaSnapshot: kda })}
+                            />
+                          )}
+                        </>
                       )}
                     </div>
                   );

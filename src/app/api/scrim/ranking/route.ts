@@ -100,10 +100,11 @@ export async function GET(req: NextRequest) {
     rank: index + 1,
   }));
 
-  // 5. 개인 순위 찾기
+  // 5. 개인 순위 찾기 (타입 안정성 확보)
   let myRank = null;
-  if (session?.user?.id) {
-    const myIndex = finalRanking.findIndex(r => r.userId === session.user.id);
+  const myUserId = session?.user?.id;
+  if (myUserId) {
+    const myIndex = finalRanking.findIndex(r => r.userId === myUserId);
     if (myIndex !== -1) {
       myRank = finalRanking[myIndex];
     }

@@ -385,12 +385,11 @@ export default function ScrimPage() {
 
       {createOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
-          <div className="val-card max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6 shadow-2xl">
+          <div className="val-card max-h-[85vh] w-full max-w-lg overflow-y-auto p-5 shadow-2xl">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ff4655]">CREATE SCRIM</div>
-                <h2 className="mt-1 text-2xl font-black text-white">내전 생성</h2>
-                <p className="mt-1 text-sm text-[#7b8a96]">내전 카드에 표시할 정보와 설명을 설정합니다.</p>
+                <h2 className="text-lg font-black text-white">내전 생성</h2>
+                <p className="mt-0.5 text-xs text-[#7b8a96]">내전 카드에 표시할 정보와 설명을 설정합니다.</p>
               </div>
               <button
                 type="button"
@@ -401,14 +400,14 @@ export default function ScrimPage() {
               </button>
             </div>
 
-            <div className="space-y-5">
+            <div className="space-y-4">
               <section>
                 <h3 className="mb-2 text-sm font-black text-white">내전 모드</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setCreateMode("normal")}
-                    className={`rounded border px-4 py-4 text-left transition-colors ${
+                    className={`rounded border px-3 py-3 text-left transition-colors ${
                       createMode === "normal"
                         ? "border-[#ff4655] bg-[#ff4655]/12 text-white"
                         : "border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3] hover:border-[#ff4655]/40"
@@ -425,7 +424,7 @@ export default function ScrimPage() {
                   <button
                     type="button"
                     onClick={() => setCreateMode("auction")}
-                    className={`rounded border px-4 py-4 text-left transition-colors ${
+                    className={`rounded border px-3 py-3 text-left transition-colors ${
                       createMode === "auction"
                         ? "border-[#f6c945] bg-[#f6c945]/10 text-white"
                         : "border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3] hover:border-[#f6c945]/40"
@@ -458,7 +457,7 @@ export default function ScrimPage() {
                 <textarea
                   value={createDescription}
                   onChange={(event) => setCreateDescription(event.target.value)}
-                  rows={5}
+                  rows={3}
                   maxLength={1000}
                   placeholder="내전 컨셉, 참가 조건, 요구 사항, 진행 방식 등을 입력하세요."
                   className="w-full resize-none rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold leading-relaxed text-white outline-none transition-colors placeholder:text-[#56636f] focus:border-[#ff4655]"
@@ -582,7 +581,7 @@ export default function ScrimPage() {
               </section>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setCreateOpen(false)}

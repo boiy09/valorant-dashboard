@@ -71,6 +71,8 @@ interface GuildMemberOption {
 
 interface ScrimDetailSettings {
   teamNames?: Record<string, string>;
+  useTeamBoard?: boolean; // 팀 배치 기능 사용 여부 (기본값: true)
+  useCaptain?: boolean;   // 팀장 기능 사용 여부 (기본값: true)
 }
 
 interface AuctionState {
@@ -305,9 +307,19 @@ function formatDateTime(value: string | null) {
   return new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
 }
 function parseSettings(value: string | null | undefined): ScrimDetailSettings {
-  if (!value) return {};
-  try { const p = JSON.parse(value); return p && typeof p === "object" ? (p as ScrimDetailSettings) : {}; }
-  catch { return {}; }
+  const fallback: ScrimDetailSettings = { useTeamBoard: true, useCaptain: true };
+  if (!value) return fallback;
+  try { 
+    const p = JSON.parse(value); 
+    if (p && typeof p === "object") {
+      return {
+        ...fallback,
+        ...(p as ScrimDetailSettings)
+      };
+    }
+    return fallback;
+  }
+  catch { return fallback; }
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseJson<T>(value: any, fallback: T): T {
@@ -343,6 +355,14 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const [gameKda, setGameKda] = useState<Record<string, Record<string, number>>>({});
 
   const settings = useMemo(() => parseSettings(scrim?.settings), [scrim?.settings]);
+  const [showSettings, setShowSettings] = useState(false);
+
+  async function updateSettings(updates: Partial<ScrimDetailSettings>) {
+    if (!scrim) return;
+    const next = { ...settings, ...updates };
+    setScrim({ ...scrim, settings: JSON.stringify(next) });
+    void patchScrim({ settings: next });
+  }
   const teamIds = useMemo(() => {
     const fromSettings = Object.keys(settings.teamNames ?? {}).filter((t) => t.startsWith("team_"));
     const fromPlayers = (scrim?.players ?? []).map((p) => p.team).filter((t) => t.startsWith("team_"));
@@ -681,19 +701,48 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           <button type="button" onClick={addTeam} disabled={saving} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-50">팀 추가</button>
           <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn bg-[#ff4655] px-3 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
           <button type="button" onClick={() => void syncMatch()} disabled={saving} className="val-btn border border-[#00e7c2]/40 bg-[#00e7c2]/10 px-3 py-2 text-xs font-black text-[#00e7c2] disabled:opacity-50" title="참가자 전원이 포함된 커스텀 매치를 자동으로 찾아 승패/맵/KDA를 기록합니다">🔄 전적 자동 연동</button>
+          <button type="button" onClick={() => setShowSettings(!showSettings)} className={`val-btn border border-[#2a3540] px-3 py-2 text-xs font-black transition-colors ${showSettings ? "bg-[#ff4655] text-white" : "bg-[#111c24] text-white"}`}>⚙️ 설정</button>
         </div>
       </div>
+
+      {showSettings && (
+        <div className="mb-6 rounded border border-[#2a3540] bg-[#0f1923] p-4 shadow-xl">
+          <div className="mb-4 text-[10px] font-black uppercase tracking-widest text-[#ff4655]">ROOM SETTINGS</div>
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-4 rounded bg-[#111c24] p-3">
+              <div>
+                <div className="text-sm font-black text-white">팀 배치 기능</div>
+                <div className="text-[10px] text-[#7b8a96]">팀A / 팀B 보드를 활성화하고 참가자를 배정합니다.</div>
+              </div>
+              <button type="button" onClick={() => void updateSettings({ useTeamBoard: !settings.useTeamBoard })}
+                className={`relative h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${settings.useTeamBoard ? "bg-[#00e7c2]" : "bg-[#2a3540]"}`}>
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${settings.useTeamBoard ? "translate-x-6" : "translate-x-1"}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between gap-4 rounded bg-[#111c24] p-3">
+              <div>
+                <div className="text-sm font-black text-white">팀장 기능</div>
+                <div className="text-[10px] text-[#7b8a96]">팀별로 팀장 슬롯을 활성화합니다.</div>
+              </div>
+              <button type="button" onClick={() => void updateSettings({ useCaptain: !settings.useCaptain })}
+                className={`relative h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${settings.useCaptain ? "bg-[#00e7c2]" : "bg-[#2a3540]"}`}>
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${settings.useCaptain ? "translate-x-6" : "translate-x-1"}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
 
 
 
       {/* 통계 카드 */}
-      <section className="mb-5 grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+      <section className={`mb-5 grid gap-3 sm:grid-cols-2 ${settings.useTeamBoard ? (settings.useCaptain ? "md:grid-cols-4" : "md:grid-cols-3") : "md:grid-cols-2"}`}>
         <StatCard label="참가자" value={`${scrim.players.length}`} suffix="명" />
-        <StatCard label="팀장" value={`${captainCount}`} suffix="명" />
-        <StatCard label="팀원" value={`${memberCount}`} suffix="명" />
-        <StatCard label="대기" value={`${participantPlayers.length}`} suffix="명" />
+        {settings.useTeamBoard && settings.useCaptain && <StatCard label="팀장" value={`${captainCount}`} suffix="명" />}
+        {settings.useTeamBoard && <StatCard label="팀원" value={`${memberCount}`} suffix="명" />}
+        <StatCard label={settings.useTeamBoard ? "대기" : "참가자 목록"} value={`${participantPlayers.length}`} suffix="명" />
       </section>
 
       {scrim.description && (
@@ -705,19 +754,28 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <main className="space-y-5">
-          <DropArea title={`참가자 목록 (${participantPlayers.length}명)`} subtitle="드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {participantPlayers.map((p) => <PlayerCard key={p.id} player={p} compact onRemove={() => removePlayer(p.id)} guildMembers={guildMembers} />)}
-              {participantPlayers.length === 0 && <EmptyState text="대기 중인 참가자가 없습니다." />}
+          <DropArea title={`${settings.useTeamBoard ? "참가자 목록" : "전체 참가자"} (${participantPlayers.length}명)`} 
+            subtitle={settings.useTeamBoard ? "드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." : "내전에 참여 중인 플레이어 목록입니다."} 
+            onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
+            <div className="flex flex-wrap gap-2">
+              {participantPlayers.map((p) => <PlayerCard key={p.userId} player={p} onRemove={removePlayer} />)}
+              {participantPlayers.length === 0 && <EmptyState text="참가자가 없습니다." />}
             </div>
           </DropArea>
-          <section className="grid gap-4 lg:grid-cols-2">
-            {teamIds.map((tId, i) => {
-              const captain = scrim.players.find((p) => p.team === tId && p.role === "captain");
-              const members = scrim.players.filter((p) => p.team === tId && p.role === "member");
-              return <TeamBoard key={tId} teamId={tId} name={teamNames[tId] ?? getDefaultTeamName(i)} color={TEAM_COLORS[i % TEAM_COLORS.length]} captain={captain} members={members} onDropCaptain={(pId) => movePlayer(pId, tId, "captain")} onDropMember={(pId) => movePlayer(pId, tId, "member")} onRename={(n) => updateTeamName(tId, n)} onRemove={removePlayer} />;
-            })}
-          </section>
+          
+          {settings.useTeamBoard && (
+            <section className="grid gap-4 lg:grid-cols-2">
+              {teamIds.map((tId, i) => {
+                const captain = settings.useCaptain ? scrim.players.find((p) => p.team === tId && p.role === "captain") : undefined;
+                const members = scrim.players.filter((p) => p.team === tId && (settings.useCaptain ? p.role === "member" : true));
+                return <TeamBoard key={tId} teamId={tId} name={teamNames[tId] ?? getDefaultTeamName(i)} color={TEAM_COLORS[i % TEAM_COLORS.length]} 
+                  captain={captain} members={members} 
+                  onDropCaptain={settings.useCaptain ? (pId) => movePlayer(pId, tId, "captain") : undefined} 
+                  onDropMember={(pId) => movePlayer(pId, tId, settings.useCaptain ? "member" : "participant")} 
+                  onRename={(n) => updateTeamName(tId, n)} onRemove={removePlayer} />;
+              })}
+            </section>
+          )}
 
           {/* KDA 입력 패널 */}
           {assignedPlayers.length > 0 && (

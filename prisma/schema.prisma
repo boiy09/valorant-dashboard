@@ -105,6 +105,7 @@ model Guild {
   name            String
   notifyChannelId String?
   highlightChannelId String?
+  allowedScrimChannelIds String @default("[]") // JSON: string[] - 내전 모집 허용 채널 ID 목록
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

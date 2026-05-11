@@ -24,6 +24,7 @@ function ensureScrimSessionColumns() {
       prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "managers" TEXT NOT NULL DEFAULT ''`),
       prisma.$executeRawUnsafe(`ALTER TABLE "ScrimPlayer" ADD COLUMN IF NOT EXISTS "role" TEXT NOT NULL DEFAULT 'participant'`),
       prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'normal'`),
+      prisma.$executeRawUnsafe(`ALTER TABLE "Guild" ADD COLUMN IF NOT EXISTS "allowedScrimChannelIds" TEXT NOT NULL DEFAULT '[]'`),
     ])
       .then(() => undefined)
       .catch((error) => {
@@ -63,9 +64,29 @@ function parseMessageIds(value: string | null | undefined) {
   }
 }
 
-async function validateRecruitmentChannel(channelId: string) {
+async function getAllowedScrimChannelIds(guildId: string): Promise<string[]> {
+  try {
+    const result = await prisma.$queryRawUnsafe<{ allowedScrimChannelIds: string }[]>(
+      `SELECT "allowedScrimChannelIds" FROM "Guild" WHERE id = $1 LIMIT 1`,
+      guildId
+    );
+    const raw = result[0]?.allowedScrimChannelIds ?? "[]";
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+async function validateRecruitmentChannel(channelId: string, guildId?: string) {
   const token = process.env.DISCORD_BOT_TOKEN;
   if (!token) throw new Error("Discord bot token is missing.");
+
+  // 허용 채널 ID 목록에 있으면 이름 검사 없이 통과
+  if (guildId) {
+    const allowedIds = await getAllowedScrimChannelIds(guildId);
+    if (allowedIds.includes(channelId)) return true;
+  }
 
   const channel = await fetchDiscordChannel(channelId, token);
   return Boolean(channel && isTextRecruitmentChannel(channel));
@@ -218,8 +239,8 @@ export async function POST(req: NextRequest) {
   if (scheduledAt && Number.isNaN(scheduledAt.getTime())) {
     return Response.json({ error: "시작 시간이 올바르지 않습니다." }, { status: 400 });
   }
-  if (!(await validateRecruitmentChannel(channelId))) {
-    return Response.json({ error: "내전 모집 글은 이벤트 공지 또는 구인-구직 채널에만 올릴 수 있습니다." }, { status: 400 });
+  if (!(await validateRecruitmentChannel(channelId, guild.id))) {
+    return Response.json({ error: "내전 모집 글은 이벤트 공지 또는 구인-구직 채널에만 올릴 수 있습니다. (관리자 설정에서 허용 채널 ID를 추가하면 모든 채널에서 사용 가능합니다.)" }, { status: 400 });
   }
 
   const scrim = await prisma.scrimSession.create({
@@ -278,7 +299,7 @@ export async function PUT(req: NextRequest) {
   if (!scrim.recruitmentChannelId) {
     return Response.json({ error: "기존 모집 채널 정보가 없습니다." }, { status: 400 });
   }
-  if (!(await validateRecruitmentChannel(scrim.recruitmentChannelId))) {
+  if (!(await validateRecruitmentChannel(scrim.recruitmentChannelId, guild.id))) {
     return Response.json({ error: "추가 모집은 이벤트 공지 또는 구인-구직 채널에서만 가능합니다." }, { status: 400 });
   }
 

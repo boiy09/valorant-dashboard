@@ -34,6 +34,7 @@ interface ScrimDetail {
   scheduledAt: string | null;
   recruitmentChannelId: string | null;
   settings: string | null;
+  mode: string | null;
   players: ScrimPlayer[];
 }
 
@@ -272,7 +273,14 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
             ← 내전 목록
           </Link>
           <div className="mt-4 text-[10px] uppercase tracking-[0.32em] text-[#ff4655]">SCRIM WAITING ROOM</div>
-          <h1 className="mt-2 text-4xl font-black text-white">{scrim.title}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-4xl font-black text-white">{scrim.title}</h1>
+            {scrim.mode === "auction" ? (
+              <span className="rounded border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-1 text-sm font-black text-[#f6c945]">🏷 경매 내전</span>
+            ) : (
+              <span className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-3 py-1 text-sm font-black text-[#ff8a95]">⚔ 일반 내전</span>
+            )}
+          </div>
           <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
         </div>
         <div className="flex gap-2">

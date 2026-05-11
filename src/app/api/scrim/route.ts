@@ -23,6 +23,7 @@ function ensureScrimSessionColumns() {
       prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "recruitmentMessageIds" TEXT NOT NULL DEFAULT ''`),
       prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "managers" TEXT NOT NULL DEFAULT ''`),
       prisma.$executeRawUnsafe(`ALTER TABLE "ScrimPlayer" ADD COLUMN IF NOT EXISTS "role" TEXT NOT NULL DEFAULT 'participant'`),
+      prisma.$executeRawUnsafe(`ALTER TABLE "ScrimSession" ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'normal'`),
     ])
       .then(() => undefined)
       .catch((error) => {
@@ -210,6 +211,7 @@ export async function POST(req: NextRequest) {
   const description = typeof body.description === "string" ? body.description.trim() : "";
   const channelId = typeof body.channelId === "string" ? body.channelId.trim() : "";
   const scheduledAt = typeof body.scheduledAt === "string" && body.scheduledAt ? new Date(body.scheduledAt) : null;
+  const mode = body.mode === "auction" ? "auction" : "normal";
 
   if (!title) return Response.json({ error: "내전 제목을 입력해 주세요." }, { status: 400 });
   if (!channelId) return Response.json({ error: "모집 글을 올릴 채널을 선택해 주세요." }, { status: 400 });
@@ -231,6 +233,7 @@ export async function POST(req: NextRequest) {
       recruitmentMessageIds: JSON.stringify([]),
       managers: JSON.stringify([session.user.id]),
       status: "waiting",
+      mode,
       createdBy: session.user.id,
     },
     include: {

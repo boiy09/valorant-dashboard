@@ -32,6 +32,7 @@ interface ScrimSession {
   scheduledAt: string | null;
   recruitmentChannelId: string | null;
   status: string;
+  mode: string | null;
   map: string | null;
   winnerId: string | null;
   createdAt: string;
@@ -121,6 +122,7 @@ export default function ScrimPage() {
   const [channelError, setChannelError] = useState<string | null>(null);
   const [channelStep, setChannelStep] = useState(false);
   const [createSettings, setCreateSettings] = useState<ScrimSettings>(DEFAULT_SETTINGS);
+  const [createMode, setCreateMode] = useState<"normal" | "auction">("normal");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -210,6 +212,7 @@ export default function ScrimPage() {
           scheduledAt: createScheduledAt || null,
           channelId,
           settings: createSettings,
+          mode: createMode,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -224,6 +227,7 @@ export default function ScrimPage() {
       setManualChannelId("");
       setChannelStep(false);
       setCreateSettings(DEFAULT_SETTINGS);
+      setCreateMode("normal");
       setMessage("내전 카드를 생성했습니다.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "내전 생성에 실패했습니다.");
@@ -289,6 +293,11 @@ export default function ScrimPage() {
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="truncate text-base font-black text-white">{scrim.title}</h3>
+                            {scrim.mode === "auction" ? (
+                              <span className="rounded bg-[#f6c945]/15 px-2 py-0.5 text-[10px] font-black text-[#f6c945]">🏷 경매</span>
+                            ) : (
+                              <span className="rounded bg-[#ff4655]/10 px-2 py-0.5 text-[10px] font-black text-[#ff8a95]">⚔ 일반</span>
+                            )}
                           </div>
                           <div className="mt-1 text-xs text-[#7b8a96]">
                             생성 {formatDate(scrim.createdAt)}
@@ -394,6 +403,46 @@ export default function ScrimPage() {
             </div>
 
             <div className="space-y-5">
+              <section>
+                <h3 className="mb-2 text-sm font-black text-white">내전 모드</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCreateMode("normal")}
+                    className={`rounded border px-4 py-4 text-left transition-colors ${
+                      createMode === "normal"
+                        ? "border-[#ff4655] bg-[#ff4655]/12 text-white"
+                        : "border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3] hover:border-[#ff4655]/40"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-black">⚔ 일반 내전</span>
+                      <span className={`h-3 w-3 rounded-full flex-shrink-0 ${createMode === "normal" ? "bg-[#ff4655]" : "bg-[#2a3540]"}`} />
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-[#7b8a96]">
+                      관리자가 직접 팀을 구성하는 일반 방식의 내전입니다.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreateMode("auction")}
+                    className={`rounded border px-4 py-4 text-left transition-colors ${
+                      createMode === "auction"
+                        ? "border-[#f6c945] bg-[#f6c945]/10 text-white"
+                        : "border-[#2a3540] bg-[#0f1923]/70 text-[#9aa8b3] hover:border-[#f6c945]/40"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-black">🏷 경매 내전</span>
+                      <span className={`h-3 w-3 rounded-full flex-shrink-0 ${createMode === "auction" ? "bg-[#f6c945]" : "bg-[#2a3540]"}`} />
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-[#7b8a96]">
+                      팀장이 포인트를 사용해 팀원을 경매로 지명하는 방식입니다.
+                    </p>
+                  </button>
+                </div>
+              </section>
+
               <section>
                 <h3 className="mb-2 text-sm font-black text-white">제목</h3>
                 <input

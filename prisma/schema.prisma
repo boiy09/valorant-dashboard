@@ -206,6 +206,7 @@ model ScrimSession {
   recruitmentMessageIds String @default("")
   managers  String        @default("")
   status    String        @default("waiting")
+  mode      String        @default("normal") // normal | auction
   map       String?
   winnerId  String?
   createdBy String

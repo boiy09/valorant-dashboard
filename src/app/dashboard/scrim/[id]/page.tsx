@@ -354,10 +354,11 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
   
   const handleStatusChange = async (newStatus: string) => {
+    if (!scrim) return;
     if (!confirm(`내전 상태를 ${newStatus === 'playing' ? '시작' : '종료'}으로 변경하시겠습니까?`)) return;
     
     try {
-      const res = await fetch(`/api/scrim/${scrim.id}/status`, {
+      const res = await fetch(`/api/scrim/${id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
@@ -1167,7 +1168,7 @@ function AuctionScrimPage({
     async function poll(silent = false) {
       if (!silent) setAuctionLoading(true);
       try {
-        const res = await fetch(`/api/scrim/auction?sessionId=${scrim.id}`, { cache: "no-store" });
+        const res = await fetch(`/api/scrim/auction?sessionId=${id}`, { cache: "no-store" });
         const data = await res.json();
         if (cancelled) return;
         setAuction(data.auction ?? null);
@@ -1236,7 +1237,7 @@ function AuctionScrimPage({
     setMessage(null);
     const res = await fetch("/api/scrim/auction", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: scrim.id, captainPoints: captainSelections, auctionDuration: timerSeconds }),
+      body: JSON.stringify({ sessionId: id, captainPoints: captainSelections, auctionDuration: timerSeconds }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setMessage(data.error ?? "경매 시작에 실패했습니다."); return; }
@@ -1249,7 +1250,7 @@ function AuctionScrimPage({
     setBidding(true); setMessage(null);
     const res = await fetch("/api/scrim/auction", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: scrim.id, bidAmount: amount, captainId }),
+      body: JSON.stringify({ sessionId: id, bidAmount: amount, captainId }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setMessage(data.error ?? "입찰에 실패했습니다."); }
@@ -1259,7 +1260,7 @@ function AuctionScrimPage({
 
   async function resetAuction() {
     if (!window.confirm("경매를 초기화하고 처음부터 다시 시작할까요?")) return;
-    const res = await fetch(`/api/scrim/auction?sessionId=${scrim.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/scrim/auction?sessionId=${id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setMessage(data.error ?? "초기화에 실패했습니다."); return; }
     setAuction(null); setCaptainSelections({});
@@ -1930,6 +1931,7 @@ function GameKdaPanel({
     </div>
   );
 }
+
 
 
 

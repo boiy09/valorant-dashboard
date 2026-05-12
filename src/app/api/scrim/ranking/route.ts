@@ -2,16 +2,18 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 
+type ScrimGameRow = {
+  kdaSnapshot: string | null;
+};
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   const tierFilter = req.nextUrl.searchParams.get("tier");
 
   // 1. 모든 내전 경기 데이터 가져오기
-  const games = await prisma.scrimGame.findMany({
-    select: {
-      kdaSnapshot: true,
-    },
-  });
+  const games = await prisma.$queryRaw<ScrimGameRow[]>`
+    SELECT "kdaSnapshot" FROM "ScrimGame"
+  `;
 
   const statsMap = new Map<string, {
     userId: string;
@@ -24,9 +26,7 @@ export async function GET(req: NextRequest) {
   // 2. KDA 데이터 합산
   for (const game of games) {
     try {
-      const kdaList = typeof game.kdaSnapshot === "string" 
-        ? JSON.parse(game.kdaSnapshot) 
-        : game.kdaSnapshot;
+      const kdaList = game.kdaSnapshot ? JSON.parse(game.kdaSnapshot) : [];
       
       for (const p of kdaList) {
         const uid = p.userId;

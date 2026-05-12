@@ -142,6 +142,19 @@ async function sendRecruitmentMessage(params: {
   return message.id;
 }
 
+async function deleteRecruitmentMessage(channelId: string, messageId: string) {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) return;
+
+  await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bot ${token}`,
+    },
+  });
+}
+
+
 export async function GET(req: NextRequest) {
   await ensureScrimSessionColumns();
 

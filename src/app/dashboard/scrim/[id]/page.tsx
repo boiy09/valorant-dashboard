@@ -385,6 +385,26 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     [isTeamCaptain, isTeamMember, scrim?.players]
   );
 
+  const handleStatusChange = async (newStatus: string) => {
+    if (!scrim) return;
+    try {
+      const res = await fetch(`/api/scrim/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        const data = await res.json();
+        alert(data.error || '상태 업데이트에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('상태 업데이트 오류:', error);
+      alert('오류가 발생했습니다.');
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     async function loadScrim({ silent = false } = {}) {

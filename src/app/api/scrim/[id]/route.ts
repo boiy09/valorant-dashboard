@@ -103,6 +103,8 @@ async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<ty
   if (Date.now() - lastSynced < 15_000) return;
   reactionSyncCache.set(scrim.id, Date.now());
 
+  const dbGuild = await prisma.guild.findUnique({ where: { id: scrim.guildId }, select: { discordId: true } });
+
   for (const messageId of messageIds) {
     const message = await fetchDiscordJson<{
       reactions?: Array<{ count?: number; emoji?: { id?: string | null; name?: string | null } }>;
@@ -148,6 +150,22 @@ async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<ty
             role: "participant",
           },
         });
+
+        // GuildMember 레코드 생성/업데이트로 서버 닉네임 동기화
+        if (dbGuild?.discordId) {
+          const gm = await fetchDiscordJson<{ nick?: string | null }>(
+            `https://discord.com/api/v10/guilds/${dbGuild.discordId}/members/${discordUser.id}`
+          );
+          await prisma.guildMember.upsert({
+            where: { userId_guildId: { userId: appUser.id, guildId: scrim.guildId } },
+            update: { nickname: gm?.nick ?? null },
+            create: {
+              userId: appUser.id,
+              guildId: scrim.guildId,
+              nickname: gm?.nick ?? null,
+            },
+          });
+        }
       }
     }
   }

@@ -7,7 +7,7 @@ import { signOut, useSession } from "next-auth/react";
 import HeaderRiotLink from "./HeaderRiotLink";
 import MemberSidebar from "./MemberSidebar";
 import ProfileModal from "@/components/ProfileModal";
-import StatSyncProvider from "./StatSyncProvider";
+import StatSyncBackground from "./StatSyncBackground";
 
 const BASE_TABS = [
   { href: "/dashboard", label: "내전 현황", icon: "🏠" },
@@ -51,7 +51,7 @@ export default function DashboardLayout({
   const displayName = serverNickname ?? session?.user?.name ?? "";
 
   return (
-    <StatSyncProvider>
+    <StatSyncBackground>
       <div className="val-shell min-h-screen flex flex-col">
         <header className="val-header flex-shrink-0">
           <div className="max-w-screen-2xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -101,6 +101,6 @@ export default function DashboardLayout({
           <MemberSidebar />
         </div>
       </div>
-    </StatSyncProvider>
+    </StatSyncBackground>
   );
 }

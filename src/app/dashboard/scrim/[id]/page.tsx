@@ -813,10 +813,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           <section className="val-card p-5">
             <div className="mb-4 flex items-center justify-between">
               <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">경기 기록 ({games.length}경기)</div>
-              <button type="button" onClick={() => void addGame()} disabled={saving}
-                className="val-btn bg-[#ff4655] px-3 py-1.5 text-xs font-black text-white disabled:opacity-50">
-                + 경기 추가
-              </button>
+
             </div>
 
             {games.length === 0 && (

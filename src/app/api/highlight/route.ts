@@ -14,15 +14,35 @@ async function getUser(session: any) {
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get("type") ?? "clip";
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "20", 10);
+  const guild = await prisma.guild.findFirst();
 
   const highlights = await prisma.highlight.findMany({
     where: { type },
-    include: { user: { select: { name: true, image: true, discordId: true } } },
+    include: { user: { select: { id: true, name: true, image: true, discordId: true } } },
     orderBy: { createdAt: "desc" },
     take: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 50) : 20,
   });
 
-  return Response.json({ highlights });
+  const userIds = highlights.map((highlight) => highlight.user?.id).filter((id): id is string => Boolean(id));
+  const guildMembers = guild
+    ? await prisma.guildMember.findMany({
+        where: { guildId: guild.id, userId: { in: userIds } },
+        select: { userId: true, nickname: true },
+      })
+    : [];
+  const serverNickMap = new Map(guildMembers.map((member) => [member.userId, member.nickname]));
+
+  return Response.json({
+    highlights: highlights.map((highlight) => ({
+      ...highlight,
+      user: highlight.user
+        ? {
+            ...highlight.user,
+            name: serverNickMap.get(highlight.user.id) || highlight.user.name,
+          }
+        : null,
+    })),
+  });
 }
 
 export async function POST(req: NextRequest) {

@@ -785,7 +785,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
             subtitle={settings.useTeamBoard ? "드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." : "내전에 참여 중인 플레이어 목록입니다."} 
             onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
             <div className="flex flex-wrap gap-2">
-              {participantPlayers.map((p) => <PlayerCard key={p.user.id} player={p} onRemove={() => removePlayer(p.user.id)} />)}
+              {participantPlayers.map((p) => <PlayerCard key={p.user.id} player={p} guildMembers={guildMembers} onRemove={() => removePlayer(p.user.id)} />)}
               {participantPlayers.length === 0 && <EmptyState text="참가자가 없습니다." />}
             </div>
           </DropArea>
@@ -799,7 +799,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                   captain={captain} members={members} 
                   onDropCaptain={settings.useCaptain ? (pId) => movePlayer(pId, tId, "captain") : undefined} 
                   onDropMember={(pId) => movePlayer(pId, tId, settings.useCaptain ? "member" : "participant")} 
-                  onRename={(n) => updateTeamName(tId, n)} onRemove={removePlayer} />;
+                  onRename={(n) => updateTeamName(tId, n)} onRemove={removePlayer} guildMembers={guildMembers} />;
               })}
             </section>
           )}
@@ -1359,7 +1359,7 @@ function AuctionScrimPage({
               <div className="mb-3 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">참가자 목록 ({participants.length}명)</div>
               {participants.length === 0
                 ? <div className="rounded border border-dashed border-[#2a3540] py-8 text-center text-xs text-[#7b8a96]">아직 참가자가 없습니다. 디스코드 모집 글에 이모지를 달면 자동 등록됩니다.</div>
-                : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 items-stretch">{participants.map((p) => <div key={p.id}><PlayerCard player={p} compact /></div>)}</div>
+                : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 items-stretch">{participants.map((p) => <div key={p.id}><PlayerCard player={p} compact guildMembers={guildMembers} /></div>)}</div>
               }
             </section>
           </div>
@@ -1616,7 +1616,7 @@ function DropArea({ title, subtitle, children, onDrop }: { title: string; subtit
   );
 }
 
-function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename }: { teamIds: string[]; teamNames: Record<string, string>; players: ScrimPlayer[]; onDrop: (playerId: string, teamId: string) => void; onRename: (teamId: string, name: string) => void }) {
+function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename, guildMembers = [] }: { teamIds: string[]; teamNames: Record<string, string>; players: ScrimPlayer[]; onDrop: (playerId: string, teamId: string) => void; onRename: (teamId: string, name: string) => void; guildMembers?: GuildMemberOption[] }) {
   return (
     <div className="val-card p-4">
       <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">Team Captains</div>
@@ -1626,7 +1626,7 @@ function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename }: { te
           return (
             <div key={tId} className="rounded border border-[#2a3540] bg-[#0f1923]/80 p-3" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDrop(id, tId); }}>
               <input defaultValue={teamNames[tId] ?? getDefaultTeamName(i)} onBlur={(e) => onRename(tId, e.target.value.trim())} className="mb-2 w-full rounded border border-[#384653] bg-[#111c24] px-2 py-1 text-xs font-black text-white outline-none focus:border-[#ff4655]" />
-              {captain ? <PlayerCard player={captain} compact /> : <EmptyState text="팀장 슬롯" small />}
+              {captain ? <PlayerCard player={captain} compact guildMembers={guildMembers} /> : <EmptyState text="팀장 슬롯" small />}
             </div>
           );
         })}
@@ -1635,7 +1635,7 @@ function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename }: { te
   );
 }
 
-function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename, onRemove }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain?: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void; onRemove?: (id: string) => void }) {
+function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename, onRemove, guildMembers = [] }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain?: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void; onRemove?: (id: string) => void; guildMembers?: GuildMemberOption[] }) {
   return (
     <article className="val-card overflow-hidden">
       <div className="border-b border-[#2a3540] bg-[#1d2732] px-5 py-4" style={{ borderTop: `3px solid ${color}` }}>
@@ -1646,11 +1646,11 @@ function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDro
       </div>
       <div className="grid gap-4 p-4">
         {onDropCaptain && (
-          <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
+          <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} guildMembers={guildMembers} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
         )}
         <DropAreaMini label="팀원" onDrop={onDropMember}>
           <div className="grid gap-2">
-            {members.map((p) => <PlayerCard key={p.id} player={p} onRemove={onRemove ? () => onRemove(p.id) : undefined} />)}
+            {members.map((p) => <PlayerCard key={p.id} player={p} guildMembers={guildMembers} onRemove={onRemove ? () => onRemove(p.id) : undefined} />)}
             {members.length === 0 && <EmptyState text="팀원 배치" />}
           </div>
         </DropAreaMini>

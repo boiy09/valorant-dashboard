@@ -321,7 +321,7 @@ export default function ScrimPage() {
                       <div className="text-[11px] font-bold text-[#7b8a96]">
                         참가자 {scrim.players.length}명
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-4">
                         {isAdmin && (
                           <button
                             type="button"

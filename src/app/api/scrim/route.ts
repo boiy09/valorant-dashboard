@@ -385,16 +385,25 @@ export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return Response.json({ error: "내전 ID가 필요합니다." }, { status: 400 });
 
-  const deleted = await prisma.scrimSession.deleteMany({
-    where: {
-      id,
-      ...(guild ? { guildId: guild.id } : {}),
-    },
-  });
+  const scrim = await prisma.scrimSession.findUnique({ where: { id } });
+  if (!scrim) return Response.json({ error: "삭제할 내전 기록을 찾을 수 없습니다." }, { status: 404 });
 
-  if (deleted.count === 0) {
-    return Response.json({ error: "삭제할 내전 기록을 찾을 수 없습니다." }, { status: 404 });
+  // 1. 디스코드 메시지 삭제 시도
+  try {
+    const messageIds = JSON.parse(scrim.recruitmentMessageIds || "[]");
+    if (scrim.recruitmentChannelId && messageIds.length > 0) {
+      for (const msgId of messageIds) {
+        await deleteRecruitmentMessage(scrim.recruitmentChannelId, msgId).catch(e => 
+          console.error(`디스코드 메시지 삭제 실패 (${msgId}):`, e)
+        );
+      }
+    }
+  } catch (e) {
+    console.error("디스코드 메시지 삭제 프로세스 오류:", e);
   }
+
+  // 2. DB 데이터 삭제
+  await prisma.scrimSession.delete({ where: { id } });
 
   return Response.json({ success: true });
 }

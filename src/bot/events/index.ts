@@ -431,6 +431,32 @@ export function registerEvents(client: BotClient) {
     }
   });
 
+  client.on(Events.MessageDelete, async (message) => {
+    try {
+      if (!message.guild) return;
+      const messageId = message.id;
+      
+      // 해당 메시지 ID를 포함하는 내전 세션 찾기
+      const scrim = await prisma.scrimSession.findFirst({
+        where: {
+          recruitmentMessageIds: {
+            contains: messageId
+          }
+        }
+      });
+
+      if (scrim) {
+        console.log(`디스코드 메시지 삭제 감지: 내전 세션 삭제 (${scrim.title})`);
+        await prisma.scrimSession.delete({
+          where: { id: scrim.id }
+        });
+      }
+    } catch (error) {
+      console.error("디스코드 메시지 삭제 동기화 오류:", error);
+    }
+  });
+
+
   client.on(Events.PresenceUpdate, async (_, newPresence) => {
     if (!newPresence.userId || !newPresence.guild) return;
 

@@ -352,6 +352,26 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const [newManagerId, setNewManagerId] = useState("");
   const [games, setGames] = useState<ScrimGame[]>([]);
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
+  
+  const handleStatusChange = async (newStatus: string) => {
+    if (!confirm(`내전 상태를 ${newStatus === 'playing' ? '시작' : '종료'}으로 변경하시겠습니까?`)) return;
+    
+    try {
+      const res = await fetch(`/api/scrim/${scrim.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      
+      if (res.ok) {
+        alert('상태가 변경되었습니다. 페이지를 새로고침합니다.');
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Failed to update status', error);
+    }
+  };
+
   const [gameKda, setGameKda] = useState<Record<string, Record<string, number>>>({});
 
   const settings = useMemo(() => parseSettings(scrim?.settings), [scrim?.settings]);
@@ -1910,5 +1930,6 @@ function GameKdaPanel({
     </div>
   );
 }
+
 
 

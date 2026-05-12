@@ -28,7 +28,7 @@ function StatSyncBackground({ children }: { children: React.ReactNode }) {
 
         for (const account of userData.riotAccounts) {
           const { name, tag, id: riotAccountId } = account;
-          const trackerRes = await fetch(\`/api/proxy/tracker?name=\${name}\&tag=\${tag}\`);
+          const trackerRes = await fetch(`/api/proxy/tracker?name=\${name}&tag=\${tag}`);
           const stats = await trackerRes.json();
 
           if (stats.success) {

@@ -58,12 +58,10 @@ export default function ScrimRankingPage() {
 
     return (
       <div className={`flex items-center gap-4 rounded px-4 py-3 transition-all ${rankClass}`}>
-        {/* 순위 */}
         <div className="w-8 text-center text-sm font-black">
           {player.rank}
         </div>
 
-        {/* 프로필 */}
         <div className="flex flex-1 items-center gap-3 min-w-0">
           {player.image ? (
             <img src={player.image} alt="" className="h-9 w-9 rounded-full object-cover ring-1 ring-[#2a3540]" />
@@ -75,7 +73,6 @@ export default function ScrimRankingPage() {
               <span className="truncate text-sm font-black text-white">{player.name ?? "이름 없음"}</span>
               {isMe && <span className="rounded bg-[#ff4655] px-1.5 py-0.5 text-[9px] font-black text-white uppercase">MY</span>}
             </div>
-            {/* 티어 정보 (한섭/아섭) */}
             <div className="mt-1 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1">
                 <span className="text-[10px] font-bold text-[#7b8a96] uppercase">KR</span>
@@ -91,7 +88,6 @@ export default function ScrimRankingPage() {
           </div>
         </div>
 
-        {/* 데이터 섹션 */}
         <div className="hidden sm:flex items-center gap-8 text-right">
           <div className="w-16">
             <div className="text-sm font-black text-white">{player.gamesPlayed}</div>
@@ -107,7 +103,6 @@ export default function ScrimRankingPage() {
           </div>
         </div>
 
-        {/* 모바일 대응 */}
         <div className="sm:hidden text-right">
           <div className="text-base font-black text-[#ff4655]">{player.kd.toFixed(2)}</div>
           <div className="text-[10px] text-[#7b8a96] uppercase font-bold">KD</div>
@@ -117,87 +112,87 @@ export default function ScrimRankingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b141c] pb-20">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="mb-1 text-[11px] font-black uppercase tracking-[0.3em] text-[#ff4655]">
-            Valorant Dashboard
+    <div className="h-[calc(100vh-80px)] bg-[#0b141c] flex flex-col overflow-hidden px-4 sm:px-6">
+      {/* 헤더 섹션 (고정) */}
+      <div className="flex-none py-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="mb-1 text-[11px] font-black uppercase tracking-[0.3em] text-[#ff4655]">
+              Valorant Dashboard
+            </div>
+            <h1 className="text-3xl font-black text-white tracking-tight">KD RANKING BOARD</h1>
           </div>
-          <h1 className="text-3xl font-black text-white tracking-tight">KD RANKING BOARD</h1>
-          <p className="mt-1 text-sm text-[#7b8a96]">
-            내전 기록 기반 실시간 KD 랭킹 시스템
-          </p>
+          <div className="flex gap-3">
+            <Link href="/dashboard/scrim" className="val-btn border border-[#2a3540] bg-[#0f1923] px-5 py-2.5 text-xs font-black text-[#c8d3db] hover:border-[#ff4655]/50 hover:text-white transition-all">
+              내전 목록으로 돌아가기
+            </Link>
+          </div>
         </div>
-        <div className="flex gap-3">
-          <Link href="/dashboard/scrim" className="val-btn border border-[#2a3540] bg-[#0f1923] px-5 py-2.5 text-xs font-black text-[#c8d3db] hover:border-[#ff4655]/50 hover:text-white transition-all">
-            내전 목록으로 돌아가기
-          </Link>
-        </div>
-      </div>
 
-      <div className="mx-auto max-w-4xl space-y-8">
-        {/* 내 순위 섹션 (항상 표시) */}
-        <section>
-          <div className="mb-4 flex items-center gap-2">
+        {/* 내 순위 섹션 (고정) */}
+        <div className="mx-auto max-w-4xl mb-6">
+          <div className="mb-3 flex items-center gap-2">
             <div className="h-4 w-1 bg-[#ff4655]" />
             <h2 className="text-sm font-black uppercase tracking-wider text-white">MY STANDING</h2>
           </div>
-          
           {loading ? (
-            <div className="val-card p-8 text-center">
+            <div className="val-card p-6 text-center">
               <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[#ff4655] border-t-transparent" />
             </div>
           ) : myRank ? (
             <RankingRow player={myRank} isMe={true} />
           ) : (
-            <div className="val-card border-dashed border-[#2a3540] bg-[#0f1923]/30 p-8 text-center">
+            <div className="val-card border-dashed border-[#2a3540] bg-[#0f1923]/30 p-6 text-center">
               <p className="text-sm font-bold text-[#7b8a96]">아직 내전 참여 기록이 없습니다.</p>
-              <p className="mt-1 text-xs text-[#5a6a76]">내전에 참여하여 랭킹에 이름을 올려보세요!</p>
             </div>
           )}
-        </section>
+        </div>
+      </div>
 
-        {/* 전체 랭킹 섹션 */}
-        <section>
-          <div className="mb-6 flex items-center justify-between gap-4 rounded-lg bg-[#0f1923] p-4 border border-[#2a3540]">
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-1 bg-[#ff4655]" />
-              <h2 className="text-sm font-black uppercase tracking-wider text-white">리더보드</h2>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[11px] font-bold text-[#7b8a96] uppercase">Filter Tier:</span>
-              <select
-                value={selectedTier || "all"}
-                onChange={(e) => setSelectedTier(e.target.value === "all" ? null : e.target.value)}
-                className="rounded border border-[#2a3540] bg-[#0b141c] px-4 py-1.5 text-xs font-black text-white outline-none transition-all focus:border-[#ff4655] cursor-pointer"
-              >
-                <option value="all">모든 티어</option>
-                {tiers.map(tier => (
-                  <option key={tier} value={tier}>{tier}</option>
-                ))}
-              </select>
-            </div>
+      {/* 리더보드 섹션 (박스 내 스크롤) */}
+      <div className="flex-1 min-h-0 mx-auto w-full max-w-4xl flex flex-col mb-8">
+        {/* 필터 및 컨트롤 (고정) */}
+        <div className="flex-none mb-4 flex items-center justify-between gap-4 rounded-lg bg-[#0f1923] p-4 border border-[#2a3540]">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-1 bg-[#ff4655]" />
+            <h2 className="text-sm font-black uppercase tracking-wider text-white">리더보드</h2>
           </div>
-
-          {/* 데이터 헤더 */}
-          <div className="mb-3 flex items-center gap-4 px-8 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]">
-            <div className="w-8 text-center">#</div>
-            <div className="flex-1">Player / Region Tiers</div>
-            <div className="hidden sm:flex items-center gap-8 text-right">
-              <div className="w-16">Matches</div>
-              <div className="w-20">K/D Ratio</div>
-              <div className="w-16">KD</div>
-            </div>
-            <div className="sm:hidden">KD</div>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-bold text-[#7b8a96] uppercase">Filter Tier:</span>
+            <select
+              value={selectedTier || "all"}
+              onChange={(e) => setSelectedTier(e.target.value === "all" ? null : e.target.value)}
+              className="rounded border border-[#2a3540] bg-[#0b141c] px-4 py-1.5 text-xs font-black text-white outline-none transition-all focus:border-[#ff4655] cursor-pointer"
+            >
+              <option value="all">모든 티어</option>
+              {tiers.map(tier => (
+                <option key={tier} value={tier}>{tier}</option>
+              ))}
+            </select>
           </div>
+        </div>
 
+        {/* 데이터 헤더 (고정) */}
+        <div className="flex-none mb-3 flex items-center gap-4 px-8 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]">
+          <div className="w-8 text-center">#</div>
+          <div className="flex-1">Player / Region Tiers</div>
+          <div className="hidden sm:flex items-center gap-8 text-right">
+            <div className="w-16">Matches</div>
+            <div className="w-20">K/D Ratio</div>
+            <div className="w-16">KD</div>
+          </div>
+          <div className="sm:hidden">KD</div>
+        </div>
+
+        {/* 스크롤 가능한 리스트 영역 */}
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
           {loading ? (
             <div className="val-card p-20 text-center">
               <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-[#ff4655] border-t-transparent" />
               <p className="text-sm font-bold text-[#7b8a96]">데이터를 불러오는 중입니다...</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2.5 pb-4">
               {kdRanking.length === 0 ? (
                 <div className="val-card p-20 text-center border-dashed border-[#2a3540]">
                   <p className="text-sm font-bold text-[#7b8a96]">등록된 랭킹 데이터가 없습니다.</p>
@@ -214,8 +209,24 @@ export default function ScrimRankingPage() {
               )}
             </div>
           )}
-        </section>
+        </div>
       </div>
+
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #0b141c;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #2a3540;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #ff4655;
+        }
+      `}</style>
     </div>
   );
 }

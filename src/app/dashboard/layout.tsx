@@ -7,7 +7,7 @@ import { signOut, useSession } from "next-auth/react";
 import HeaderRiotLink from "./HeaderRiotLink";
 import MemberSidebar from "./MemberSidebar";
 import ProfileModal from "@/components/ProfileModal";
-import StatSyncProvider from "@/components/StatSyncProvider";
+import StatSyncProvider from "../StatSyncProvider";
 
 const BASE_TABS = [
   { href: "/dashboard", label: "내전 현황", icon: "🏠" },

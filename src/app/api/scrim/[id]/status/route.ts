@@ -4,13 +4,13 @@ import { auth } from "@/lib/auth";
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // Next.js 15 명세: params는 Promise
 ) {
   const session = await auth();
   if (!session) return new Response("Unauthorized", { status: 401 });
 
   const { status } = await req.json();
-  const scrimId = params.id;
+  const { id: scrimId } = await params; // params를 await 하여 id 추출
 
   const updateData: any = { status };
 
@@ -25,9 +25,6 @@ export async function PATCH(
       where: { id: scrimId },
       data: updateData,
     });
-
-    // 만약 종료 상태로 변경되었다면, 자동 경기 매칭 로직 트리거 가능
-    // (여기서는 간단히 상태만 업데이트하고, 필요 시 별도 큐나 작업으로 처리)
 
     return Response.json(updatedScrim);
   } catch (error) {

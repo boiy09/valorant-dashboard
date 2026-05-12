@@ -719,7 +719,14 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           <button type="button" onClick={randomAssign} disabled={saving || participantPlayers.length < 2} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40" title="참가자를 랜덤으로 두 팀에 배분">🎲 랜덤 배정</button>
           <button type="button" onClick={balanceAssign} disabled={saving || participantPlayers.length < 2} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40" title="티어 기반 밸런스 배정">⚖️ 밸런스</button>
           <button type="button" onClick={addTeam} disabled={saving} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-50">팀 추가</button>
-          <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn bg-[#ff4655] px-3 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
+          <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn border border-[#ff4655]/40 bg-[#ff4655]/10 px-3 py-2 text-xs font-black text-[#ff4655] disabled:opacity-50">추가 모집</button>
+          {(scrim.status === 'waiting' || scrim.status === 'recruiting') && (
+            <button type="button" onClick={() => handleStatusChange('playing')} className="val-btn bg-[#f6c945] px-3 py-2 text-xs font-black text-[#0b141c]">내전 시작</button>
+          )}
+          {scrim.status === 'playing' && (
+            <button type="button" onClick={() => handleStatusChange('finished')} className="val-btn bg-[#ff4655] px-3 py-2 text-xs font-black text-white">내전 종료</button>
+          )}
+
           <button type="button" onClick={() => void syncMatch()} disabled={saving} className="val-btn border border-[#00e7c2]/40 bg-[#00e7c2]/10 px-3 py-2 text-xs font-black text-[#00e7c2] disabled:opacity-50" title="참가자 전원이 포함된 커스텀 매치를 자동으로 찾아 승패/맵/KDA를 기록합니다">🔄 전적 자동 연동</button>
           <button type="button" onClick={() => setShowSettings(!showSettings)} className={`val-btn border border-[#2a3540] px-3 py-2 text-xs font-black transition-colors ${showSettings ? "bg-[#ff4655] text-white" : "bg-[#111c24] text-white"}`}>⚙️ 설정</button>
         </div>
@@ -814,7 +821,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
 
             {games.length === 0 && (
               <div className="rounded border border-dashed border-[#2a3540] py-8 text-center text-sm text-[#7b8a96]">
-                아직 기록된 경기가 없습니다. &quot;경기 추가&quot; 버튼으로 경기를 추가하세요.
+                아직 기록된 경기가 없습니다. 내전을 시작하고 경기를 진행하세요.
               </div>
             )}
 
@@ -1354,7 +1361,7 @@ function AuctionScrimPage({
               <div className="mb-3 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">참가자 목록 ({participants.length}명)</div>
               {participants.length === 0
                 ? <div className="rounded border border-dashed border-[#2a3540] py-8 text-center text-xs text-[#7b8a96]">아직 참가자가 없습니다. 디스코드 모집 글에 이모지를 달면 자동 등록됩니다.</div>
-                : <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{participants.map((p) => <PlayerCard key={p.id} player={p} compact />)}</div>
+                : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 items-stretch">{participants.map((p) => <div key={p.id}><PlayerCard player={p} compact /></div>)}</div>
               }
             </section>
           </div>
@@ -1677,7 +1684,7 @@ function PlayerCard({ player, compact = false, onRemove, guildMembers = [] }: { 
   const agents = parseAgents(player.user.favoriteAgents);
   const roleLabels = toRoleLabels(player.user.valorantRole);
   return (
-    <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
+    <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab flex flex-col h-full min-h-[140px] rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
       <div className="flex items-center gap-3">
         {player.user.image ? <img src={player.user.image} alt="" className={compact ? "h-9 w-9 rounded-full object-cover" : "h-12 w-12 rounded object-cover"} /> : <div className={compact ? "h-9 w-9 rounded-full bg-[#24313c]" : "h-12 w-12 rounded bg-[#24313c]"} />}
         <div className="min-w-0 flex-1">

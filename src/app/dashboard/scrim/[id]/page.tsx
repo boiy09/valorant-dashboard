@@ -115,10 +115,21 @@ function parseSettings(value: string | null | undefined): ScrimDetailSettings {
   } catch { return fallback; }
 }
 
+function parseJson<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try { return JSON.parse(value); } catch { return fallback; }
+}
+
 function resolveServerNick(userId: string, guildMembers: GuildMemberOption[], fallback?: string | null): string {
   const m = guildMembers.find((x) => x.userId === userId);
   return m?.name ?? fallback ?? userId.slice(0, 8);
 }
+
+function getDefaultTeamName(index: number) {
+  return index === 0 ? "TEAM A" : index === 1 ? "TEAM B" : `TEAM ${index + 1}`;
+}
+
+const TEAM_COLORS = ["#00e7c2", "#ff4655", "#f6c945", "#a855f7", "#3b82f6"];
 
 // ─── 메인 페이지 ───────────────────────────────────────────────────────────────
 export default function ScrimDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -130,15 +141,19 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [games, setGames] = useState<ScrimGame[]>([]);
+  const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [newManagerId, setNewManagerId] = useState("");
+  const [gameKda, setGameKda] = useState<Record<string, { k: string; d: string; a: string }>>({});
 
   const settings = useMemo(() => parseSettings(scrim?.settings), [scrim?.settings]);
-  
+  const teamNames = settings.teamNames ?? {};
+  const teamIds = ["team_a", "team_b"];
+
   const assignedPlayers = useMemo(
     () => (scrim?.players ?? []).filter((p) => p.team.startsWith("team_")),
     [scrim?.players]
   );
-  
   const participantPlayers = useMemo(
     () => (scrim?.players ?? []).filter((p) => !p.team.startsWith("team_")),
     [scrim?.players]
@@ -146,30 +161,6 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
 
   const captainCount = assignedPlayers.filter((p) => p.role === "captain").length;
   const memberCount = assignedPlayers.filter((p) => p.role === "member").length;
-
-  // 상태 변경 핸들러
-  const handleStatusChange = async (newStatus: string) => {
-    if (!scrim) return;
-    const label = newStatus === 'playing' ? '시작' : '종료';
-    if (!confirm(`내전을 ${label}하시겠습니까?`)) return;
-    
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/scrim/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-      if (res.ok) {
-        alert(`${label} 처리되었습니다.`);
-        window.location.reload();
-      }
-    } catch (error) {
-      console.error('Failed to update status', error);
-    } finally {
-      setSaving(false);
-    }
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -193,8 +184,60 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     return () => { cancelled = true; };
   }, [id]);
 
+  // 상태 변경 핸들러 (내전 시작/종료)
+  const handleStatusChange = async (newStatus: string) => {
+    if (!id) return;
+    const label = newStatus === 'playing' ? '시작' : '종료';
+    if (!confirm(`내전을 ${label}하시겠습니까?`)) return;
+    
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/scrim/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        alert(`${label} 처리되었습니다.`);
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Failed to update status', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const patchScrim = useCallback(async (payload: unknown) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/scrim/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("저장에 실패했습니다.");
+      const data = await res.json();
+      if (data.scrim) setScrim(data.scrim);
+    } catch (e) { setMessage(e instanceof Error ? e.message : "저장에 실패했습니다."); }
+    finally { setSaving(false); }
+  }, [id]);
+
+  const addRecruitment = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/scrim/${id}/recruitment`, { method: "POST" });
+      if (!res.ok) throw new Error("모집 추가에 실패했습니다.");
+      setMessage("모집 메시지가 발송되었습니다.");
+    } catch (e) { setMessage(e instanceof Error ? e.message : "모집 추가에 실패했습니다."); }
+    finally { setSaving(false); }
+  };
+
   if (loading) return <div className="val-card p-12 text-center text-[#7b8a96]">불러오는 중...</div>;
   if (!scrim) return <div className="val-card p-12 text-center text-[#7b8a96]">내전을 찾을 수 없습니다.</div>;
+
+  if (scrim.mode === "auction") {
+    return <AuctionScrimPage id={id} scrim={scrim} guildMembers={guildMembers} managerIds={managerIds} newManagerId={newManagerId} setNewManagerId={setNewManagerId} addManager={() => {}} saving={saving} message={message} setMessage={setMessage} onScrimUpdate={setScrim} addRecruitment={addRecruitment} />;
+  }
 
   const STATUS_LABELS: Record<string, { label: string; color: string }> = {
     waiting: { label: "모집 대기", color: "#7b8a96" },
@@ -206,12 +249,14 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const statusInfo = STATUS_LABELS[scrim.status] ?? STATUS_LABELS.waiting;
 
   return (
-    <div className="mx-auto max-w-[1100px]">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="mx-auto max-w-[1400px]">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/dashboard/scrim" className="text-xs font-bold text-[#7b8a96] hover:text-white">← 내전 목록</Link>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <h1 className="text-4xl font-black text-white">{scrim.title}</h1>
+          <div className="mt-4 text-[10px] uppercase tracking-[0.32em] text-[#ff4655]">SCRIM ROOM</div>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-black text-white">{scrim.title}</h1>
+            <span className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-3 py-1 text-sm font-black text-[#ff8a95]">⚔ 일반 내전</span>
             <div className="flex items-center gap-2 rounded border border-white/10 bg-white/5 px-3 py-1 text-xs font-black" style={{ color: statusInfo.color }}>
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusInfo.color }} />
               {statusInfo.label}
@@ -219,8 +264,8 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           </div>
           <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
         </div>
-        
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {/* 내전 시작/종료 버튼 (모집 과정 이후 실제 경기 단계) */}
           {(scrim.status === "waiting" || scrim.status === "recruiting") && (
             <button onClick={() => handleStatusChange("playing")} disabled={saving} className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white hover:bg-[#ff4655]/80 disabled:opacity-50">
               내전 시작
@@ -231,79 +276,55 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
               내전 종료
             </button>
           )}
-          {(scrim.status === "finished" || scrim.status === "done") && (
-            <div className="flex items-center gap-2 rounded bg-[#2a3540] px-3 py-1.5 text-[10px] font-black text-[#c8d3db] uppercase">
-              <span className="h-2 w-2 rounded-full bg-[#7b8a96]" />
-              종료된 내전
-            </div>
-          )}
-          <Link href="/dashboard/scrim" className="val-btn border border-[#2a3540] bg-[#0f1923] px-4 py-2 text-xs font-black text-[#c8d3db] hover:border-[#ff4655]/50 hover:text-white">목록</Link>
+          
+          <button type="button" onClick={() => {}} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40">🎲 랜덤 배정</button>
+          <button type="button" onClick={() => {}} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40">⚖️ 밸런스</button>
+          <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn bg-[#ff4655] px-3 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
+          <button type="button" onClick={() => {}} className="val-btn border border-[#00e7c2]/40 bg-[#00e7c2]/10 px-3 py-2 text-xs font-black text-[#00e7c2] disabled:opacity-50">🔄 전적 자동 연동</button>
+          <button type="button" onClick={() => setShowSettings(!showSettings)} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white">⚙️ 설정</button>
         </div>
-      </header>
+      </div>
 
-      {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
+      <section className="mb-5 grid gap-3 sm:grid-cols-4">
+        <StatCard label="참가자" value={`${scrim.players.length}`} suffix="명" />
+        <StatCard label="팀장" value={`${captainCount}`} suffix="명" />
+        <StatCard label="팀원" value={`${memberCount}`} suffix="명" />
+        <StatCard label="대기" value={`${participantPlayers.length}`} suffix="명" />
+      </section>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <main className="space-y-6">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <main className="space-y-5">
           <section className="val-card p-5">
-            <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#ff4655]">내전 정보</div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.12em] text-[#7b8a96]">설명</div>
-                <div className="mt-1 text-sm font-bold text-white">{scrim.description || "설명 없음"}</div>
-              </div>
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.12em] text-[#7b8a96]">맵</div>
-                <div className="mt-1 text-sm font-bold text-white">{scrim.map || "랜덤"}</div>
-              </div>
+            <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">참가자 목록</div>
+            <div className="flex flex-wrap gap-2">
+              {participantPlayers.map((p) => (
+                <div key={p.id} className="flex items-center gap-2 rounded bg-[#1d2732] p-2">
+                  <span className="text-xs font-bold text-white">{p.user.name}</span>
+                </div>
+              ))}
             </div>
           </section>
 
           <section className="val-card p-5">
-            <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#ff4655]">참가자 목록 ({scrim.players.length}명)</div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded bg-[#0b141c] p-4">
-                <div className="mb-2 text-[10px] font-black text-[#7b8a96]">팀 미배정 ({participantPlayers.length}명)</div>
-                <div className="space-y-2">
-                  {participantPlayers.map((p) => (
-                    <div key={p.id} className="flex items-center gap-2 rounded bg-[#1d2732] p-2">
-                      {p.user.image && <img src={p.user.image} alt="" className="h-6 w-6 rounded-full" />}
-                      <span className="text-xs font-bold text-white">{p.user.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded bg-[#0b141c] p-4">
-                <div className="mb-2 text-[10px] font-black text-[#7b8a96]">배정 인원 ({captainCount + memberCount}명)</div>
-                <div className="space-y-2">
-                  {assignedPlayers.map((p) => (
-                    <div key={p.id} className="flex items-center gap-2 rounded bg-[#1d2732] p-2">
-                      <span className="text-xs font-bold text-white">{p.user.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">경기 기록 ({games.length}경기)</div>
+              {/* 수동 경기 추가 버튼 제거됨 */}
             </div>
-          </section>
-
-          <section className="val-card p-5">
-            <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">경기 기록 ({games.length}경기)</div>
             {games.length === 0 ? (
               <div className="rounded border border-dashed border-[#2a3540] py-8 text-center text-sm text-[#7b8a96]">
                 내전이 시작되면 경기가 자동으로 기록됩니다.
               </div>
             ) : (
-              <div className="space-y-4">
-                {games.map((game) => (
-                  <div key={game.id} className="rounded border border-[#2a3540] bg-[#0b141c] p-4">
-                    <div className="text-sm font-black text-white">GAME {game.gameNumber} · {game.map || "진행 중"}</div>
+              <div className="space-y-3">
+                {games.map((g) => (
+                  <div key={g.id} className="rounded border border-[#2a3540] bg-[#0f1923]/70 p-3 text-xs font-black text-white">
+                    {g.gameNumber}경기 · {g.map || "진행 중"}
                   </div>
                 ))}
               </div>
             )}
           </section>
         </main>
-
         <aside className="space-y-4">
           <section className="val-card p-5">
             <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#ff4655]">관리자</div>
@@ -315,12 +336,28 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
               ))}
             </div>
           </section>
-          <div className="val-card p-5 text-xs leading-relaxed text-[#9aa8b3]">
-            <div className="mb-2 font-black text-white">자동 연동 안내</div>
-            <p>내전 시작 버튼을 누르면 그때부터 종료 시점까지의 경기가 자동으로 기록됩니다.</p>
-          </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, suffix }: { label: string; value: string; suffix: string }) {
+  return (
+    <div className="val-card flex flex-col items-center justify-center p-4 text-center">
+      <div className="text-[10px] font-black uppercase tracking-widest text-[#7b8a96]">{label}</div>
+      <div className="mt-1 text-2xl font-black text-white">{value}<span className="ml-0.5 text-xs text-[#7b8a96]">{suffix}</span></div>
+    </div>
+  );
+}
+
+// ─── 경매 내전 전용 페이지 (간략화된 버전) ─────────────────────────────────────────────────────
+function AuctionScrimPage({ id, scrim }: { id: string; scrim: ScrimDetail; [key: string]: any }) {
+  return (
+    <div className="mx-auto max-w-[1400px] p-12 text-center">
+      <h1 className="text-2xl font-black text-white">경매 내전 모드</h1>
+      <p className="mt-4 text-[#7b8a96]">경매 모드는 현재 준비 중입니다.</p>
+      <Link href="/dashboard/scrim" className="mt-8 inline-block text-[#ff4655] font-black underline">목록으로 돌아가기</Link>
     </div>
   );
 }

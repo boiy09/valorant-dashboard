@@ -7,7 +7,59 @@ import { signOut, useSession } from "next-auth/react";
 import HeaderRiotLink from "./HeaderRiotLink";
 import MemberSidebar from "./MemberSidebar";
 import ProfileModal from "@/components/ProfileModal";
-import StatSyncBackground from "./StatSyncBackground";
+
+// --- StatSync 로직 통합 ---
+function StatSyncBackground({ children }: { children: React.ReactNode }) {
+  const { data: session } = useSession();
+
+  useEffect(() => {
+    if (!session?.user) return;
+
+    const syncStats = async () => {
+      const lastSync = localStorage.getItem("last_stat_sync");
+      const now = Date.now();
+      if (lastSync && now - parseInt(lastSync) < 1000 * 60 * 60 * 1) return;
+
+      try {
+        const response = await fetch("/api/user/me");
+        const userData = await response.json();
+        
+        if (!userData.riotAccounts || userData.riotAccounts.length === 0) return;
+
+        for (const account of userData.riotAccounts) {
+          const { name, tag, id: riotAccountId } = account;
+          const trackerRes = await fetch(\`/api/proxy/tracker?name=\${name}\&tag=\${tag}\`);
+          const stats = await trackerRes.json();
+
+          if (stats.success) {
+            await fetch("/api/user/sync-stats", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tier: stats.tier,
+                kd: stats.kd,
+                winRate: stats.winRate,
+                riotAccountId
+              })
+            });
+          }
+        }
+        localStorage.setItem("last_stat_sync", now.toString());
+      } catch (error) {
+        console.error("Stat sync failed:", error);
+      }
+    };
+
+    if (window.requestIdleCallback) {
+      window.requestIdleCallback(() => syncStats());
+    } else {
+      setTimeout(syncStats, 5000);
+    }
+  }, [session]);
+
+  return <>{children}</>;
+}
+// ------------------------
 
 const BASE_TABS = [
   { href: "/dashboard", label: "내전 현황", icon: "🏠" },
@@ -37,7 +89,6 @@ export default function DashboardLayout({
   const [serverNickname, setServerNickname] = useState<string | null>(null);
 
   const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "VALONEKKI";
-  const riotLinked = session?.user?.riotAccounts && session.user.riotAccounts.length > 0;
 
   useEffect(() => {
     setNavigating(false);

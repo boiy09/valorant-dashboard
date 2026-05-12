@@ -695,11 +695,29 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           </div>
           <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           <button type="button" onClick={randomAssign} disabled={saving || participantPlayers.length < 2} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40" title="참가자를 랜덤으로 두 팀에 배분">🎲 랜덤 배정</button>
           <button type="button" onClick={balanceAssign} disabled={saving || participantPlayers.length < 2} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40" title="티어 기반 밸런스 배정">⚖️ 밸런스</button>
           <button type="button" onClick={addTeam} disabled={saving} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-50">팀 추가</button>
-          <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn bg-[#ff4655] px-3 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
+                        <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn bg-[#ff4655] px-3 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
+              
+              {/* 내전 시작/종료 버튼 */}
+              {(scrim.status === 'waiting' || scrim.status === 'recruiting') && (
+                <button 
+                  onClick={() => handleStatusChange('playing')}
+                  className="val-btn bg-[#f6c945] px-3 py-2 text-xs font-black text-[#0b141c] hover:bg-[#ffdf7e]"
+                >
+                  내전 시작
+                </button>
+              )}
+              {scrim.status === 'playing' && (
+                <button 
+                  onClick={() => handleStatusChange('finished')}
+                  className="val-btn bg-[#ff4655] px-3 py-2 text-xs font-black text-white hover:bg-[#ff5d6a]"
+                >
+                  내전 종료
+                </button>
+              )}
           <button type="button" onClick={() => void syncMatch()} disabled={saving} className="val-btn border border-[#00e7c2]/40 bg-[#00e7c2]/10 px-3 py-2 text-xs font-black text-[#00e7c2] disabled:opacity-50" title="참가자 전원이 포함된 커스텀 매치를 자동으로 찾아 승패/맵/KDA를 기록합니다">🔄 전적 자동 연동</button>
           <button type="button" onClick={() => setShowSettings(!showSettings)} className={`val-btn border border-[#2a3540] px-3 py-2 text-xs font-black transition-colors ${showSettings ? "bg-[#ff4655] text-white" : "bg-[#111c24] text-white"}`}>⚙️ 설정</button>
         </div>
@@ -757,7 +775,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           <DropArea title={`${settings.useTeamBoard ? "참가자 목록" : "전체 참가자"} (${participantPlayers.length}명)`} 
             subtitle={settings.useTeamBoard ? "드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." : "내전에 참여 중인 플레이어 목록입니다."} 
             onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {participantPlayers.map((p) => <PlayerCard key={p.user.id} player={p} onRemove={() => removePlayer(p.user.id)} />)}
               {participantPlayers.length === 0 && <EmptyState text="참가자가 없습니다." />}
             </div>
@@ -801,7 +819,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
             {/* 경기 탭 */}
             {games.length > 0 && (
               <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {games.map((g) => (
                     <button key={g.id} type="button"
                       onClick={() => setActiveGameId(activeGameId === g.id ? null : g.id)}
@@ -1547,7 +1565,7 @@ function AuctionScrimPage({
       {failedQueue.length > 0 && auction.phase !== "done" && (
         <div className="val-card mb-5 p-4">
           <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">유찰 대기 ({failedQueue.length}명)</div>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {failedQueue.map((uid) => {
               const p = playerMap.get(uid);
               return (

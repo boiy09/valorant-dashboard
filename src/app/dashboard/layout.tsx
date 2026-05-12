@@ -88,7 +88,7 @@ export default function DashboardLayout({
   const [myRiotAccounts, setMyRiotAccounts] = useState<any[]>([]);
   const [serverNickname, setServerNickname] = useState<string | null>(null);
 
-  const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "VALONEKKI";
+  const isAdmin = (session?.user as any)?.role === "ADMIN" || (session?.user as any)?.role === "VALONEKKI";
 
   useEffect(() => {
     setNavigating(false);

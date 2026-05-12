@@ -11,13 +11,13 @@ interface KdRankingPlayer {
   deaths: number;
   assists: number;
   matches: number;
-  gamesPlayed?: number;
+  gamesPlayed: number;
   kd: number;
-  tierName: string;
-  tierIconUrl: string | null;
+  krTier: string;
+  krTierIcon: string;
+  apTier: string;
+  apTierIcon: string;
   rank: number;
-  region?: string;
-  regionLabel?: string;
 }
 
 export default function ScrimRankingPage() {
@@ -44,133 +44,164 @@ export default function ScrimRankingPage() {
     "초월자", "불멸", "레디언트", "언랭크"
   ];
 
-  return (
-    <div>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="mb-0.5 text-[10px] uppercase tracking-[0.2em] text-[#ff4655]">
-            VALORANT DASHBOARD
+  const RankingRow = ({ player, index, isMe }: { player: KdRankingPlayer; index?: number; isMe?: boolean }) => {
+    const isTop3 = index !== undefined && index < 3;
+    const rankClass = isTop3
+      ? index === 0
+        ? "border-2 border-yellow-500/50 bg-yellow-500/10 text-white shadow-lg shadow-yellow-500/10"
+        : index === 1
+        ? "border-2 border-gray-400/50 bg-gray-400/10 text-white shadow-lg shadow-gray-400/10"
+        : "border-2 border-amber-700/50 bg-amber-700/10 text-white shadow-lg shadow-amber-700/10"
+      : isMe 
+        ? "border border-[#ff4655] bg-[#ff4655]/10 text-white"
+        : "border border-[#2a3540] bg-[#0f1923]/70 text-white";
+
+    return (
+      <div className={`flex items-center gap-4 rounded px-4 py-3 transition-all ${rankClass}`}>
+        {/* 순위 */}
+        <div className="w-8 text-center text-sm font-black">
+          {player.rank}
+        </div>
+
+        {/* 프로필 */}
+        <div className="flex flex-1 items-center gap-3 min-w-0">
+          {player.image ? (
+            <img src={player.image} alt="" className="h-9 w-9 rounded-full object-cover ring-1 ring-[#2a3540]" />
+          ) : (
+            <div className="h-9 w-9 rounded-full bg-[#24313c] ring-1 ring-[#2a3540]" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-black text-white">{player.name ?? "이름 없음"}</span>
+              {isMe && <span className="rounded bg-[#ff4655] px-1.5 py-0.5 text-[9px] font-black text-white uppercase">MY</span>}
+            </div>
+            {/* 티어 정보 (한섭/아섭) */}
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-bold text-[#7b8a96] uppercase">KR</span>
+                <img src={player.krTierIcon} alt={player.krTier} className="h-4 w-4" />
+                <span className="text-[11px] text-[#c8d3db]">{player.krTier}</span>
+              </div>
+              <div className="flex items-center gap-1 border-l border-[#2a3540] pl-3">
+                <span className="text-[10px] font-bold text-[#7b8a96] uppercase">AP</span>
+                <img src={player.apTierIcon} alt={player.apTier} className="h-4 w-4" />
+                <span className="text-[11px] text-[#c8d3db]">{player.apTier}</span>
+              </div>
+            </div>
           </div>
-          <h1 className="text-2xl font-black text-white">내전 KD 랭킹</h1>
-          <p className="mt-0.5 text-sm text-[#7b8a96]">
-            기록된 내전 매치의 킬/데스 기준 랭킹입니다.
+        </div>
+
+        {/* 데이터 섹션 (데스크톱 대응을 위한 고정 너비) */}
+        <div className="hidden sm:flex items-center gap-8 text-right">
+          <div className="w-16">
+            <div className="text-sm font-black text-white">{player.gamesPlayed}</div>
+            <div className="text-[10px] text-[#7b8a96] uppercase">Matches</div>
+          </div>
+          <div className="w-20">
+            <div className="text-sm font-black text-white">{player.kills}/{player.deaths}</div>
+            <div className="text-[10px] text-[#7b8a96] uppercase">K/D Stat</div>
+          </div>
+          <div className="w-16">
+            <div className="text-base font-black text-[#ff4655]">{player.kd.toFixed(2)}</div>
+            <div className="text-[10px] text-[#7b8a96] uppercase font-bold">KD</div>
+          </div>
+        </div>
+
+        {/* 모바일 대응 (KD만 강조) */}
+        <div className="sm:hidden text-right">
+          <div className="text-base font-black text-[#ff4655]">{player.kd.toFixed(2)}</div>
+          <div className="text-[10px] text-[#7b8a96] uppercase font-bold">KD</div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0b141c] pb-20">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="mb-1 text-[11px] font-black uppercase tracking-[0.3em] text-[#ff4655]">
+            Valorant Dashboard
+          </div>
+          <h1 className="text-3xl font-black text-white tracking-tight">KD RANKING BOARD</h1>
+          <p className="mt-1 text-sm text-[#7b8a96]">
+            내전 기록 기반 실시간 KD 랭킹 시스템
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link href="/dashboard/scrim" className="val-btn border border-[#2a3540] bg-[#0f1923] px-4 py-2 text-xs font-black text-[#c8d3db] hover:border-[#ff4655]/50 hover:text-white">
-            내전 목록
+        <div className="flex gap-3">
+          <Link href="/dashboard/scrim" className="val-btn border border-[#2a3540] bg-[#0f1923] px-5 py-2.5 text-xs font-black text-[#c8d3db] hover:border-[#ff4655]/50 hover:text-white transition-all">
+            내전 목록으로 돌아가기
           </Link>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto">
-        <section>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-black uppercase tracking-[0.18em] text-[#7b8a96]">KD 랭킹보드</h2>
-            <select
-              value={selectedTier || "all"}
-              onChange={(e) => setSelectedTier(e.target.value === "all" ? null : e.target.value)}
-              className="rounded border border-[#2a3540] bg-[#0b141c] px-3 py-1 text-xs font-bold text-white outline-none transition-colors focus:border-[#ff4655]"
-            >
-              <option value="all">모든 티어</option>
-              {tiers.map(tier => (
-                <option key={tier} value={tier}>{tier}</option>
-              ))}
-            </select>
+      <div className="mx-auto max-w-4xl">
+        <section className="val-card overflow-hidden border-none bg-transparent">
+          {/* 헤더 컨트롤 */}
+          <div className="mb-6 flex items-center justify-between gap-4 rounded-lg bg-[#0f1923] p-4 border border-[#2a3540]">
+            <div className="flex items-center gap-2">
+              <div className="h-4 w-1 bg-[#ff4655]" />
+              <h2 className="text-sm font-black uppercase tracking-wider text-white">리더보드</h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-bold text-[#7b8a96] uppercase">Filter Tier:</span>
+              <select
+                value={selectedTier || "all"}
+                onChange={(e) => setSelectedTier(e.target.value === "all" ? null : e.target.value)}
+                className="rounded border border-[#2a3540] bg-[#0b141c] px-4 py-1.5 text-xs font-black text-white outline-none transition-all focus:border-[#ff4655] cursor-pointer"
+              >
+                <option value="all">모든 티어</option>
+                {tiers.map(tier => (
+                  <option key={tier} value={tier}>{tier}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* 데이터 헤더 */}
+          <div className="mb-3 flex items-center gap-4 px-8 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]">
+            <div className="w-8 text-center">#</div>
+            <div className="flex-1">Player / Region Tiers</div>
+            <div className="hidden sm:flex items-center gap-8 text-right">
+              <div className="w-16">Matches</div>
+              <div className="w-20">K/D Ratio</div>
+              <div className="w-16">KD</div>
+            </div>
+            <div className="sm:hidden">KD</div>
           </div>
 
           {loading ? (
-            <div className="val-card p-12 text-center text-[#7b8a96]">불러오는 중...</div>
+            <div className="val-card p-20 text-center">
+              <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-[#ff4655] border-t-transparent" />
+              <p className="text-sm font-bold text-[#7b8a96]">데이터를 불러오는 중입니다...</p>
+            </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              {/* 내 순위 통합 표시 */}
+            <div className="flex flex-col gap-2.5">
+              {/* 내 순위 상단 고정 (리스트에 없을 경우만) */}
               {myRank && !kdRanking.find(p => p.userId === myRank.userId) && (
                 <>
-                  <div className="flex items-center gap-3 rounded border border-[#ff4655] bg-[#ff4655]/10 px-3 py-2 mb-2">
-                    <span className="w-6 text-center text-sm font-black text-white">{myRank.rank}</span>
-                    {myRank.image ? (
-                      <img src={myRank.image} alt="" className="h-8 w-8 rounded-full object-cover" />
-                    ) : (
-                      <div className="h-8 w-8 rounded-full bg-[#24313c]" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <div className="truncate text-sm font-black text-white">{myRank.name ?? "이름 없음"}</div>
-                        <span className="rounded bg-[#ff4655] px-1.5 py-0.5 text-[9px] font-black text-white uppercase">MY</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-[11px] text-[#c8d3db]">
-                        {myRank.tierIconUrl && (
-                          <img src={myRank.tierIconUrl} alt={myRank.tierName} className="h-4 w-4" />
-                        )}
-                        <span>{myRank.tierName}</span>
-                        {myRank.regionLabel && (
-                          <span className="ml-1 rounded bg-[#ff4655]/20 px-1.5 py-0.5 text-[10px] font-bold">{myRank.regionLabel}</span>
-                        )}
-                        <span className="ml-2 text-[#7b8a96]">{myRank.gamesPlayed ?? myRank.matches}경기</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-black text-white">{myRank.kd.toFixed(2)}</div>
-                      <div className="text-[10px] text-[#c8d3db]">KD</div>
-                    </div>
+                  <RankingRow player={myRank} isMe={true} />
+                  <div className="my-2 flex items-center gap-4 px-4">
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#2a3540] to-transparent" />
+                    <span className="text-[10px] font-black text-[#2a3540] uppercase tracking-tighter">Ranking List</span>
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#2a3540] to-transparent" />
                   </div>
-                  <div className="h-px bg-[#2a3540] my-2" />
                 </>
               )}
 
               {kdRanking.length === 0 ? (
-                <div className="val-card p-12 text-center text-[#7b8a96]">랭킹 기록이 없습니다.</div>
+                <div className="val-card p-20 text-center border-dashed border-[#2a3540]">
+                  <p className="text-sm font-bold text-[#7b8a96]">등록된 랭킹 데이터가 없습니다.</p>
+                </div>
               ) : (
-                kdRanking.map((player, index) => {
-                  const isTop3 = index < 3;
-                  const isMe = myRank?.userId === player.userId;
-                  const rankClass = isTop3
-                    ? index === 0
-                      ? "border-2 border-yellow-500/50 bg-yellow-500/10 text-white shadow-lg shadow-yellow-500/10"
-                      : index === 1
-                      ? "border-2 border-gray-400/50 bg-gray-400/10 text-white shadow-lg shadow-gray-400/10"
-                      : "border-2 border-amber-700/50 bg-amber-700/10 text-white shadow-lg shadow-amber-700/10"
-                    : isMe 
-                      ? "border border-[#ff4655] bg-[#ff4655]/10 text-white"
-                      : "border border-[#2a3540] bg-[#0f1923]/70 text-white";
-
-                  const subTextColor = "text-[#7b8a96]";
-                  const mainTextColor = "text-white";
-
-                  return (
-                    <div
-                      key={player.userId}
-                      className={`flex items-center gap-3 rounded px-3 py-2 ${rankClass}`}
-                    >
-                      <span className="w-6 text-center text-sm font-black">{player.rank}</span>
-                      {player.image ? (
-                        <img src={player.image} alt="" className="h-8 w-8 rounded-full object-cover" />
-                      ) : (
-                        <div className="h-8 w-8 rounded-full bg-[#24313c]" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <div className={`truncate text-sm font-black ${mainTextColor}`}>{player.name ?? "이름 없음"}</div>
-                          {isMe && !isTop3 && <span className="rounded bg-[#ff4655] px-1.5 py-0.5 text-[9px] font-black text-white uppercase">MY</span>}
-                        </div>
-                        <div className={`flex items-center gap-1 text-[11px] ${subTextColor}`}>
-                          {player.tierIconUrl && (
-                            <img src={player.tierIconUrl} alt={player.tierName} className="h-4 w-4" />
-                          )}
-                          <span>{player.tierName}</span>
-                          {player.regionLabel && (
-                            <span className="ml-1 rounded bg-[#2a3540] px-1.5 py-0.5 text-[10px] font-bold text-[#c8d3db]">{player.regionLabel}</span>
-                          )}
-                          <span className="ml-2">{player.gamesPlayed ?? player.matches}경기</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-sm font-black ${mainTextColor}`}>{player.kd.toFixed(2)}</div>
-                        <div className={`text-[10px] ${subTextColor}`}>KD</div>
-                      </div>
-                    </div>
-                  );
-                })
+                kdRanking.map((player, index) => (
+                  <RankingRow 
+                    key={player.userId} 
+                    player={player} 
+                    index={index} 
+                    isMe={myRank?.userId === player.userId} 
+                  />
+                ))
               )}
             </div>
           )}

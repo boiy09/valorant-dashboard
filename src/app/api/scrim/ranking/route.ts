@@ -67,26 +67,55 @@ export async function GET(req: NextRequest) {
 
   const userTierMap = new Map(users.map(u => [u.id, u]));
 
-  // 티어 아이콘 URL 매핑 함수
+  // 최신 발로란트 티어 아이콘 URL 매핑 (ID: 03621f52-342b-cf4e-4f86-9350a49c6d04)
   function getTierIconUrl(tierName: string | null): string {
-    if (!tierName || tierName === "언랭크") return "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/0/largeicon.png";
+    if (!tierName || tierName === "언랭크" || tierName === "랭크 없음") {
+        return "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/0/largeicon.png";
+    }
     
     const tierIcons: { [key: string]: string } = {
-      "아이언": "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/3/largeicon.png",
-      "브론즈": "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/6/largeicon.png",
-      "실버": "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/9/largeicon.png",
-      "골드": "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/12/largeicon.png",
-      "플래티넘": "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/15/largeicon.png",
-      "다이아몬드": "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/18/largeicon.png",
-      "초월자": "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/21/largeicon.png",
-      "불멸": "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/24/largeicon.png",
-      "레디언트": "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/27/largeicon.png",
+      "아이언 1": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/3/largeicon.png",
+      "아이언 2": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/4/largeicon.png",
+      "아이언 3": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/5/largeicon.png",
+      "브론즈 1": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/6/largeicon.png",
+      "브론즈 2": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/7/largeicon.png",
+      "브론즈 3": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/8/largeicon.png",
+      "실버 1": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/9/largeicon.png",
+      "실버 2": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/10/largeicon.png",
+      "실버 3": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/11/largeicon.png",
+      "골드 1": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/12/largeicon.png",
+      "골드 2": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/13/largeicon.png",
+      "골드 3": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/14/largeicon.png",
+      "플래티넘 1": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/15/largeicon.png",
+      "플래티넘 2": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/16/largeicon.png",
+      "플래티넘 3": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/17/largeicon.png",
+      "다이아몬드 1": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/18/largeicon.png",
+      "다이아몬드 2": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/19/largeicon.png",
+      "다이아몬드 3": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/20/largeicon.png",
+      "초월자 1": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/21/largeicon.png",
+      "초월자 2": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/22/largeicon.png",
+      "초월자 3": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/23/largeicon.png",
+      "불멸 1": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/24/largeicon.png",
+      "불멸 2": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/25/largeicon.png",
+      "불멸 3": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/26/largeicon.png",
+      "레디언트": "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/27/largeicon.png",
     };
 
+    // 부분 일치 검색 (예: "초월자 1" -> "초월자 1" 아이콘)
     for (const [key, url] of Object.entries(tierIcons)) {
-      if (tierName.includes(key)) return url;
+      if (tierName === key || tierName.includes(key)) return url;
     }
-    return "https://media.valorant-api.com/competitivetiers/03621f52-342b-444e-9881-62113c9677f3/0/largeicon.png";
+    
+    // 키워드 기반 매핑 (예: "초월자" -> "초월자 1" 아이콘)
+    const keywords: { [key: string]: string } = {
+        "아이언": "3", "브론즈": "6", "실버": "9", "골드": "12", "플래티넘": "15",
+        "다이아몬드": "18", "초월자": "21", "불멸": "24", "레디언트": "27"
+    };
+    for (const [key, id] of Object.entries(keywords)) {
+        if (tierName.includes(key)) return `https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/${id}/largeicon.png`;
+    }
+
+    return "https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/0/largeicon.png";
   }
 
   // 4. 랭킹 데이터 구성

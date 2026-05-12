@@ -91,7 +91,7 @@ export default function ScrimRankingPage() {
           </div>
         </div>
 
-        {/* 데이터 섹션 (데스크톱 대응을 위한 고정 너비) */}
+        {/* 데이터 섹션 */}
         <div className="hidden sm:flex items-center gap-8 text-right">
           <div className="w-16">
             <div className="text-sm font-black text-white">{player.gamesPlayed}</div>
@@ -107,7 +107,7 @@ export default function ScrimRankingPage() {
           </div>
         </div>
 
-        {/* 모바일 대응 (KD만 강조) */}
+        {/* 모바일 대응 */}
         <div className="sm:hidden text-right">
           <div className="text-base font-black text-[#ff4655]">{player.kd.toFixed(2)}</div>
           <div className="text-[10px] text-[#7b8a96] uppercase font-bold">KD</div>
@@ -135,9 +135,30 @@ export default function ScrimRankingPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-4xl">
-        <section className="val-card overflow-hidden border-none bg-transparent">
-          {/* 헤더 컨트롤 */}
+      <div className="mx-auto max-w-4xl space-y-8">
+        {/* 내 순위 섹션 (항상 표시) */}
+        <section>
+          <div className="mb-4 flex items-center gap-2">
+            <div className="h-4 w-1 bg-[#ff4655]" />
+            <h2 className="text-sm font-black uppercase tracking-wider text-white">MY STANDING</h2>
+          </div>
+          
+          {loading ? (
+            <div className="val-card p-8 text-center">
+              <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[#ff4655] border-t-transparent" />
+            </div>
+          ) : myRank ? (
+            <RankingRow player={myRank} isMe={true} />
+          ) : (
+            <div className="val-card border-dashed border-[#2a3540] bg-[#0f1923]/30 p-8 text-center">
+              <p className="text-sm font-bold text-[#7b8a96]">아직 내전 참여 기록이 없습니다.</p>
+              <p className="mt-1 text-xs text-[#5a6a76]">내전에 참여하여 랭킹에 이름을 올려보세요!</p>
+            </div>
+          )}
+        </section>
+
+        {/* 전체 랭킹 섹션 */}
+        <section>
           <div className="mb-6 flex items-center justify-between gap-4 rounded-lg bg-[#0f1923] p-4 border border-[#2a3540]">
             <div className="flex items-center gap-2">
               <div className="h-4 w-1 bg-[#ff4655]" />
@@ -177,18 +198,6 @@ export default function ScrimRankingPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-2.5">
-              {/* 내 순위 상단 고정 (리스트에 없을 경우만) */}
-              {myRank && !kdRanking.find(p => p.userId === myRank.userId) && (
-                <>
-                  <RankingRow player={myRank} isMe={true} />
-                  <div className="my-2 flex items-center gap-4 px-4">
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#2a3540] to-transparent" />
-                    <span className="text-[10px] font-black text-[#2a3540] uppercase tracking-tighter">Ranking List</span>
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#2a3540] to-transparent" />
-                  </div>
-                </>
-              )}
-
               {kdRanking.length === 0 ? (
                 <div className="val-card p-20 text-center border-dashed border-[#2a3540]">
                   <p className="text-sm font-bold text-[#7b8a96]">등록된 랭킹 데이터가 없습니다.</p>

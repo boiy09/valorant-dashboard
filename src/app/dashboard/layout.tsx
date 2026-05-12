@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import HeaderRiotLink from "@/components/HeaderRiotLink";
+import HeaderRiotLink from "./HeaderRiotLink";
 import MemberSidebar from "./MemberSidebar";
 import ProfileModal from "@/components/ProfileModal";
 import StatSyncProvider from "@/components/StatSyncProvider";

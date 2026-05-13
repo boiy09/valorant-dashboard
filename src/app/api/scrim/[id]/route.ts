@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
+import { getRecentMatches, type ValorantRegion } from "@/lib/valorant";
+import { apiCache, TTL } from "@/lib/apiCache";
 
 const reactionSyncCache = new Map<string, number>();
 
@@ -14,6 +16,25 @@ type GuildMemberRow = {
   };
 };
 
+type KdaSnapshotPlayer = {
+  userId?: string;
+  kills?: number;
+  deaths?: number;
+  assists?: number;
+};
+
+type KdSummary = {
+  source: "scrim" | "rank";
+  kd: number;
+  kills: number;
+  deaths: number;
+  matches: number;
+};
+
+type ScrimGameKdaRow = {
+  kdaSnapshot: string | null;
+};
+
 function parseIdList(value: string | null | undefined) {
   if (!value) return [];
   try {
@@ -22,6 +43,15 @@ function parseIdList(value: string | null | undefined) {
   } catch {
     return value.split(",").map((item) => item.trim()).filter(Boolean);
   }
+}
+
+async function settleInBatches<T, R>(items: T[], size: number, task: (item: T) => Promise<R>) {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    const chunk = items.slice(i, i + size);
+    results.push(...(await Promise.all(chunk.map(task))));
+  }
+  return results;
 }
 
 function stringifyIdList(values: string[]) {
@@ -65,7 +95,9 @@ async function findScrim(id: string, guildId?: string) {
                 select: {
                   gameName: true,
                   tagLine: true,
+                  puuid: true,
                   region: true,
+                  isPrimary: true,
                   cachedTierName: true,
                   cachedCard: true,
                   cachedLevel: true,
@@ -80,6 +112,87 @@ async function findScrim(id: string, guildId?: string) {
       },
     },
   });
+}
+
+function buildKdSummary(source: KdSummary["source"], kills: number, deaths: number, matches: number): KdSummary | null {
+  if (matches <= 0) return null;
+  return {
+    source,
+    kd: deaths > 0 ? Number((kills / deaths).toFixed(2)) : kills,
+    kills,
+    deaths,
+    matches,
+  };
+}
+
+async function getScrimKdSummaries(guildId: string) {
+  const games = await prisma.$queryRaw<ScrimGameKdaRow[]>`
+    SELECT g."kdaSnapshot"
+    FROM "ScrimGame" g
+    INNER JOIN "ScrimSession" s ON s."id" = g."sessionId"
+    WHERE s."guildId" = ${guildId}
+  `;
+
+  const stats = new Map<string, { kills: number; deaths: number; matches: number }>();
+  for (const game of games) {
+    let kdaList: KdaSnapshotPlayer[] = [];
+    try {
+      kdaList = game.kdaSnapshot ? JSON.parse(game.kdaSnapshot) : [];
+    } catch {
+      continue;
+    }
+
+    for (const player of kdaList) {
+      if (!player.userId) continue;
+      const current = stats.get(player.userId) ?? { kills: 0, deaths: 0, matches: 0 };
+      current.kills += Number(player.kills ?? 0);
+      current.deaths += Number(player.deaths ?? 0);
+      current.matches += 1;
+      stats.set(player.userId, current);
+    }
+  }
+
+  return new Map(
+    Array.from(stats.entries()).flatMap(([userId, value]) => {
+      const summary = buildKdSummary("scrim", value.kills, value.deaths, value.matches);
+      return summary ? [[userId, summary]] : [];
+    })
+  );
+}
+
+async function getRankKdSummary(
+  accounts: Array<{ puuid: string; region: string; isPrimary: boolean; gameName: string; tagLine: string }>
+) {
+  const account =
+    accounts.find((item) => item.isPrimary) ??
+    accounts.find((item) => item.region.toUpperCase() === "KR") ??
+    accounts[0];
+  if (!account?.puuid) return null;
+
+  const region = account.region.toLowerCase() === "ap" ? "ap" : "kr";
+  const cacheKey = `scrim-card-rank-kd:${account.puuid}:${region}`;
+
+  const { data } = await apiCache.getOrFetch(cacheKey, TTL.MEDIUM, async () => {
+    const matches = await getRecentMatches(
+      account.puuid,
+      20,
+      region as ValorantRegion,
+      "pc",
+      { skipAccountFallback: true, skipRankFallback: true }
+    ).catch(() => []);
+
+    const competitiveMatches = matches.filter((match) => {
+      const mode = match.mode.toLowerCase();
+      return mode.includes("competitive") || mode.includes("rank") || mode.includes("경쟁");
+    });
+    const targetMatches = competitiveMatches.length > 0 ? competitiveMatches : matches;
+    const kills = targetMatches.reduce((sum, match) => sum + match.kills, 0);
+    const deaths = targetMatches.reduce((sum, match) => sum + match.deaths, 0);
+
+    return buildKdSummary("rank", kills, deaths, targetMatches.length);
+  });
+
+  return data;
 }
 
 function getDiscordHeaders() {
@@ -206,9 +319,23 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
         orderBy: { nickname: "asc" },
       })
     : [];
+  const scrimKdSummaries = await getScrimKdSummaries(syncedScrim.guildId);
+  const missingRankPlayers = syncedScrim.players.filter((player) => !scrimKdSummaries.has(player.userId));
+  const rankKdSummaries = new Map<string, KdSummary>();
+
+  await settleInBatches(missingRankPlayers, 3, async (player) => {
+    const summary = await getRankKdSummary(player.user.riotAccounts);
+    if (summary) rankKdSummaries.set(player.userId, summary);
+  });
 
   return Response.json({
-    scrim: syncedScrim,
+    scrim: {
+      ...syncedScrim,
+      players: syncedScrim.players.map((player) => ({
+        ...player,
+        kdSummary: scrimKdSummaries.get(player.userId) ?? rankKdSummaries.get(player.userId) ?? null,
+      })),
+    },
     managerIds: parseIdList(syncedScrim.managers || syncedScrim.createdBy),
     guildMembers: (guildMembers as GuildMemberRow[]).map((member) => ({
       userId: member.userId,

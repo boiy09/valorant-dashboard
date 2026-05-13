@@ -20,6 +20,13 @@ interface ScrimPlayer {
   kills: number | null;
   deaths: number | null;
   assists: number | null;
+  kdSummary: {
+    source: "scrim" | "rank";
+    kd: number;
+    kills: number;
+    deaths: number;
+    matches: number;
+  } | null;
   user: {
     id: string;
     discordId: string | null;
@@ -1679,6 +1686,7 @@ function PlayerCard({ player, compact = false, onRemove, guildMembers = [] }: { 
   const tiers = player.user.riotAccounts.map((a) => a.cachedTierName).filter(Boolean);
   const agents = parseAgents(player.user.favoriteAgents);
   const roleLabels = toRoleLabels(player.user.valorantRole);
+  const kdSummary = player.kdSummary;
   return (
     <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab flex flex-col h-full min-h-[140px] rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
       <div className="flex items-center gap-3">
@@ -1694,6 +1702,18 @@ function PlayerCard({ player, compact = false, onRemove, guildMembers = [] }: { 
         )}
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+        {kdSummary && (
+          <span
+            className={`rounded px-2 py-0.5 font-black ${
+              kdSummary.source === "scrim"
+                ? "bg-[#00e7c2]/12 text-[#00e7c2]"
+                : "bg-[#7c5cff]/14 text-[#b8a7ff]"
+            }`}
+            title={`${kdSummary.kills}킬 ${kdSummary.deaths}데스 · ${kdSummary.matches}경기`}
+          >
+            {kdSummary.source === "scrim" ? "내전" : "랭크"} KD {kdSummary.kd.toFixed(2)}
+          </span>
+        )}
         {tiers.slice(0, 2).map((t) => <span key={t} className="rounded bg-[#ff4655]/12 px-2 py-0.5 font-bold text-[#ff8a95]">{t}</span>)}
         {roleLabels.map((r) => <span key={r} className="rounded bg-[#24313c] px-2 py-0.5 font-bold text-[#c8d3db]">{r}</span>)}
         {agents.slice(0, 3).map((a) => <span key={a} className="rounded bg-[#0b141c] px-2 py-0.5 font-bold text-[#9aa8b3]">{a}</span>)}

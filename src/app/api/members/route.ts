@@ -22,6 +22,7 @@ type MemberAccount = {
 
 type MemberRow = {
   id: string;
+  userId: string;
   nickname: string | null;
   roles: string;
   isOnline: boolean;
@@ -34,6 +35,14 @@ type MemberRow = {
     riotTagLine: string | null;
     riotAccounts: MemberAccount[];
   };
+};
+
+type VoiceActivitySummary = {
+  isActive: boolean;
+  channelName: string;
+  joinedAt: Date;
+  leftAt: Date | null;
+  duration: number | null;
 };
 
 function toRegionLabel(region: string) {
@@ -110,6 +119,34 @@ export async function GET(req: NextRequest) {
 
   const memberRows = members as MemberRow[];
   const allAccounts = memberRows.flatMap((m) => m.user.riotAccounts);
+  const memberUserIds = memberRows.map((member) => member.userId);
+
+  const voiceActivities = await prisma.voiceActivity.findMany({
+    where: {
+      guildId: guild.id,
+      userId: { in: memberUserIds },
+    },
+    select: {
+      userId: true,
+      channelName: true,
+      joinedAt: true,
+      leftAt: true,
+      duration: true,
+    },
+    orderBy: { joinedAt: "desc" },
+  });
+
+  const latestVoiceActivityByUserId = new Map<string, VoiceActivitySummary>();
+  for (const activity of voiceActivities) {
+    if (latestVoiceActivityByUserId.has(activity.userId)) continue;
+    latestVoiceActivityByUserId.set(activity.userId, {
+      isActive: activity.leftAt === null,
+      channelName: activity.channelName,
+      joinedAt: activity.joinedAt,
+      leftAt: activity.leftAt,
+      duration: activity.duration,
+    });
+  }
 
   await settleInBatches(allAccounts, 5, async (account) => {
     const region = toRegionLabel(account.region);
@@ -186,6 +223,7 @@ export async function GET(req: NextRequest) {
         rankIcon: null,
       }),
       isOnline: member.isOnline,
+      voiceActivity: latestVoiceActivityByUserId.get(member.userId) ?? null,
       joinedAt: member.joinedAt,
     })),
   });

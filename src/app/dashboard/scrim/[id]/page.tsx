@@ -789,10 +789,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           <DropArea title={`${settings.useTeamBoard ? "참가자 목록" : "전체 참가자"} (${participantPlayers.length}명)`} 
             subtitle={settings.useTeamBoard ? "드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." : "내전에 참여 중인 플레이어 목록입니다."} 
             onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
-            <div className="flex flex-wrap gap-2">
-              {participantPlayers.map((p) => <PlayerCard key={p.user.id} player={p} guildMembers={guildMembers} onRemove={() => removePlayer(p.user.id)} />)}
-              {participantPlayers.length === 0 && <EmptyState text="참가자가 없습니다." />}
-            </div>
+            <ParticipantList players={participantPlayers} guildMembers={guildMembers} onRemove={removePlayer} />
           </DropArea>
           
           {settings.useTeamBoard && (
@@ -1618,6 +1615,131 @@ function DropArea({ title, subtitle, children, onDrop }: { title: string; subtit
       </div>
       {children}
     </section>
+  );
+}
+
+function ParticipantList({
+  players,
+  guildMembers,
+  onRemove,
+}: {
+  players: ScrimPlayer[];
+  guildMembers: GuildMemberOption[];
+  onRemove: (playerId: string) => void;
+}) {
+  if (players.length === 0) return <EmptyState text="참가자가 없습니다." />;
+
+  return (
+    <div className="overflow-hidden rounded border border-[#2a3540] bg-[#0b141c]/50">
+      <div className="overflow-x-auto">
+        <div className="min-w-[900px]">
+          <div className="grid grid-cols-[minmax(190px,1.35fr)_minmax(220px,1.25fr)_120px_110px_120px_minmax(140px,0.9fr)_40px] items-center gap-3 border-b border-[#2a3540] bg-[#0f1923] px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]">
+            <div>Player</div>
+            <div>Riot ID</div>
+            <div>Tier</div>
+            <div className="text-right">KD</div>
+            <div>Role</div>
+            <div>Agents</div>
+            <div />
+          </div>
+          <div className="divide-y divide-[#1f2d38]">
+            {players.map((player) => (
+              <ParticipantRow
+                key={player.id}
+                player={player}
+                guildMembers={guildMembers}
+                onRemove={() => onRemove(player.id)}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ParticipantRow({
+  player,
+  guildMembers,
+  onRemove,
+}: {
+  player: ScrimPlayer;
+  guildMembers: GuildMemberOption[];
+  onRemove: () => void;
+}) {
+  const displayName = resolveServerNick(player.user.id, guildMembers, player.user.name) || "이름 없음";
+  const riotNames = player.user.riotAccounts.map((account) => `${account.region.toUpperCase()} · ${account.gameName}#${account.tagLine}`);
+  const primaryTier = player.user.riotAccounts.find((account) => account.cachedTierName)?.cachedTierName ?? "Unranked";
+  const roleLabels = toRoleLabels(player.user.valorantRole);
+  const agents = parseAgents(player.user.favoriteAgents);
+  const kd = player.kdSummary;
+
+  return (
+    <div
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", player.id);
+      }}
+      className="grid cursor-grab grid-cols-[minmax(190px,1.35fr)_minmax(220px,1.25fr)_120px_110px_120px_minmax(140px,0.9fr)_40px] items-center gap-3 px-3 py-2.5 transition hover:bg-[#13212b] active:cursor-grabbing"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        {player.user.image ? (
+          <img src={player.user.image} alt="" className="h-8 w-8 flex-shrink-0 rounded object-cover" />
+        ) : (
+          <div className="h-8 w-8 flex-shrink-0 rounded bg-[#24313c]" />
+        )}
+        <div className="min-w-0">
+          <div className="truncate text-sm font-black text-white">{displayName}</div>
+          <div className="text-[10px] font-bold text-[#52616d]">대기 참가자</div>
+        </div>
+      </div>
+      <div className="min-w-0 truncate text-xs font-bold text-[#9aa8b3]">
+        {riotNames.join(" / ") || "Riot 계정 미연동"}
+      </div>
+      <div className="truncate">
+        <span className="rounded bg-[#ff4655]/12 px-2 py-0.5 text-[11px] font-black text-[#ff8a95]">
+          {primaryTier}
+        </span>
+      </div>
+      <div className="text-right">
+        {kd ? (
+          <div>
+            <div className={kd.kd >= 1 ? "text-sm font-black text-[#00e7c2]" : "text-sm font-black text-[#ff4655]"}>
+              {kd.kd.toFixed(2)}
+            </div>
+            <div className="text-[9px] font-bold uppercase text-[#7b8a96]">{kd.source === "scrim" ? "내전" : "랭크"}</div>
+          </div>
+        ) : (
+          <span className="text-xs font-bold text-[#52616d]">-</span>
+        )}
+      </div>
+      <div className="flex min-w-0 flex-wrap gap-1">
+        {roleLabels.length > 0 ? (
+          roleLabels.slice(0, 2).map((role) => (
+            <span key={role} className="rounded bg-[#24313c] px-2 py-0.5 text-[10px] font-bold text-[#c8d3db]">
+              {role}
+            </span>
+          ))
+        ) : (
+          <span className="text-xs font-bold text-[#52616d]">-</span>
+        )}
+      </div>
+      <div className="min-w-0 truncate text-xs font-bold text-[#9aa8b3]">
+        {agents.slice(0, 3).join(", ") || "-"}
+      </div>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onRemove();
+        }}
+        className="flex h-7 w-7 items-center justify-center rounded text-[#7b8a96] transition hover:bg-[#ff4655]/20 hover:text-[#ff4655]"
+        title="참가자 제거"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
   );
 }
 

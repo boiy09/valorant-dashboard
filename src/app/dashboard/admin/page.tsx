@@ -373,7 +373,7 @@ function NoteEditor({
 
   if (editing) {
     return (
-      <div className="mt-1.5 flex flex-col gap-1">
+      <div className="mt-2 flex flex-col gap-1.5">
         <textarea
           ref={textareaRef}
           value={value}
@@ -404,18 +404,18 @@ function NoteEditor({
   }
 
   return (
-    <div
+    <button
+      type="button"
       onClick={startEdit}
-      className="group mt-1 flex cursor-pointer items-start gap-1 rounded px-1 py-0.5 hover:bg-[#1a242d]"
-      title="클릭하여 메모 편집"
+      className="mt-2 flex w-full items-start gap-1.5 rounded border border-[#263442] bg-[#0f1923]/80 px-2.5 py-1.5 text-left transition-colors hover:border-[#ff4655]/40 hover:bg-[#ff4655]/5"
     >
-      <span className="mt-0.5 shrink-0 text-[10px] text-[#4a5d6b] group-hover:text-[#7b8a96]">✎</span>
+      <span className="mt-0.5 shrink-0 text-[11px] text-[#7b8a96]">✎</span>
       {note ? (
-        <span className="text-xs text-[#8da0ad]">{note}</span>
+        <span className="text-xs text-[#c8d3db]">{note}</span>
       ) : (
-        <span className="text-xs italic text-[#4a5d6b] group-hover:text-[#7b8a96]">메모 추가...</span>
+        <span className="text-xs italic text-[#7b8a96]">메모 추가...</span>
       )}
-    </div>
+    </button>
   );
 }
 

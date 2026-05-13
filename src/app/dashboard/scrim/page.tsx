@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 interface ScrimPlayer {
   id: string;
@@ -257,9 +258,9 @@ export default function ScrimPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <a href="/dashboard/scrim/ranking" className="val-btn border border-[#2a3540] bg-[#0f1923] px-4 py-2 text-xs font-black text-white hover:border-[#ff4655]/50">
+          <Link href="/dashboard/scrim/ranking" className="val-btn border border-[#2a3540] bg-[#0f1923] px-4 py-2 text-xs font-black text-white hover:border-[#ff4655]/50">
             KD 랭킹
-          </a>
+          </Link>
           <button type="button" onClick={openCreateModal} className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white">
             내전 생성
           </button>

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -83,6 +84,11 @@ function getMergedIntervalSeconds(intervals: ActivityInterval[]) {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user) {
+    return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  }
+
   const guildDiscordId = req.nextUrl.searchParams.get("guildId");
   const type = req.nextUrl.searchParams.get("type") ?? "weekly"; // weekly | monthly
 
@@ -103,6 +109,7 @@ export async function GET(req: NextRequest) {
   const activities = await prisma.voiceActivity.findMany({
     where: {
       duration: { not: null },
+      joinedAt: { gte: since },
       ...guildFilter,
     },
     include: {

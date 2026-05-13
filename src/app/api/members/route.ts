@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
       fetchProfile(account.puuid, account.region, account.gameName, account.tagLine, tokens),
     ]);
 
-    prisma.riotAccount.update({
+    await prisma.riotAccount.update({
       where: { puuid: account.puuid },
       data: {
         cachedTierId: rank.tierId,
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
         cachedCard: profile.card,
         rankCachedAt: new Date(),
       },
-    }).catch(() => {});
+    }).catch((e) => console.error("[members] rank cache update failed:", account.puuid, e));
 
     accountDetails.set(account.puuid, {
       region,

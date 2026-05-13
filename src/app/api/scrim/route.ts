@@ -43,8 +43,8 @@ export async function POST(req: NextRequest) {
       map,
       winnerId: result,
       createdBy: session.user.id,
-      startedAt: new Date(),
-      endedAt: new Date(),
+      startedAt: null,
+      endedAt: null,
     },
   });
 

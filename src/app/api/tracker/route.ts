@@ -224,7 +224,118 @@ async function fetchFromHenrik(
 }
 
 // ──────────────────────────────────────────────
-// 통합 조회 (tracker.gg 우선 → Henrik 폴백)
+// 스크래핑 폴백 (API 키 없을 때)
+// ──────────────────────────────────────────────
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+  "Accept-Encoding": "gzip, deflate, br",
+  "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+  "sec-fetch-dest": "empty",
+  "sec-fetch-mode": "cors",
+  "sec-fetch-site": "same-origin",
+  "Origin": "https://tracker.gg",
+};
+
+async function fetchFromScrape(
+  gameName: string,
+  tagLine: string,
+  preferredRegion: SupportedRegion
+): Promise<TrackerSummaryResponse> {
+  const encoded = `${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
+  const referer = `https://tracker.gg/valorant/profile/riot/${encoded}/overview`;
+
+  const [profileRes, agentRes] = await Promise.all([
+    fetch(`https://api.tracker.gg/api/v2/valorant/standard/profile/riot/${encoded}`, {
+      headers: { ...BROWSER_HEADERS, Referer: referer },
+    }),
+    fetch(`https://api.tracker.gg/api/v2/valorant/standard/profile/riot/${encoded}/segments/agent`, {
+      headers: { ...BROWSER_HEADERS, Referer: referer },
+    }),
+  ]);
+
+  if (!profileRes.ok) {
+    const err = Object.assign(new Error(`scrape ${profileRes.status}`), { status: profileRes.status });
+    throw err;
+  }
+
+  const profileJson = await profileRes.json();
+  const segments: any[] = profileJson?.data?.segments ?? [];
+  const overviewSeg = segments.find((s: any) => s.type === "overview");
+  const ov = overviewSeg?.stats ?? {};
+
+  function sVal(stat: any): number { return typeof stat?.value === "number" ? stat.value : 0; }
+  function sMeta(stat: any, f: string): string { return typeof stat?.metadata?.[f] === "string" ? stat.metadata[f] : ""; }
+
+  const matchesPlayed = Math.round(sVal(ov.matchesPlayed));
+  const wins = Math.round(sVal(ov.wins));
+
+  const seasons: TrackerSummaryResponse["seasons"] = segments
+    .filter((s: any) => s.type === "season")
+    .map((s: any) => {
+      const st = s.stats ?? {};
+      const mp = Math.round(sVal(st.matchesPlayed));
+      const w = Math.round(sVal(st.wins));
+      const key: string = s.attributes?.season ?? "";
+      return {
+        season: key,
+        label: formatValorantSeasonLabel(key),
+        rankName: normalizeTierName(sMeta(st.rank, "tierName"), Math.round(sVal(st.rank))) || null,
+        tier: Math.round(sVal(st.rank)),
+        matchesPlayed: mp,
+        wins: w,
+        winRate: mp > 0 ? Math.round((w / mp) * 100) : 0,
+      };
+    })
+    .filter((s) => s.matchesPlayed > 0)
+    .sort((a, b) => b.season.localeCompare(a.season));
+
+  let agents: TrackerSummaryResponse["agents"] = [];
+  if (agentRes.ok) {
+    const agentJson = await agentRes.json();
+    agents = (agentJson?.data ?? [])
+      .map((s: any) => {
+        const st = s.stats ?? {};
+        const mt = s.metadata ?? {};
+        const mp = Math.round(sVal(st.matchesPlayed));
+        const w = Math.round(sVal(st.wins));
+        return {
+          name: mt.name ?? "Unknown",
+          imageUrl: mt.imageUrl ?? "",
+          matchesPlayed: mp,
+          winRate: mp > 0 ? Math.round((w / mp) * 100) : 0,
+          kd: Math.round(sVal(st.kRatio) * 100) / 100,
+          damagePerRound: Math.round(sVal(st.damagePerRound)),
+        };
+      })
+      .filter((a: any) => a.matchesPlayed > 0)
+      .sort((a: any, b: any) => b.matchesPlayed - a.matchesPlayed);
+  }
+
+  return {
+    gameName,
+    tagLine,
+    region: preferredRegion,
+    stats: {
+      matchesPlayed,
+      winRate: matchesPlayed > 0 ? Math.round((wins / matchesPlayed) * 100) : 0,
+      kd: Math.round(sVal(ov.kRatio) * 100) / 100,
+      headshotPct: Math.round(sVal(ov.headshotsPercentage) * 10) / 10,
+      killsPerRound: Math.round(sVal(ov.killsPerRound) * 100) / 100,
+      scorePerRound: Math.round(sVal(ov.scorePerRound)),
+      damagePerRound: Math.round(sVal(ov.damagePerRound)),
+    },
+    agents,
+    seasons,
+    source: "trackergg",
+  };
+}
+
+// ──────────────────────────────────────────────
+// 통합 조회 (tracker.gg API → 스크래핑 → Henrik 순 폴백)
 // ──────────────────────────────────────────────
 async function fetchTrackerSummary(
   gameName: string,
@@ -235,10 +346,17 @@ async function fetchTrackerSummary(
     try {
       return await fetchFromTrackerGg(gameName, tagLine, preferredRegion);
     } catch (err: any) {
-      // 404는 폴백 불필요
       if (err?.status === 404) throw err;
-      console.warn("[tracker] tracker.gg 실패, Henrik으로 폴백:", err?.message);
+      console.warn("[tracker] tracker.gg API 실패, 스크래핑으로 폴백:", err?.message);
     }
+  }
+
+  // 스크래핑 시도
+  try {
+    return await fetchFromScrape(gameName, tagLine, preferredRegion);
+  } catch (err: any) {
+    if (err?.status === 404) throw err;
+    console.warn("[tracker] 스크래핑 실패, Henrik으로 폴백:", err?.message);
   }
 
   if (!process.env.HENRIK_API_KEY) {
@@ -273,10 +391,6 @@ export async function GET(req: NextRequest) {
 
   if (!gameName || !tagLine) {
     return Response.json({ error: "gameName과 tagLine이 필요합니다." }, { status: 400 });
-  }
-
-  if (!process.env.TRACKER_GG_API_KEY && !process.env.HENRIK_API_KEY) {
-    return Response.json({ error: "API 키가 설정되지 않았습니다." }, { status: 503 });
   }
 
   const cacheKey = buildCacheKey(gameName, tagLine, region);

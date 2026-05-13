@@ -11,6 +11,7 @@ import ProfileModal, { type ProfileAccount } from "./ProfileModal";
 const BASE_TABS = [
   { href: "/dashboard", label: "대시보드", icon: "⌂" },
   { href: "/dashboard/riot-connect", label: "라이엇 연동", icon: "⛓" },
+  { href: "/dashboard/riot-ssid-test", label: "테스트", icon: "T" },
   { href: "/dashboard/valorant", label: "전적", icon: "◎" },
   { href: "/dashboard/scrim", label: "내전", icon: "⚔" },
   { href: "/dashboard/schedule", label: "일정", icon: "▤" },
@@ -163,6 +164,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (riotLinked !== false) return;
     if (pathname === "/dashboard/riot-connect" || pathname.startsWith("/dashboard/riot-connect/")) return;
+    if (pathname === "/dashboard/riot-ssid-test" || pathname.startsWith("/dashboard/riot-ssid-test/")) return;
 
     setShowRiotRequired(true);
     router.replace("/dashboard/riot-connect");
@@ -271,7 +273,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 key={tab.href}
                 href={tab.href}
                 onClick={(event) => {
-                  if (riotLinked === false && tab.href !== "/dashboard/riot-connect") {
+                  const isRiotSetupTab =
+                    tab.href === "/dashboard/riot-connect" ||
+                    tab.href === "/dashboard/riot-ssid-test";
+                  if (riotLinked === false && !isRiotSetupTab) {
                     event.preventDefault();
                     setShowRiotRequired(true);
                     router.replace("/dashboard/riot-connect");

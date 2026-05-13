@@ -26,4 +26,13 @@ echo "[deploy] restarting bot..."
 pm2 restart valorant-bot --update-env 2>/dev/null || pm2 start npm --name "valorant-bot" -- run bot
 pm2 save
 
+echo "[deploy] checking bot health..."
+pm2 describe valorant-bot >/dev/null
+BOT_STATUS="$(pm2 jlist | node -e "let input=''; process.stdin.on('data', c => input += c); process.stdin.on('end', () => { const apps = JSON.parse(input || '[]'); const app = apps.find((item) => item.name === 'valorant-bot'); process.stdout.write(app?.pm2_env?.status || 'missing'); });")"
+if [ "$BOT_STATUS" != "online" ]; then
+  echo "[deploy] valorant-bot is not online: $BOT_STATUS"
+  pm2 logs valorant-bot --lines 80 --nostream || true
+  exit 1
+fi
+
 echo "[deploy] done"

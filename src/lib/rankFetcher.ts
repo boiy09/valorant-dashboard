@@ -85,7 +85,7 @@ export async function ensureValidTokens(
         entitlementsToken: newEnt,
         tokenExpiresAt: new Date(now + 55 * 60 * 1000),
       },
-    }).catch(() => {});
+    }).catch((e) => console.error("[rankFetcher] token cache update failed:", puuid, e));
 
     return { accessToken: newAccess, entitlementsToken: newEnt };
   } catch {

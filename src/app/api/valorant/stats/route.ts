@@ -48,15 +48,15 @@ export async function GET() {
     ])
   );
 
-  // Populate tierIcons for the map entries
-  await Promise.all(
+  // Populate tierIcons for the map entries — 개별 실패가 전체 응답을 막지 않도록 격리
+  await Promise.allSettled(
     [...puuidRankMapRaw.entries()].map(async ([puuid, entry]) => {
       const icon = await getRankIconByTier(entry.tierId).catch(() => null);
       puuidRankMapRaw.set(puuid, { ...entry, tierIcon: icon });
     })
   );
 
-  const accountStats = await Promise.all(
+  const accountStats = (await Promise.allSettled(
     accounts.map(async (account) => {
       const region = account.region as RiotRegion;
       const qRegion = toQueryRegion(region);
@@ -101,7 +101,11 @@ export async function GET() {
         })),
       };
     })
-  );
+  )).flatMap((r) => {
+    if (r.status === "fulfilled") return [r.value];
+    console.error("[stats] account stats fetch failed:", r.reason);
+    return [];
+  });
 
   return Response.json({ accounts: accountStats });
 }

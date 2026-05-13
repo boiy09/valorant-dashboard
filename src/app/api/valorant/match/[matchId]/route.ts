@@ -190,8 +190,14 @@ export async function GET(
       const rawNameIsUsable = !isAgentName(rawName, agentName) && !isPrivateLikeName(rawName);
       const localName = firstPlayerName(agentName, player.game_name, player.gameName, player.name, player.player_name, player.playerName);
       const localTag = firstString(player.tag, player.tagLine, player.tag_line, player.game_tag);
-      const accountFallback =
-        !localName || !localTag || !rawNameIsUsable ? await getAccountByPuuid(puuid).catch(() => null) : null;
+      const matchTierId = toNumber(tier.id);
+
+      // 계정·랭크 fallback을 병렬로 요청
+      const [accountFallback, rankFallback] = await Promise.all([
+        !localName || !localTag || !rawNameIsUsable ? getAccountByPuuid(puuid).catch(() => null) : Promise.resolve(null),
+        matchTierId <= 0 ? getCurrentRankByPuuid(puuid).catch(() => null) : Promise.resolve(null),
+      ]);
+
       const fallbackCard = asRecord(accountFallback?.card);
       const fallbackName = firstPlayerName(
         agentName,
@@ -202,8 +208,6 @@ export async function GET(
       const displayName = localName || fallbackName || rawName;
       const displayTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
       const isPrivate = !localName && !fallbackName && !rawNameIsUsable;
-      const matchTierId = toNumber(tier.id);
-      const rankFallback = matchTierId > 0 ? null : await getCurrentRankByPuuid(puuid).catch(() => null);
       const finalTierId = matchTierId || rankFallback?.tierId || 0;
       const finalTierName =
         matchTierId > 0 ? firstString(tier.name) || "Unranked" : rankFallback?.tierName ?? "Unranked";

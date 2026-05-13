@@ -44,7 +44,8 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ videos: entries });
-  } catch {
+  } catch (e) {
+    console.error("[youtube/latest] 유튜브 피드 파싱 실패:", e);
     return NextResponse.json({ videos: [] });
   }
 }

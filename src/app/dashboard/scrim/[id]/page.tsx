@@ -75,6 +75,12 @@ interface GuildMemberOption {
   image: string | null;
 }
 
+interface AgentOption {
+  name: string;
+  icon: string | null;
+  portrait: string | null;
+}
+
 interface ScrimDetailSettings {
   teamNames?: Record<string, string>;
   useTeamBoard?: boolean; // 팀 배치 기능 사용 여부 (기본값: true)
@@ -307,6 +313,9 @@ function parseAgents(value: string) {
   if (!value) return [];
   try { const p = JSON.parse(value); return Array.isArray(p) ? p.filter((x): x is string => typeof x === "string") : []; }
   catch { return value.split(",").map((x) => x.trim()).filter(Boolean); }
+}
+function normalizeAgentKey(value: string) {
+  return value.trim().toLowerCase();
 }
 function formatDateTime(value: string | null) {
   if (!value) return "시작 시간 미정";
@@ -1627,6 +1636,25 @@ function ParticipantList({
   guildMembers: GuildMemberOption[];
   onRemove: (playerId: string) => void;
 }) {
+  const [agentPortraits, setAgentPortraits] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/valorant/agents", { cache: "force-cache" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload: { agents?: AgentOption[] } | null) => {
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        for (const agent of payload?.agents ?? []) {
+          const image = agent.portrait || agent.icon;
+          if (agent.name && image) next[normalizeAgentKey(agent.name)] = image;
+        }
+        setAgentPortraits(next);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   if (players.length === 0) return <EmptyState text="참가자가 없습니다." />;
 
   return (
@@ -1648,6 +1676,7 @@ function ParticipantList({
                 key={player.id}
                 player={player}
                 guildMembers={guildMembers}
+                agentPortraits={agentPortraits}
                 onRemove={() => onRemove(player.id)}
               />
             ))}
@@ -1661,10 +1690,12 @@ function ParticipantList({
 function ParticipantRow({
   player,
   guildMembers,
+  agentPortraits,
   onRemove,
 }: {
   player: ScrimPlayer;
   guildMembers: GuildMemberOption[];
+  agentPortraits: Record<string, string>;
   onRemove: () => void;
 }) {
   const displayName = resolveServerNick(player.user.id, guildMembers, player.user.name) || "이름 없음";
@@ -1725,8 +1756,27 @@ function ParticipantRow({
           <span className="text-xs font-bold text-[#52616d]">-</span>
         )}
       </div>
-      <div className="min-w-0 truncate text-xs font-bold text-[#9aa8b3]">
-        {agents.slice(0, 3).join(", ") || "-"}
+      <div className="flex min-w-0 items-center gap-1.5">
+        {agents.length > 0 ? (
+          agents.slice(0, 3).map((agent) => {
+            const portrait = agentPortraits[normalizeAgentKey(agent)];
+            return portrait ? (
+              <img
+                key={agent}
+                src={portrait}
+                alt={agent}
+                title={agent}
+                className="h-7 w-7 rounded bg-[#24313c] object-cover object-top ring-1 ring-white/10"
+              />
+            ) : (
+              <span key={agent} title={agent} className="flex h-7 w-7 items-center justify-center rounded bg-[#24313c] text-[10px] font-black text-[#9aa8b3] ring-1 ring-white/10">
+                {agent.slice(0, 1)}
+              </span>
+            );
+          })
+        ) : (
+          <span className="text-xs font-bold text-[#52616d]">-</span>
+        )}
       </div>
       <button
         type="button"

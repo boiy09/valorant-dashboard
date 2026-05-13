@@ -143,10 +143,10 @@ export async function GET(req: NextRequest) {
     const rank = await fetchRank(account.puuid, account.region, account.gameName, account.tagLine, tokens);
     const tierId = rank.tierId;
 
-    prisma.riotAccount.update({
+    await prisma.riotAccount.update({
       where: { puuid: account.puuid },
       data: { cachedTierId: tierId, cachedTierName: rank.tierName, rankCachedAt: new Date() },
-    }).catch(() => {});
+    }).catch((e) => console.error("[tier-distribution] rank cache update failed:", e));
 
     return { region, tier: tierIdToDetailTier(tierId) };
   });

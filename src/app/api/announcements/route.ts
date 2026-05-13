@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   const guildDiscordId = req.nextUrl.searchParams.get("guildId");
-  const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "20");
+  const limit = Math.min(parseInt(req.nextUrl.searchParams.get("limit") ?? "20"), 100);
 
   const guild = guildDiscordId
     ? await prisma.guild.findUnique({ where: { discordId: guildDiscordId } })
@@ -35,12 +35,24 @@ export async function POST(req: NextRequest) {
     : null;
   if (!guild) return Response.json({ error: "서버를 찾을 수 없어요." }, { status: 404 });
 
+  // 작성자가 해당 길드 멤버인지 확인
+  let user = await prisma.user.findUnique({ where: { discordId: session.user.id } });
+  if (!user && session.user.email) {
+    user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  }
+  if (!user) return Response.json({ error: "유저를 찾을 수 없습니다." }, { status: 404 });
+
+  const member = await prisma.guildMember.findUnique({
+    where: { userId_guildId: { userId: user.id, guildId: guild.id } },
+  });
+  if (!member) return Response.json({ error: "해당 서버의 멤버가 아닙니다." }, { status: 403 });
+
   const announcement = await prisma.announcement.create({
     data: {
       guildId: guild.id,
       title,
       content,
-      authorId: session.user.id,
+      authorId: user.id,
       pinned: !!pinned,
     },
   });

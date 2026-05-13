@@ -35,15 +35,27 @@ async function syncDiscordMembers() {
     };
   }
 
+  const DISCORD_TIMEOUT_MS = 10_000;
+
+  async function discordFetch(url: string, init?: RequestInit) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DISCORD_TIMEOUT_MS);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   const discordApi = "https://discord.com/api/v10";
   const headers = { Authorization: `Bot ${token}` };
-  const discordGuildResponse = await fetch(`${discordApi}/guilds/${guildDiscordId}`, { headers });
+  const discordGuildResponse = await discordFetch(`${discordApi}/guilds/${guildDiscordId}`, { headers });
   if (!discordGuildResponse.ok) {
     return { ok: false, status: 502, message: `Discord 서버 정보 조회 실패 (${discordGuildResponse.status})` };
   }
   const discordGuild = await discordGuildResponse.json() as { name?: string };
 
-  const rolesResponse = await fetch(`${discordApi}/guilds/${guildDiscordId}/roles`, { headers });
+  const rolesResponse = await discordFetch(`${discordApi}/guilds/${guildDiscordId}/roles`, { headers });
   if (!rolesResponse.ok) {
     return { ok: false, status: 502, message: `Discord 역할 조회 실패 (${rolesResponse.status})` };
   }
@@ -52,16 +64,19 @@ async function syncDiscordMembers() {
 
   const members: DiscordGuildMember[] = [];
   let after = "0";
+  const MAX_PAGES = 20; // 최대 20,000명
+  let page = 0;
 
-  while (true) {
+  while (page < MAX_PAGES) {
     const params = new URLSearchParams({ limit: "1000", after });
-    const membersResponse = await fetch(`${discordApi}/guilds/${guildDiscordId}/members?${params}`, { headers });
+    const membersResponse = await discordFetch(`${discordApi}/guilds/${guildDiscordId}/members?${params}`, { headers });
     if (!membersResponse.ok) {
       return { ok: false, status: 502, message: `Discord 멤버 조회 실패 (${membersResponse.status})` };
     }
     const batch = await membersResponse.json() as DiscordGuildMember[];
 
     members.push(...batch);
+    page += 1;
     if (batch.length < 1000) break;
 
     const last = batch[batch.length - 1]?.user?.id;
@@ -129,14 +144,24 @@ async function restartBot() {
     };
   }
 
-  const response = await fetch(restartUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(process.env.BOT_CONTROL_SECRET ? { Authorization: `Bearer ${process.env.BOT_CONTROL_SECRET}` } : {}),
-    },
-    body: JSON.stringify({ action: "restart" }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  let response: Response;
+  try {
+    response = await fetch(restartUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.BOT_CONTROL_SECRET ? { Authorization: `Bearer ${process.env.BOT_CONTROL_SECRET}` } : {}),
+      },
+      body: JSON.stringify({ action: "restart" }),
+    });
+  } catch {
+    return { ok: false, status: 502, message: "봇 재시작 요청 타임아웃 또는 연결 실패" };
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!response.ok) {
     return { ok: false, status: 502, message: `봇 재시작 요청 실패 (${response.status})` };

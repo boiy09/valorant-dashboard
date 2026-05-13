@@ -41,6 +41,11 @@ export async function POST(req: NextRequest) {
     : await prisma.guild.findFirst();
   if (!guild) return Response.json({ error: "서버를 찾을 수 없습니다." }, { status: 404 });
 
+  const member = await prisma.guildMember.findUnique({
+    where: { userId_guildId: { userId: user.id, guildId: guild.id } },
+  });
+  if (!member) return Response.json({ error: "해당 서버의 멤버가 아닙니다." }, { status: 403 });
+
   const highlight = await prisma.highlight.create({
     data: { userId: user.id, guildId: guild.id, title, description, url, type: type ?? "clip" },
   });
@@ -49,6 +54,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+
   const { highlightId, id } = await req.json();
   const targetId = highlightId ?? id;
   if (!targetId) return Response.json({ error: "하이라이트 ID가 필요합니다." }, { status: 400 });

@@ -175,17 +175,39 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   const rawMapName = matchedMatch.map ?? "";
   const mapName = MAP_KO[rawMapName] ?? rawMapName;
 
-  // KDA 업데이트: 스코어보드에서 각 참가자 KDA 추출
+  // 팀별 라운드 수 (ACS 계산용)
+  const teamRoundsMap = new Map<string, number>();
+  for (const t of matchedMatch.scoreboard?.teams ?? []) {
+    if (t.teamId) teamRoundsMap.set(t.teamId.toLowerCase(), t.roundsWon ?? 0);
+  }
+
+  // KDA + score 추출
   const scoreboardPlayers = matchedMatch.scoreboard?.players ?? [];
   const kdaUpdates: { id: string; kills: number; deaths: number; assists: number }[] = [];
+  // ScrimGame.kdaSnapshot용: acs 포함 (ScoreboardPlayer.acs는 이미 계산된 값)
+  const kdaSnapshot: {
+    userId: string; kills: number; deaths: number; assists: number;
+    acs: number; team: string;
+  }[] = [];
+
   for (const entry of playerPuuids) {
     const sbPlayer = scoreboardPlayers.find((p) => p.puuid === entry.puuid);
     if (!sbPlayer) continue;
+    const teamColor = sbPlayer.teamId?.toLowerCase() ?? "";
+
     kdaUpdates.push({
       id: entry.playerId,
       kills: sbPlayer.kills ?? 0,
       deaths: sbPlayer.deaths ?? 0,
       assists: sbPlayer.assists ?? 0,
+    });
+    kdaSnapshot.push({
+      userId: entry.userId,
+      kills: sbPlayer.kills ?? 0,
+      deaths: sbPlayer.deaths ?? 0,
+      assists: sbPlayer.assists ?? 0,
+      acs: sbPlayer.acs ?? 0,
+      team: teamColor,
     });
   }
 
@@ -204,7 +226,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
       data: sessionData,
     });
 
-    // KDA 업데이트
+    // ScrimPlayer KDA 업데이트
     for (const kda of kdaUpdates) {
       await tx.scrimPlayer.updateMany({
         where: { id: kda.id, sessionId: scrim.id },
@@ -212,6 +234,44 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
       });
     }
   });
+
+  // ScrimGame.kdaSnapshot 업데이트 (score 포함)
+  // 이 세션의 가장 최근 ScrimGame을 찾아 업데이트, 없으면 새로 생성
+  if (kdaSnapshot.length > 0) {
+    const existingGames = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT "id" FROM "ScrimGame" WHERE "sessionId" = $1 ORDER BY "gameNumber" DESC LIMIT 1`,
+      scrim.id
+    );
+
+    const teamSnapshot: Record<string, string[]> = {};
+    for (const entry of playerPuuids) {
+      if (!teamSnapshot[entry.team]) teamSnapshot[entry.team] = [];
+      teamSnapshot[entry.team].push(entry.userId);
+    }
+
+    if (existingGames.length > 0) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "ScrimGame" SET "kdaSnapshot" = $1, "winnerId" = $2, "matchId" = $3, "map" = $4 WHERE "id" = $5`,
+        JSON.stringify(kdaSnapshot),
+        winnerId ?? null,
+        matchedMatch.matchId ?? null,
+        mapName || null,
+        existingGames[0].id
+      );
+    } else {
+      const gameId = `scrimgame_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "ScrimGame" ("id","sessionId","gameNumber","map","teamSnapshot","kdaSnapshot","winnerId","matchId","createdAt")
+         VALUES ($1,$2,1,$3,$4,$5,$6,$7,NOW())`,
+        gameId, scrim.id,
+        mapName || null,
+        JSON.stringify(teamSnapshot),
+        JSON.stringify(kdaSnapshot),
+        winnerId ?? null,
+        matchedMatch.matchId ?? null
+      );
+    }
+  }
 
   return Response.json({
     success: true,

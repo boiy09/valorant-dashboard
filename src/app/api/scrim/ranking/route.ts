@@ -45,17 +45,17 @@ export async function GET(req: NextRequest) {
         kills?: number;
         deaths?: number;
         assists?: number;
+        acs?: number;
+        // 구버전 호환: score + teamRoundsWon
         score?: number;
         team?: string;
         teamRoundsWon?: number;
       }> = game.kdaSnapshot ? JSON.parse(game.kdaSnapshot) : [];
 
-      // 팀별 라운드 합산으로 총 라운드 수 계산
+      // 구버전: score+teamRoundsWon 방식 총 라운드 계산
       const teamRounds = new Map<string, number>();
       for (const p of kdaList) {
-        if (p.team && (p.teamRoundsWon ?? 0) > 0) {
-          teamRounds.set(p.team, p.teamRoundsWon!);
-        }
+        if (p.team && (p.teamRoundsWon ?? 0) > 0) teamRounds.set(p.team, p.teamRoundsWon!);
       }
       const totalRounds = Array.from(teamRounds.values()).reduce((a, b) => a + b, 0);
 
@@ -70,7 +70,11 @@ export async function GET(req: NextRequest) {
         existing.assists += Number(p.assists || 0);
         existing.gamesPlayed += 1;
 
-        if (totalRounds > 0 && p.score) {
+        // ACS: 신버전(acs 직접) 또는 구버전(score/rounds)
+        if (p.acs != null && p.acs > 0) {
+          existing.totalAcs += Number(p.acs);
+          existing.acsGames += 1;
+        } else if (totalRounds > 0 && p.score) {
           existing.totalAcs += Math.round(Number(p.score) / totalRounds);
           existing.acsGames += 1;
         }

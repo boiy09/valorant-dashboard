@@ -10,7 +10,7 @@
     "start": "next start",
     "bot": "ts-node -r tsconfig-paths/register --project tsconfig.bot.json --transpile-only src/bot/index.ts",
     "lint": "eslint",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && node scripts/link-prisma-client.cjs",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:deploy": "prisma migrate deploy",

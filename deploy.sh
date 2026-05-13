@@ -17,6 +17,7 @@ npm ci --prefer-offline 2>/dev/null || npm install
 
 echo "[deploy] generating Prisma client..."
 npx prisma generate
+node scripts/link-prisma-client.cjs
 
 echo "[deploy] stopping unused web process..."
 pm2 delete valorant-dashboard 2>/dev/null || true

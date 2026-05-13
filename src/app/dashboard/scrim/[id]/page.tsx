@@ -1632,8 +1632,8 @@ function ParticipantList({
   return (
     <div className="overflow-hidden rounded border border-[#2a3540] bg-[#0b141c]/50">
       <div className="overflow-x-auto">
-        <div className="min-w-[900px]">
-          <div className="grid grid-cols-[minmax(190px,1.35fr)_minmax(220px,1.25fr)_120px_110px_120px_minmax(140px,0.9fr)_40px] items-center gap-3 border-b border-[#2a3540] bg-[#0f1923] px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]">
+        <div className="min-w-[760px]">
+          <div className="grid grid-cols-[minmax(160px,1.2fr)_minmax(180px,1.1fr)_92px_72px_94px_minmax(100px,0.75fr)_30px] items-center gap-2 border-b border-[#2a3540] bg-[#0f1923] px-2.5 py-2 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]">
             <div>Player</div>
             <div>Riot ID</div>
             <div>Tier</div>
@@ -1681,13 +1681,13 @@ function ParticipantRow({
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", player.id);
       }}
-      className="grid cursor-grab grid-cols-[minmax(190px,1.35fr)_minmax(220px,1.25fr)_120px_110px_120px_minmax(140px,0.9fr)_40px] items-center gap-3 px-3 py-2.5 transition hover:bg-[#13212b] active:cursor-grabbing"
+      className="grid cursor-grab grid-cols-[minmax(160px,1.2fr)_minmax(180px,1.1fr)_92px_72px_94px_minmax(100px,0.75fr)_30px] items-center gap-2 px-2.5 py-2 transition hover:bg-[#13212b] active:cursor-grabbing"
     >
       <div className="flex min-w-0 items-center gap-2">
         {player.user.image ? (
-          <img src={player.user.image} alt="" className="h-8 w-8 flex-shrink-0 rounded object-cover" />
+          <img src={player.user.image} alt="" className="h-7 w-7 flex-shrink-0 rounded object-cover" />
         ) : (
-          <div className="h-8 w-8 flex-shrink-0 rounded bg-[#24313c]" />
+          <div className="h-7 w-7 flex-shrink-0 rounded bg-[#24313c]" />
         )}
         <div className="min-w-0">
           <div className="truncate text-sm font-black text-white">{displayName}</div>
@@ -1698,7 +1698,7 @@ function ParticipantRow({
         {riotNames.join(" / ") || "Riot 계정 미연동"}
       </div>
       <div className="truncate">
-        <span className="rounded bg-[#ff4655]/12 px-2 py-0.5 text-[11px] font-black text-[#ff8a95]">
+        <span className="rounded bg-[#ff4655]/12 px-1.5 py-0.5 text-[10px] font-black text-[#ff8a95]">
           {primaryTier}
         </span>
       </div>
@@ -1717,7 +1717,7 @@ function ParticipantRow({
       <div className="flex min-w-0 flex-wrap gap-1">
         {roleLabels.length > 0 ? (
           roleLabels.slice(0, 2).map((role) => (
-            <span key={role} className="rounded bg-[#24313c] px-2 py-0.5 text-[10px] font-bold text-[#c8d3db]">
+            <span key={role} className="rounded bg-[#24313c] px-1.5 py-0.5 text-[10px] font-bold text-[#c8d3db]">
               {role}
             </span>
           ))
@@ -1734,7 +1734,7 @@ function ParticipantRow({
           event.stopPropagation();
           onRemove();
         }}
-        className="flex h-7 w-7 items-center justify-center rounded text-[#7b8a96] transition hover:bg-[#ff4655]/20 hover:text-[#ff4655]"
+        className="flex h-6 w-6 items-center justify-center rounded text-[#7b8a96] transition hover:bg-[#ff4655]/20 hover:text-[#ff4655]"
         title="참가자 제거"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>

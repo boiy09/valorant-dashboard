@@ -26,6 +26,15 @@ export interface AccountTokens {
   entitlementsToken: string;
 }
 
+export type TokenRelinkReason = "missing" | "refresh_failed" | null;
+
+export interface TokenState {
+  tokens: AccountTokens | null;
+  needsRelink: boolean;
+  reason: TokenRelinkReason;
+  message: string | null;
+}
+
 export interface FetchedRank {
   tierId: number;
   tierName: string;
@@ -38,13 +47,13 @@ export interface FetchedProfile {
 }
 
 // 유효한 토큰 확인 or ssid로 갱신 (최대 6초)
-export async function ensureValidTokens(
+export async function ensureTokenState(
   puuid: string,
   accessToken: string | null,
   entitlementsToken: string | null,
   ssid: string | null,
   tokenExpiresAt: Date | null
-): Promise<AccountTokens | null> {
+): Promise<TokenState> {
   const now = Date.now();
   const isValid =
     accessToken &&
@@ -53,17 +62,36 @@ export async function ensureValidTokens(
     tokenExpiresAt.getTime() - now > TOKEN_EXPIRY_BUFFER_MS;
 
   if (isValid) {
-    return { accessToken: accessToken!, entitlementsToken: entitlementsToken! };
+    return {
+      tokens: { accessToken: accessToken!, entitlementsToken: entitlementsToken! },
+      needsRelink: false,
+      reason: null,
+      message: null,
+    };
   }
 
-  if (!ssid) return null;
+  if (!ssid) {
+    return {
+      tokens: null,
+      needsRelink: true,
+      reason: "missing",
+      message: "Riot 인증 정보가 없어 다시 연동이 필요합니다.",
+    };
+  }
 
   try {
     const result = await withTimeout(
       refreshTokens(ssid).catch(() => null),
       6000
     );
-    if (!result || result.status !== "success") return null;
+    if (!result || result.status !== "success") {
+      return {
+        tokens: null,
+        needsRelink: true,
+        reason: "refresh_failed",
+        message: "Riot 로그인 세션이 만료되어 다시 연동이 필요합니다.",
+      };
+    }
 
     const entRes = await fetch("https://entitlements.auth.riotgames.com/api/token/v1", {
       method: "POST",
@@ -72,7 +100,14 @@ export async function ensureValidTokens(
       signal: AbortSignal.timeout(5000),
     }).catch(() => null);
 
-    if (!entRes?.ok) return null;
+    if (!entRes?.ok) {
+      return {
+        tokens: null,
+        needsRelink: true,
+        reason: "refresh_failed",
+        message: "Riot 권한 토큰을 갱신하지 못했습니다. 다시 연동해 주세요.",
+      };
+    }
 
     const entData = await entRes.json() as { entitlements_token: string };
     const newAccess = result.accessToken;
@@ -87,10 +122,30 @@ export async function ensureValidTokens(
       },
     }).catch((e) => console.error("[rankFetcher] token cache update failed:", puuid, e));
 
-    return { accessToken: newAccess, entitlementsToken: newEnt };
+    return {
+      tokens: { accessToken: newAccess, entitlementsToken: newEnt },
+      needsRelink: false,
+      reason: null,
+      message: null,
+    };
   } catch {
-    return null;
+    return {
+      tokens: null,
+      needsRelink: true,
+      reason: "refresh_failed",
+      message: "Riot 토큰 갱신 중 오류가 발생했습니다. 다시 연동해 주세요.",
+    };
   }
+}
+
+export async function ensureValidTokens(
+  puuid: string,
+  accessToken: string | null,
+  entitlementsToken: string | null,
+  ssid: string | null,
+  tokenExpiresAt: Date | null
+): Promise<AccountTokens | null> {
+  return (await ensureTokenState(puuid, accessToken, entitlementsToken, ssid, tokenExpiresAt)).tokens;
 }
 
 // 랭크 조회: Private API(5s) → tracker.gg(6s) → Henrik(10s)

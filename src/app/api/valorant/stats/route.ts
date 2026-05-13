@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getRankByPuuid, getRecentMatches, getRankIconByTier, type MatchStats, type RankData } from "@/lib/valorant";
-import { ensureValidTokens, fetchRank } from "@/lib/rankFetcher";
+import { ensureTokenState, fetchRank } from "@/lib/rankFetcher";
 import { getPrivateRankData, getPrivateRecentMatches } from "@/lib/riotPrivateApi";
 import { apiCache, TTL } from "@/lib/apiCache";
 
@@ -183,18 +183,35 @@ export async function GET(req: NextRequest) {
     })
   );
 
+  const relinkAccounts: Array<{
+    region: RiotRegion;
+    riotId: string;
+    reason: string;
+    message: string;
+  }> = [];
+
   const accountStats = (await Promise.allSettled(
     accounts.map(async (account) => {
       const region = account.region as RiotRegion;
       const qRegion = toQueryRegion(region);
 
-      const tokens = await ensureValidTokens(
+      const tokenState = await ensureTokenState(
         account.puuid,
         account.accessToken,
         account.entitlementsToken,
         account.ssid,
         account.tokenExpiresAt
       );
+      const tokens = tokenState.tokens;
+
+      if (tokenState.needsRelink) {
+        relinkAccounts.push({
+          region,
+          riotId: `${account.gameName}#${account.tagLine}`,
+          reason: tokenState.reason ?? "refresh_failed",
+          message: tokenState.message ?? "Riot 계정을 다시 연동해 주세요.",
+        });
+      }
 
       const [rank, recentMatches] = await Promise.all([
         getRankCached(account.puuid, region, account.gameName, account.tagLine, tokens),
@@ -218,5 +235,11 @@ export async function GET(req: NextRequest) {
     return [];
   });
 
-  return Response.json({ accounts: accountStats });
+  return Response.json({
+    accounts: accountStats,
+    riotAuth: {
+      needsRelink: relinkAccounts.length > 0,
+      accounts: relinkAccounts,
+    },
+  });
 }

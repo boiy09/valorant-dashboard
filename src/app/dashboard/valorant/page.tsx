@@ -17,6 +17,22 @@ interface RegionStats {
   cacheAge?: number | null;
 }
 
+interface RiotAuthRelinkInfo {
+  needsRelink: boolean;
+  accounts: Array<{
+    region: RiotRegion;
+    riotId: string;
+    reason: string;
+    message: string;
+  }>;
+}
+
+interface ValorantStatsResponse {
+  accounts?: RegionStats[];
+  riotAuth?: RiotAuthRelinkInfo;
+  error?: string;
+}
+
 const REGION_LABELS: Record<RiotRegion, string> = { KR: "한섭", AP: "아섭" };
 const REGIONS_ORDER: RiotRegion[] = ["KR", "AP"];
 
@@ -468,12 +484,22 @@ export default function ValorantPage() {
   const [data, setData] = useState<{ accounts: RegionStats[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
+  const [relinkInfo, setRelinkInfo] = useState<RiotAuthRelinkInfo | null>(null);
+
+  function handleAuthState(payload: ValorantStatsResponse) {
+    if (payload.riotAuth?.needsRelink) {
+      setRelinkInfo(payload.riotAuth);
+      return;
+    }
+    setRelinkInfo(null);
+  }
 
   async function handleRefresh(region: string) {
     setRefreshing((prev) => ({ ...prev, [region]: true }));
     try {
       const res = await fetch(`/api/valorant/stats?forceRegion=${region}`, { cache: "no-store" });
-      const d = await res.json() as { accounts?: RegionStats[]; error?: string };
+      const d = await res.json() as ValorantStatsResponse;
+      handleAuthState(d);
       if (d.accounts) {
         setData((prev) => {
           if (!prev) {
@@ -513,14 +539,18 @@ export default function ValorantPage() {
 
     fetch("/api/valorant/stats", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => {
+      .then((d: ValorantStatsResponse) => {
+        handleAuthState(d);
         if (d.error) {
           if (!cached) setError(d.error);
           return;
         }
         setError(null);
-        setData(d);
-        writeStatsCache(d);
+        if (d.accounts) {
+          const next = { accounts: d.accounts };
+          setData(next);
+          writeStatsCache(next);
+        }
       })
       .catch(() => {
         if (!cached) setError("데이터를 불러오지 못했습니다.");
@@ -538,6 +568,40 @@ export default function ValorantPage() {
         <h1 className="text-2xl font-black text-white">전적</h1>
         <p className="text-[#7b8a96] text-sm mt-0.5">한섭(KR)과 아섭(AP) 계정을 각각 연결해서 전적을 확인할 수 있습니다.</p>
       </div>
+
+      {relinkInfo?.needsRelink && (
+        <div className="fixed right-4 top-4 z-[220] w-[calc(100vw-2rem)] max-w-lg border border-[#ff4655] bg-[#140b10] p-5 shadow-2xl shadow-black/60">
+          <div className="mb-1 text-[11px] font-black uppercase tracking-[0.22em] text-[#ff4655]">
+            Riot Reconnect Required
+          </div>
+          <div className="text-xl font-black text-white">Riot 로그인 세션이 만료되었습니다.</div>
+          <p className="mt-2 break-keep text-sm leading-relaxed text-[#c8d3db]">
+            전적 데이터는 캐시나 공개 API로 일부 표시될 수 있지만, 최신 PVP 데이터 조회를 위해 다시 연동해야 합니다.
+          </p>
+          <div className="mt-3 space-y-1">
+            {relinkInfo.accounts.map((account) => (
+              <div key={`${account.region}-${account.riotId}`} className="rounded border border-[#2a3540] bg-[#0f1923] px-3 py-2 text-sm">
+                <span className="font-black text-[#ff4655]">{account.region}</span>
+                <span className="mx-2 text-[#7b8a96]">/</span>
+                <span className="font-bold text-white">{account.riotId}</span>
+                <div className="mt-0.5 text-xs text-[#8da0ad]">{account.message}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <a href="/dashboard/riot-connect" className="rounded bg-[#ff4655] px-4 py-2 text-sm font-black text-white hover:bg-[#cc3644]">
+              다시 연동하기
+            </a>
+            <button
+              type="button"
+              onClick={() => setRelinkInfo(null)}
+              className="rounded border border-[#2a3540] px-4 py-2 text-sm font-bold text-[#8da0ad] hover:text-white"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="val-card p-5 text-[#ff4655]">{error}</div>

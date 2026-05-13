@@ -459,7 +459,11 @@ export default function ValorantPage() {
       const d = await res.json() as { accounts?: RegionStats[]; error?: string };
       if (d.accounts) {
         setData((prev) => {
-          if (!prev) return { accounts: d.accounts! };
+          if (!prev) {
+            const next = { accounts: d.accounts! };
+            writeStatsCache(next);
+            return next;
+          }
           const merged = prev.accounts.map((a) => {
             const updated = d.accounts!.find((x) => x.region === a.region);
             if (!updated) return a;
@@ -471,7 +475,9 @@ export default function ValorantPage() {
           d.accounts!.forEach((a) => {
             if (!merged.find((x) => x.region === a.region)) merged.push(a);
           });
-          return { accounts: merged };
+          const next = { accounts: merged };
+          writeStatsCache(next);
+          return next;
         });
       }
     } catch {

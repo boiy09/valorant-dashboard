@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getRankByPuuid, getRecentMatches, getRankIconByTier, type MatchStats } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank } from "@/lib/rankFetcher";
+import { getPrivateRecentMatches } from "@/lib/riotPrivateApi";
 import { apiCache, TTL } from "@/lib/apiCache";
 
 type RiotRegion = "KR" | "AP";
@@ -35,7 +36,8 @@ async function getRecentMatchesCached(
   puuid: string,
   region: "kr" | "ap",
   puuidRankMap: Map<string, PuuidRankEntry>,
-  force: boolean
+  force: boolean,
+  tokens?: { accessToken: string; entitlementsToken: string } | null
 ) {
   const cacheKey = `valorant:recent-matches:${region}:${puuid}:10`;
   const cached = apiCache.get<MatchStats[]>(cacheKey, TTL.MEDIUM);
@@ -43,10 +45,15 @@ async function getRecentMatchesCached(
   if (cached && (!force || cacheAge < 30 * 1000)) return cached;
 
   try {
-    const matches = await getRecentMatches(puuid, 10, region, "pc", {
-      puuidRankMap,
-      skipAccountFallback: true,
-    });
+    const privateMatches = tokens
+      ? await getPrivateRecentMatches(puuid, region, tokens.accessToken, tokens.entitlementsToken, { count: 10 }).catch(() => [])
+      : [];
+    const matches = privateMatches.length > 0
+      ? privateMatches
+      : await getRecentMatches(puuid, 10, region, "pc", {
+          puuidRankMap,
+          skipAccountFallback: true,
+        });
     if (matches.length > 0) {
       apiCache.set(cacheKey, matches);
       recentMatchesLastGood.set(cacheKey, matches);
@@ -57,6 +64,11 @@ async function getRecentMatchesCached(
     if (stale) {
       console.warn("[stats] recent matches failed, using cached data:", error);
       return stale;
+    }
+    const staleCache = apiCache.getStale<MatchStats[]>(cacheKey);
+    if (staleCache?.data?.length) {
+      console.warn("[stats] recent matches failed, using stale cache:", error);
+      return staleCache.data;
     }
     throw error;
   }
@@ -127,7 +139,7 @@ export async function GET(req: NextRequest) {
             return full;
           })
           .catch(() => null),
-        getRecentMatchesCached(account.puuid, qRegion, puuidRankMapRaw, forceRegion === region).catch(() => []),
+        getRecentMatchesCached(account.puuid, qRegion, puuidRankMapRaw, forceRegion === region, tokens).catch(() => []),
       ]);
 
       return {

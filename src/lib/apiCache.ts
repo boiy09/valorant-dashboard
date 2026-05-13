@@ -22,6 +22,12 @@ class ApiCache {
     return entry.data;
   }
 
+  getStale<T>(key: string): { data: T; ageMs: number } | null {
+    const entry = this.store.get(key) as CacheEntry<T> | undefined;
+    if (!entry) return null;
+    return { data: entry.data, ageMs: Date.now() - entry.cachedAt };
+  }
+
   set<T>(key: string, data: T): void {
     this.store.set(key, { data, cachedAt: Date.now() });
   }

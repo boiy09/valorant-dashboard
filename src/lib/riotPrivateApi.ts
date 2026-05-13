@@ -3,6 +3,8 @@
  * 공식 API가 아니므로 rate limit 및 변경에 주의
  */
 
+import type { MatchStats } from "@/lib/valorant";
+
 const CLIENT_PLATFORM =
   "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9";
 
@@ -12,6 +14,70 @@ const VALORANT_API_BASE = "https://valorant-api.com/v1";
 let cachedVersion: string | null = null;
 let versionCachedAt = 0;
 const VERSION_TTL = 5 * 60 * 1000;
+
+function toNumber(value: unknown, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
+}
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+type PrivateContent = {
+  agents: Map<string, { name: string; icon: string }>;
+  maps: Map<string, string>;
+};
+
+let contentCache: { data: PrivateContent; cachedAt: number } | null = null;
+const CONTENT_TTL = 60 * 60 * 1000;
+
+async function getPrivateContent(): Promise<PrivateContent> {
+  const now = Date.now();
+  if (contentCache && now - contentCache.cachedAt < CONTENT_TTL) return contentCache.data;
+
+  const [agentsRes, mapsRes] = await Promise.all([
+    fetch(`${VALORANT_API_BASE}/agents?isPlayableCharacter=true&language=ko-KR`, { cache: "force-cache" }).catch(() => null),
+    fetch(`${VALORANT_API_BASE}/maps?language=ko-KR`, { cache: "force-cache" }).catch(() => null),
+  ]);
+
+  const agents = new Map<string, { name: string; icon: string }>();
+  const maps = new Map<string, string>();
+
+  if (agentsRes?.ok) {
+    const payload = await agentsRes.json() as { data?: Array<{ uuid?: string; displayName?: string; displayIcon?: string }> };
+    for (const agent of payload.data ?? []) {
+      if (!agent.uuid) continue;
+      agents.set(agent.uuid.toLowerCase(), {
+        name: agent.displayName ?? "Unknown",
+        icon: agent.displayIcon ?? "",
+      });
+    }
+  }
+
+  if (mapsRes?.ok) {
+    const payload = await mapsRes.json() as { data?: Array<{ uuid?: string; displayName?: string; mapUrl?: string }> };
+    for (const map of payload.data ?? []) {
+      const name = map.displayName ?? "Unknown";
+      if (map.uuid) maps.set(map.uuid.toLowerCase(), name);
+      if (map.mapUrl) maps.set(map.mapUrl.toLowerCase(), name);
+    }
+  }
+
+  const data = { agents, maps };
+  contentCache = { data, cachedAt: now };
+  return data;
+}
 
 async function getClientVersion(): Promise<string> {
   const now = Date.now();
@@ -382,4 +448,107 @@ export async function getPrivateProfile(
   } catch {
     return null;
   }
+}
+
+export interface PrivateRecentMatchesOptions {
+  count?: number;
+}
+
+export async function getPrivateRecentMatches(
+  puuid: string,
+  region: string,
+  accessToken: string,
+  entitlementsToken: string,
+  options?: PrivateRecentMatchesOptions
+): Promise<MatchStats[]> {
+  const count = Math.max(1, Math.min(options?.count ?? 10, 20));
+  const shard = regionToShard(region);
+  const headers = await pvpHeaders(accessToken, entitlementsToken);
+  const historyRes = await fetch(
+    `https://pd.${shard}.a.pvp.net/match-history/v1/history/${puuid}?startIndex=0&endIndex=${count}`,
+    { headers, signal: AbortSignal.timeout(8000) }
+  );
+
+  if (!historyRes.ok) {
+    throw new Error(`private match history failed: ${historyRes.status}`);
+  }
+
+  const history = await historyRes.json() as { History?: Array<{ MatchID?: string }> };
+  const matchIds = (history.History ?? [])
+    .map((item) => item.MatchID)
+    .filter((id): id is string => Boolean(id));
+
+  if (!matchIds.length) return [];
+
+  const content = await getPrivateContent();
+  const detailResults = await Promise.allSettled(
+    matchIds.map(async (matchId) => {
+      const detailRes = await fetch(`https://pd.${shard}.a.pvp.net/match-details/v1/matches/${matchId}`, {
+        headers,
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!detailRes.ok) throw new Error(`private match detail failed: ${detailRes.status}`);
+      return detailRes.json();
+    })
+  );
+
+  return detailResults.flatMap((result) => {
+    if (result.status !== "fulfilled") return [];
+
+    const detail = asRecord(result.value);
+    const matchInfo = asRecord(detail.matchInfo);
+    const players = asArray<Record<string, unknown>>(detail.players);
+    const teams = asArray<Record<string, unknown>>(detail.teams);
+    const me = players.find((player) => player.Subject === puuid);
+    if (!me) return [];
+
+    const stats = asRecord(me.stats);
+    const teamId = firstString(me.TeamID);
+    const myTeam = teams.find((team) => team.TeamID === teamId);
+    const otherTeam = teams.find((team) => team.TeamID !== teamId);
+    const characterId = firstString(me.CharacterID).toLowerCase();
+    const agent = content.agents.get(characterId);
+    const mapName = content.maps.get(firstString(matchInfo.MapID).toLowerCase()) ?? "Unknown";
+    const roundResults = asArray<Record<string, unknown>>(detail.roundResults);
+    let headshots = 0;
+    let bodyshots = 0;
+    let legshots = 0;
+
+    for (const round of roundResults) {
+      const playerStats = asArray<Record<string, unknown>>(round.playerStats);
+      const mine = playerStats.find((entry) => entry.Subject === puuid);
+      for (const damage of asArray<Record<string, unknown>>(mine?.damage)) {
+        headshots += toNumber(damage.Headshots);
+        bodyshots += toNumber(damage.Bodyshots);
+        legshots += toNumber(damage.Legshots);
+      }
+    }
+
+    const kills = toNumber(stats.kills);
+    const deaths = toNumber(stats.deaths);
+    const assists = toNumber(stats.assists);
+    const roundsPlayed = toNumber(stats.roundsPlayed) || roundResults.length;
+    const teamScore = toNumber(myTeam?.RoundsWon, -1);
+    const enemyScore = toNumber(otherTeam?.RoundsWon, -1);
+
+    return [{
+      matchId: firstString(matchInfo.MatchID),
+      map: mapName,
+      mode: firstString(matchInfo.QueueID, "Unknown"),
+      agent: agent?.name ?? "Unknown",
+      agentIcon: agent?.icon ?? "",
+      result: (myTeam?.Won === true ? "?밸━" : otherTeam?.Won === true ? "?⑤같" : "臾댄슚") as MatchStats["result"],
+      kills,
+      deaths,
+      assists,
+      score: roundsPlayed > 0 ? Math.round(toNumber(stats.score) / roundsPlayed) : 0,
+      teamScore: teamScore >= 0 ? teamScore : null,
+      enemyScore: enemyScore >= 0 ? enemyScore : null,
+      headshots,
+      bodyshots,
+      legshots,
+      playedAt: new Date(toNumber(matchInfo.GameStartMillis, Date.now())),
+      scoreboard: null,
+    }];
+  });
 }

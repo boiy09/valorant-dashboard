@@ -16,6 +16,7 @@ model User {
   sessions      Session[]
 
   discordId    String?  @unique
+  // @deprecated — RiotAccount 모델로 대체됨. 봇 fallback 용도로만 유지.
   riotPuuid    String?
   riotGameName String?
   riotTagLine  String?
@@ -204,6 +205,7 @@ model ScrimSession {
   endedAt   DateTime?
   createdAt DateTime      @default(now())
   players   ScrimPlayer[]
+  @@index([guildId, createdAt])
 }
 
 model ScrimPlayer {
@@ -385,4 +387,5 @@ model Highlight {
   likes       Int      @default(0)
   createdAt   DateTime @default(now())
   @@index([guildId, createdAt])
+  @@index([type, createdAt])
 }

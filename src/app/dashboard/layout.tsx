@@ -211,13 +211,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="val-sticky-header flex-shrink-0">
       <header className="val-topbar flex-shrink-0">
         <div className="max-w-screen-2xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link href="/dashboard" className="group flex items-center">
-            <img
-              src="/valosegi-header-logo.webp"
-              alt="발로세끼"
-              className="h-12 w-auto max-w-[180px] object-contain"
-            />
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard" className="group flex items-center">
+              <img
+                src="/valosegi-header-logo.webp"
+                alt="발로세끼"
+                className="h-12 w-auto max-w-[180px] object-contain"
+              />
+            </Link>
+            <Link
+              href="/"
+              className="val-mini-button text-[11px] font-black tracking-widest"
+              style={{ letterSpacing: "0.12em" }}
+            >
+              ▸ 홍보 페이지
+            </Link>
+          </div>
 
           <div className="flex items-center gap-3">
             <HeaderRiotLink />

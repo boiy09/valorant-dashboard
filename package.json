@@ -6,7 +6,7 @@
     "dev": "concurrently \"next dev\" \"nodemon --watch src/bot --watch src/lib --ext ts --exec \\\"ts-node -r tsconfig-paths/register --project tsconfig.bot.json --transpile-only\\\" src/bot/index.ts\"",
     "dev:web": "next dev",
     "dev:bot": "nodemon --watch src/bot --watch src/lib --ext ts --exec \"ts-node -r tsconfig-paths/register --project tsconfig.bot.json --transpile-only\" src/bot/index.ts",
-    "build": "next build",
+    "build": "prisma migrate deploy && next build",
     "start": "next start",
     "bot": "ts-node -r tsconfig-paths/register --project tsconfig.bot.json --transpile-only src/bot/index.ts",
     "lint": "eslint",

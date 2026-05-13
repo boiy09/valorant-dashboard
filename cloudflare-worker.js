@@ -68,8 +68,10 @@ async function fetchProfile(gameName, tagLine, apiKey) {
   ]);
 
   if (!profileRes.ok) {
-    const err = Object.assign(new Error(`tracker.gg ${profileRes.status}`), {
+    const body = await profileRes.text().catch(() => "");
+    const err = Object.assign(new Error(`tracker.gg ${profileRes.status}: ${body}`), {
       status: profileRes.status,
+      body,
     });
     throw err;
   }
@@ -177,8 +179,8 @@ export default {
       const status = err?.status ?? 500;
       if (status === 404) return jsonRes({ error: "플레이어를 찾을 수 없습니다." }, 404);
       if (status === 429) return jsonRes({ error: "요청 횟수가 너무 많습니다. 잠시 후 다시 시도하세요." }, 429);
-      if (status === 401 || status === 403) return jsonRes({ error: "API 권한이 유효하지 않습니다." }, 503);
-      return jsonRes({ error: "통계 정보를 불러오지 못했습니다." }, 500);
+      if (status === 401 || status === 403) return jsonRes({ error: "API 권한이 유효하지 않습니다.", detail: err?.body ?? "" }, 503);
+      return jsonRes({ error: "통계 정보를 불러오지 못했습니다.", detail: err?.message ?? "" }, 500);
     }
   },
 };

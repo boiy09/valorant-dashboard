@@ -143,7 +143,6 @@ export default async function PromoPage() {
         {/* ── Top Rail ─────────────────────────────────────────────────── */}
         <header className="bento-rail">
           <div className="bento-brand">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/valosegi-header-logo.webp" alt="발로세끼" className="bento-brand-logo" />
           </div>
           <div className="bento-rail-right">
@@ -353,14 +352,12 @@ export default async function PromoPage() {
             <div className="bento-join-qrs">
               <div className="bento-qr-card">
                 <div className="bento-qr-block bento-qr-real">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/discord-join-qr.png" alt="발로세끼 디스코드 QR" />
                 </div>
                 <div className="bento-qr-info">DISCORD<strong>발로세끼 서버</strong><small>QR 스캔 또는 ▸ DISCORD 로그인 버튼</small></div>
               </div>
               <div className="bento-qr-card">
                 <div className="bento-qr-block bento-qr-real">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/kakao-openchat-qr.png" alt="발로세끼 카카오 오픈채팅 QR" />
                 </div>
                 <div className="bento-qr-info">KAKAO · OPENCHAT<strong>오픈채팅</strong><small>그룹 공지·내전 모집을 함께 볼 수 있어요</small></div>

@@ -679,6 +679,79 @@ app.post('/auth/browser/mfa', async (req, res) => {
 // ──────────────────────────────────────────────
 // 배포 웹훅
 // ──────────────────────────────────────────────
+async function fetchTrackerJson(page, url) {
+  return page.evaluate(async (targetUrl) => {
+    const response = await fetch(targetUrl, {
+      headers: {
+        accept: 'application/json, text/plain, */*',
+      },
+      credentials: 'include',
+    });
+    const text = await response.text();
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = null;
+    }
+    return {
+      ok: response.ok,
+      status: response.status,
+      json,
+      text: text.slice(0, 500),
+    };
+  }, url);
+}
+
+app.post('/tracker/profile', async (req, res) => {
+  if (!checkSecret(req, res)) return;
+
+  const { gameName, tagLine } = req.body || {};
+  if (!gameName || !tagLine) {
+    return res.status(400).json({ status: 'error', message: 'gameName and tagLine are required.' });
+  }
+
+  const encoded = `${encodeURIComponent(String(gameName).trim())}/${encodeURIComponent(String(tagLine).trim())}`;
+  const pageUrl = `https://tracker.gg/valorant/profile/pc/${encoded}/overview`;
+  const profileUrl = `https://api.tracker.gg/api/v2/valorant/standard/profile/pc/${encoded}`;
+  const agentUrl = `${profileUrl}/segments/agent`;
+
+  let browser;
+  try {
+    browser = await launchBrowser();
+    const context = await createContext(browser);
+    const page = await context.newPage();
+
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => null);
+    await page.waitForTimeout(1200);
+
+    const [profile, agents] = await Promise.all([
+      fetchTrackerJson(page, profileUrl),
+      fetchTrackerJson(page, agentUrl).catch((error) => ({ ok: false, status: 0, json: null, text: error.message })),
+    ]);
+
+    if (!profile.ok || !profile.json) {
+      return res.status(profile.status || 502).json({
+        status: 'error',
+        message: `tracker profile fetch failed: ${profile.status || 'unknown'}`,
+        detail: profile.text,
+      });
+    }
+
+    return res.json({
+      status: 'ok',
+      source: 'tracker-browser',
+      profile: profile.json,
+      agents: agents.ok ? agents.json : null,
+    });
+  } catch (err) {
+    console.error('[tracker] /tracker/profile error:', err.message);
+    return res.status(500).json({ status: 'error', message: err.message || 'tracker browser error' });
+  } finally {
+    await browser?.close().catch(() => {});
+  }
+});
+
 const { execFile } = require('child_process');
 const path = require('path');
 

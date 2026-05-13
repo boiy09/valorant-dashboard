@@ -212,7 +212,6 @@ export default async function Home() {
         {/* ── Top Rail ─────────────────────────────────────────────────── */}
         <header className="bento-rail">
           <div className="bento-brand">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/valosegi-header-logo.webp" alt="발로세끼" className="bento-brand-logo" />
           </div>
           <div className="bento-rail-right">
@@ -527,7 +526,6 @@ export default async function Home() {
             <div className="bento-join-qrs">
               <div className="bento-qr-card">
                 <div className="bento-qr-block bento-qr-real">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/discord-join-qr.png" alt="발로세끼 디스코드 QR" />
                 </div>
                 <div className="bento-qr-info">
@@ -538,7 +536,6 @@ export default async function Home() {
               </div>
               <div className="bento-qr-card">
                 <div className="bento-qr-block bento-qr-real">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/kakao-openchat-qr.png" alt="발로세끼 카카오 오픈채팅 QR" />
                 </div>
                 <div className="bento-qr-info">

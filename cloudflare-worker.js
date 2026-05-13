@@ -142,7 +142,7 @@ async function fetchProfile(gameName, tagLine, apiKey) {
   return { stats, seasons, agents };
 }
 
-export default {
+const worker = {
   async fetch(request, env) {
     // preflight
     if (request.method === "OPTIONS") {
@@ -184,3 +184,5 @@ export default {
     }
   },
 };
+
+export default worker;

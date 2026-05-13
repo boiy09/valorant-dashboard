@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getRankByPuuid, getRecentMatches, getRankIconByTier, type MatchStats } from "@/lib/valorant";
+import { getRankByPuuid, getRecentMatches, getRankIconByTier, type MatchStats, type RankData } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank } from "@/lib/rankFetcher";
 import { getPrivateRecentMatches } from "@/lib/riotPrivateApi";
 import { apiCache, TTL } from "@/lib/apiCache";
@@ -13,6 +13,75 @@ type PuuidRankEntry = {
   tierIcon: string | null | undefined;
 };
 const recentMatchesLastGood = new Map<string, MatchStats[]>();
+const rankLastGood = new Map<string, RankData>();
+
+function mergeCurrentRank(full: RankData | null, current: { tierId: number; tierName: string; rankIcon: string | null }): RankData | null {
+  if (current.tierId <= 0) return full;
+
+  if (!full) {
+    return {
+      tier: current.tierName,
+      tierName: current.tierName,
+      tierId: current.tierId,
+      rr: null,
+      rrChange: null,
+      isCurrent: true,
+      peakTier: "기록 없음",
+      peakTierName: "기록 없음",
+      wins: 0,
+      games: 0,
+      rankIcon: current.rankIcon,
+      peakRankIcon: null,
+      currentSeason: null,
+      previousSeason: null,
+      peakSeason: null,
+    };
+  }
+
+  return {
+    ...full,
+    tier: current.tierName,
+    tierName: current.tierName,
+    tierId: current.tierId,
+    rankIcon: current.rankIcon ?? full.rankIcon,
+    isCurrent: true,
+  };
+}
+
+function hasRankHistory(rank: RankData | null) {
+  return Boolean(rank?.currentSeason || rank?.previousSeason || rank?.peakSeason || (rank?.peakTierName && rank.peakTierName !== "기록 없음"));
+}
+
+async function getRankCached(
+  puuid: string,
+  region: RiotRegion,
+  gameName: string,
+  tagLine: string,
+  tokens: { accessToken: string; entitlementsToken: string } | null
+) {
+  const qRegion = toQueryRegion(region);
+  const cacheKey = `valorant:rank:${qRegion}:${puuid}`;
+  const staleRank = rankLastGood.get(cacheKey) ?? apiCache.getStale<RankData>(cacheKey)?.data ?? null;
+
+  try {
+    const current = await fetchRank(puuid, region, gameName, tagLine, tokens);
+    const full = await getRankByPuuid(puuid, qRegion, { gameName, tagLine }).catch(() => staleRank);
+    const merged = mergeCurrentRank(full, current);
+
+    if (merged && (hasRankHistory(merged) || current.tierId > 0)) {
+      apiCache.set(cacheKey, merged);
+      if (hasRankHistory(merged)) rankLastGood.set(cacheKey, merged);
+    }
+
+    return merged;
+  } catch (error) {
+    if (staleRank) {
+      console.warn("[stats] rank failed, using stale rank:", error);
+      return staleRank;
+    }
+    return null;
+  }
+}
 
 function toQueryRegion(region: RiotRegion): "kr" | "ap" {
   return region === "AP" ? "ap" : "kr";
@@ -125,20 +194,7 @@ export async function GET(req: NextRequest) {
       );
 
       const [rank, recentMatches] = await Promise.all([
-        fetchRank(account.puuid, account.region, account.gameName, account.tagLine, tokens)
-          .then(async (r) => {
-            // fetchRank returns a simplified rank; also get full Henrik rank for season data
-            const full = await getRankByPuuid(account.puuid, qRegion, {
-              gameName: account.gameName,
-              tagLine: account.tagLine,
-            }).catch(() => null);
-            // Use Private API / tracker.gg tier if Henrik shows unranked
-            if (full && r.tierId > 0 && full.tierId <= 0) {
-              return { ...full, tierId: r.tierId, tierName: r.tierName, rankIcon: r.rankIcon };
-            }
-            return full;
-          })
-          .catch(() => null),
+        getRankCached(account.puuid, region, account.gameName, account.tagLine, tokens),
         getRecentMatchesCached(account.puuid, qRegion, puuidRankMapRaw, forceRegion === region, tokens).catch(() => []),
       ]);
 

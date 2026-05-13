@@ -57,15 +57,15 @@ function tierColor(tierId: number) {
 }
 
 function RankSummaryCard({
-  title, rankName, icon, season, wins, games, rr,
+  title, rankName, tierId, icon, season, wins, games, rr,
 }: {
-  title: string; rankName?: string | null; icon?: string | null;
+  title: string; rankName?: string | null; tierId?: number | null; icon?: string | null;
   season?: string | null; wins?: number | null; games?: number | null; rr?: number | null;
 }) {
   const safeGames = games ?? 0;
   const safeWins = wins ?? 0;
   const losses = Math.max(safeGames - safeWins, 0);
-  const tierLabel = normalizeTierName(rankName) || "정보 없음";
+  const tierLabel = normalizeTierName(rankName, tierId ?? undefined) || "정보 없음";
   const seasonLabel = season || "시즌 정보 없음";
   const recordLabel = safeGames > 0 ? `${safeWins}승 ${losses}패` : "승패 정보 없음";
   return (
@@ -100,6 +100,23 @@ function UserPlaceholderIcon() {
       <path fill="currentColor" d="M12 12.4a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2.1c-4.2 0-7.5 2.1-7.5 4.6V21h15v-1.9c0-2.5-3.3-4.6-7.5-4.6Z" />
     </svg>
   );
+}
+
+function mergeRank(previous: RegionStats["rank"], updated: RegionStats["rank"]) {
+  if (!updated) return previous;
+  if (!previous) return updated;
+
+  return {
+    ...updated,
+    currentSeason: updated.currentSeason ?? previous.currentSeason,
+    previousSeason: updated.previousSeason ?? previous.previousSeason,
+    peakSeason: updated.peakSeason ?? previous.peakSeason,
+    peakTier: updated.peakTierName && updated.peakTierName !== "기록 없음" ? updated.peakTier : previous.peakTier,
+    peakTierName: updated.peakTierName && updated.peakTierName !== "기록 없음" ? updated.peakTierName : previous.peakTierName,
+    peakRankIcon: updated.peakRankIcon ?? previous.peakRankIcon,
+    wins: updated.games > 0 ? updated.wins : previous.wins,
+    games: updated.games > 0 ? updated.games : previous.games,
+  };
 }
 
 function ScoreboardPortrait({ name, agent, cardIcon, agentIcon, level, isPrivate }: {
@@ -384,9 +401,9 @@ function RegionSection({ data, onRefresh, refreshing }: { data: RegionStats; onR
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <RankSummaryCard title="현재 티어" rankName={rank?.tierName} icon={rank?.rankIcon} season={rank?.currentSeason?.label} wins={rank?.currentSeason?.wins ?? rank?.wins} games={rank?.currentSeason?.games ?? rank?.games} rr={rank?.rr} />
-        <RankSummaryCard title="전 티어" rankName={rank?.previousSeason?.tierName} icon={rank?.previousSeason?.rankIcon} season={rank?.previousSeason?.label} wins={rank?.previousSeason?.wins} games={rank?.previousSeason?.games} />
-        <RankSummaryCard title="최고 티어" rankName={rank?.peakTierName ?? rank?.peakSeason?.tierName} icon={rank?.peakRankIcon ?? rank?.peakSeason?.rankIcon} season={rank?.peakSeason?.label} wins={rank?.peakSeason?.wins} games={rank?.peakSeason?.games} />
+        <RankSummaryCard title="현재 티어" rankName={rank?.tierName} tierId={rank?.tierId} icon={rank?.rankIcon} season={rank?.currentSeason?.label} wins={rank?.currentSeason?.wins ?? rank?.wins} games={rank?.currentSeason?.games ?? rank?.games} rr={rank?.rr} />
+        <RankSummaryCard title="전 티어" rankName={rank?.previousSeason?.tierName} tierId={rank?.previousSeason?.tierId} icon={rank?.previousSeason?.rankIcon} season={rank?.previousSeason?.label} wins={rank?.previousSeason?.wins} games={rank?.previousSeason?.games} />
+        <RankSummaryCard title="최고 티어" rankName={rank?.peakTierName ?? rank?.peakSeason?.tierName} tierId={rank?.peakSeason?.tierId} icon={rank?.peakRankIcon ?? rank?.peakSeason?.rankIcon} season={rank?.peakSeason?.label} wins={rank?.peakSeason?.wins} games={rank?.peakSeason?.games} />
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-5">
@@ -467,10 +484,11 @@ export default function ValorantPage() {
           const merged = prev.accounts.map((a) => {
             const updated = d.accounts!.find((x) => x.region === a.region);
             if (!updated) return a;
+            const rank = mergeRank(a.rank, updated.rank);
             if (a.recentMatches.length > 0 && updated.recentMatches.length === 0) {
-              return { ...updated, recentMatches: a.recentMatches };
+              return { ...updated, rank, recentMatches: a.recentMatches };
             }
-            return updated;
+            return { ...updated, rank };
           });
           d.accounts!.forEach((a) => {
             if (!merged.find((x) => x.region === a.region)) merged.push(a);

@@ -127,10 +127,7 @@ export default function TrackerStats({ gameName, tagLine, region = "KR" }: Props
     setError(null);
 
     try {
-      const workerUrl = process.env.NEXT_PUBLIC_CF_WORKER_URL;
-      const endpoint = workerUrl
-        ? `${workerUrl}?gameName=${encodeURIComponent(gameName)}&tagLine=${encodeURIComponent(tagLine)}&region=${region}`
-        : `/api/tracker?gameName=${encodeURIComponent(gameName)}&tagLine=${encodeURIComponent(tagLine)}&region=${region}`;
+      const endpoint = `/api/tracker?gameName=${encodeURIComponent(gameName)}&tagLine=${encodeURIComponent(tagLine)}&region=${region}`;
 
       const response = await fetch(endpoint);
       const payload = await response.json();

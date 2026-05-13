@@ -4,6 +4,16 @@ import { prisma } from "@/lib/prisma";
 
 const reactionSyncCache = new Map<string, number>();
 
+type GuildMemberRow = {
+  userId: string;
+  nickname: string | null;
+  user: {
+    discordId: string | null;
+    name: string | null;
+    image: string | null;
+  };
+};
+
 function parseIdList(value: string | null | undefined) {
   if (!value) return [];
   try {
@@ -200,7 +210,7 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
   return Response.json({
     scrim: syncedScrim,
     managerIds: parseIdList(syncedScrim.managers || syncedScrim.createdBy),
-    guildMembers: guildMembers.map((member) => ({
+    guildMembers: (guildMembers as GuildMemberRow[]).map((member) => ({
       userId: member.userId,
       discordId: member.user.discordId,
       name: member.nickname ?? member.user.name,

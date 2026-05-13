@@ -4,6 +4,11 @@ import { getRankByPuuid, getRecentMatches, getRankIconByTier } from "@/lib/valor
 import { ensureValidTokens, fetchRank } from "@/lib/rankFetcher";
 
 type RiotRegion = "KR" | "AP";
+type PuuidRankEntry = {
+  tierId: number;
+  tierName: string;
+  tierIcon: string | null | undefined;
+};
 
 function toQueryRegion(region: RiotRegion): "kr" | "ap" {
   return region === "AP" ? "ap" : "kr";
@@ -41,7 +46,7 @@ export async function GET() {
     select: { puuid: true, cachedTierId: true, cachedTierName: true },
   });
 
-  const puuidRankMapRaw = new Map(
+  const puuidRankMapRaw = new Map<string, PuuidRankEntry>(
     guildMemberAccounts.map((a) => [
       a.puuid,
       { tierId: a.cachedTierId!, tierName: a.cachedTierName ?? "Unranked", tierIcon: undefined as string | null | undefined },

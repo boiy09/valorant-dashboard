@@ -5,6 +5,31 @@ import { prisma } from "@/lib/prisma";
 
 const KST_OFFSET = "+09:00";
 
+type VoiceGroupRow = {
+  userId: string;
+  _sum: { duration: number | null };
+};
+
+type AttendanceGroupRow = {
+  userId: string;
+  _count: { _all: number };
+};
+
+type JoinRow = {
+  userId: string;
+  count: bigint;
+};
+
+type MemberRow = {
+  userId: string;
+  nickname: string | null;
+  user: {
+    discordId: string | null;
+    name: string | null;
+    image: string | null;
+  };
+};
+
 function toDateKey(date: Date) {
   const kst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
   return kst.toISOString().slice(0, 10);
@@ -77,11 +102,11 @@ export async function GET(req: NextRequest) {
     `,
   ]);
 
-  const voiceMap = new Map(voiceGroups.map((row) => [row.userId, row._sum.duration ?? 0]));
-  const attendanceMap = new Map(attendanceGroups.map((row) => [row.userId, row._count._all]));
-  const joinMap = new Map(joinRows.map((row) => [row.userId, Number(row.count)]));
+  const voiceMap = new Map((voiceGroups as VoiceGroupRow[]).map((row) => [row.userId, row._sum.duration ?? 0]));
+  const attendanceMap = new Map((attendanceGroups as AttendanceGroupRow[]).map((row) => [row.userId, row._count._all]));
+  const joinMap = new Map((joinRows as JoinRow[]).map((row) => [row.userId, Number(row.count)]));
 
-  const records = members
+  const records = (members as MemberRow[])
     .map((member) => {
       const voiceSeconds = voiceMap.get(member.userId) ?? 0;
       return {

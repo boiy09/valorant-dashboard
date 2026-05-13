@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: [
-    // 봇 전용 — Next.js 번들 분석 대상에서 제외
+    // Bot-only packages are excluded from Next.js bundle analysis.
     "discord.js",
     "@discordjs/builders",
     "@discordjs/collection",
@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
     "@discordjs/rest",
     "@discordjs/util",
     "@discordjs/ws",
-    // DB 드라이버 — 네이티브 바이너리, 번들링 불필요
+    // Native database drivers should stay external to the web bundle.
     "pg",
     "pg-native",
     "@prisma/adapter-pg",

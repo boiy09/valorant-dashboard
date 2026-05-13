@@ -6,6 +6,16 @@ type ScrimGameRow = {
   kdaSnapshot: string | null;
 };
 
+type RankingUserRow = {
+  id: string;
+  name: string | null;
+  image: string | null;
+  riotAccounts: Array<{
+    cachedTierName: string | null;
+    region: string;
+  }>;
+};
+
 export async function GET(req: NextRequest) {
   const { session, guild } = await getAdminSession();
   const tierFilter = req.nextUrl.searchParams.get("tier");
@@ -65,7 +75,7 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  const userTierMap = new Map(users.map(u => [u.id, u]));
+  const userTierMap = new Map((users as RankingUserRow[]).map(u => [u.id, u]));
   const guildMembers = guild
     ? await prisma.guildMember.findMany({
         where: { guildId: guild.id, userId: { in: userIds } },
@@ -160,7 +170,7 @@ export async function GET(req: NextRequest) {
     rank: index + 1,
   }));
 
-  let myRank = null;
+  let myRank: unknown = null;
   const myUserId = session?.user?.id;
   if (myUserId) {
     const myIndex = finalRanking.findIndex(r => r.userId === myUserId);

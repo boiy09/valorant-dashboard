@@ -11,6 +11,23 @@ type ActivityInterval = {
   end: number;
 };
 
+type ActivityRow = {
+  userId: string;
+  channelName: string;
+  joinedAt: Date;
+  leftAt: Date | null;
+  duration: number | null;
+  user: {
+    name: string | null;
+    discordId: string | null;
+    image: string | null;
+    guilds: Array<{
+      nickname: string | null;
+      guild: { discordId: string };
+    }>;
+  };
+};
+
 function toKstDateKey(date: Date) {
   return new Date(date.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
 }
@@ -134,7 +151,7 @@ export async function GET(req: NextRequest) {
     string,
     { name: string; discordId: string | null; image: string | null; intervals: ActivityInterval[] }
   >();
-  for (const a of activities) {
+  for (const a of activities as ActivityRow[]) {
     if (isExcludedVoiceChannel(a.channelName)) continue;
 
     const interval = getActivityIntervalInRange(a.joinedAt, a.leftAt, a.duration, since, now);

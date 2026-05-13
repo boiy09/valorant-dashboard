@@ -3,6 +3,13 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { refreshTokens, getAuthTokens } from "@/lib/riotAuth";
 
+type RiotAccountRow = {
+  puuid: string;
+  gameName: string;
+  tagLine: string;
+  region: string;
+};
+
 async function findUser(discordId: string, email?: string | null) {
   let user = await prisma.user.findUnique({ where: { discordId } });
   if (!user && email) {
@@ -19,9 +26,10 @@ async function syncLegacyRiotFields(userId: string) {
     where: { userId },
     orderBy: [{ createdAt: "asc" }],
   });
+  const accountRows = accounts as RiotAccountRow[];
   const preferred =
-    accounts.find((a) => a.region === "KR") ??
-    accounts.find((a) => a.region === "AP") ??
+    accountRows.find((a) => a.region === "KR") ??
+    accountRows.find((a) => a.region === "AP") ??
     null;
   await prisma.user.update({
     where: { id: userId },

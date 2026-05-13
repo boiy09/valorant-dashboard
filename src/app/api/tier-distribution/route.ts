@@ -28,6 +28,19 @@ const DETAIL_TIERS = [
 
 type DetailTier = (typeof DETAIL_TIERS)[number];
 
+type RankAccountRow = {
+  puuid: string;
+  gameName: string;
+  tagLine: string;
+  region: string;
+  accessToken: string | null;
+  entitlementsToken: string | null;
+  ssid: string | null;
+  tokenExpiresAt: Date | null;
+  cachedTierId: number | null;
+  rankCachedAt: Date | null;
+};
+
 const TIER_IDS: Record<DetailTier, number> = {
   UNRANKED: 0,
   IRON_1: 3,
@@ -123,7 +136,7 @@ export async function GET(req: NextRequest) {
     orderBy: [{ region: "asc" }, { gameName: "asc" }],
   });
 
-  const rankedAccounts = await settleInBatches(accounts, 5, async (account) => {
+  const rankedAccounts = await settleInBatches(accounts as RankAccountRow[], 5, async (account) => {
     const region = account.region.toUpperCase() === "AP" ? "AP" : "KR";
     const cacheAge = account.rankCachedAt ? now - account.rankCachedAt.getTime() : Infinity;
     const isFresh = cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null;
@@ -146,7 +159,7 @@ export async function GET(req: NextRequest) {
     await prisma.riotAccount.update({
       where: { puuid: account.puuid },
       data: { cachedTierId: tierId, cachedTierName: rank.tierName, rankCachedAt: new Date() },
-    }).catch((e) => console.error("[tier-distribution] rank cache update failed:", e));
+    }).catch((e: unknown) => console.error("[tier-distribution] rank cache update failed:", e));
 
     return { region, tier: tierIdToDetailTier(tierId) };
   });

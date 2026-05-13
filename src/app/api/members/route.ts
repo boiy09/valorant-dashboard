@@ -4,6 +4,38 @@ import { prisma } from "@/lib/prisma";
 import { getRankIconByTier } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 
+type MemberAccount = {
+  puuid: string;
+  gameName: string;
+  tagLine: string;
+  region: string;
+  accessToken: string | null;
+  entitlementsToken: string | null;
+  ssid: string | null;
+  tokenExpiresAt: Date | null;
+  cachedTierId: number | null;
+  cachedTierName: string | null;
+  cachedLevel: number | null;
+  cachedCard: string | null;
+  rankCachedAt: Date | null;
+};
+
+type MemberRow = {
+  id: string;
+  nickname: string | null;
+  roles: string;
+  isOnline: boolean;
+  joinedAt: Date;
+  user: {
+    name: string | null;
+    image: string | null;
+    discordId: string | null;
+    riotGameName: string | null;
+    riotTagLine: string | null;
+    riotAccounts: MemberAccount[];
+  };
+};
+
 function toRegionLabel(region: string) {
   return region.toUpperCase() === "AP" ? "AP" : "KR";
 }
@@ -76,7 +108,8 @@ export async function GET(req: NextRequest) {
   const RANK_CACHE_TTL = 2 * 60 * 60 * 1000;
   const now = Date.now();
 
-  const allAccounts = members.flatMap((m) => m.user.riotAccounts);
+  const memberRows = members as MemberRow[];
+  const allAccounts = memberRows.flatMap((m) => m.user.riotAccounts);
 
   await settleInBatches(allAccounts, 5, async (account) => {
     const region = toRegionLabel(account.region);
@@ -121,7 +154,7 @@ export async function GET(req: NextRequest) {
         cachedCard: profile.card,
         rankCachedAt: new Date(),
       },
-    }).catch((e) => console.error("[members] rank cache update failed:", account.puuid, e));
+    }).catch((e: unknown) => console.error("[members] rank cache update failed:", account.puuid, e));
 
     accountDetails.set(account.puuid, {
       region,
@@ -135,7 +168,7 @@ export async function GET(req: NextRequest) {
 
   return Response.json({
     guildName: guild.name,
-    members: members.map((member) => ({
+    members: memberRows.map((member) => ({
       id: member.id,
       name: member.nickname ?? member.user.name,
       image: member.user.image,

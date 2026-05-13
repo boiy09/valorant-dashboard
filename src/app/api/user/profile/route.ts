@@ -19,7 +19,7 @@ function isMissingColumnError(error: unknown) {
   return error instanceof Error && error.message.includes("does not exist in the current database");
 }
 
-async function getAvailableProfileColumns() {
+async function getAvailableProfileColumns(): Promise<Set<string>> {
   const rows = await prisma.$queryRaw<{ column_name: string }[]>`
     SELECT column_name
     FROM information_schema.columns

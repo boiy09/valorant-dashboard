@@ -8,7 +8,7 @@ const PORT = parseInt(process.env.DEPLOY_PORT || "9001", 10);
 const DEPLOY_SCRIPT = path.join(__dirname, "deploy.sh");
 
 if (!SECRET) {
-  console.error("DEPLOY_SECRET 환경변수가 필요합니다.");
+  console.error("DEPLOY_SECRET environment variable is required.");
   process.exit(1);
 }
 
@@ -21,7 +21,10 @@ const server = http.createServer((req, res) => {
   }
 
   const token = req.headers["x-deploy-secret"];
-  if (!token || !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(SECRET))) {
+  const tokenBuffer = Buffer.from(String(token || ""));
+  const secretBuffer = Buffer.from(SECRET);
+
+  if (tokenBuffer.length !== secretBuffer.length || !crypto.timingSafeEqual(tokenBuffer, secretBuffer)) {
     res.writeHead(401).end("Unauthorized");
     return;
   }
@@ -33,14 +36,14 @@ const server = http.createServer((req, res) => {
 
   deploying = true;
   res.writeHead(202).end("Deploying...");
-  console.log(`[${new Date().toISOString()}] 배포 시작`);
+  console.log(`[${new Date().toISOString()}] deploy started`);
 
   execFile("bash", [DEPLOY_SCRIPT], { cwd: __dirname, env: { ...process.env } }, (err, stdout, stderr) => {
     deploying = false;
     if (err) {
-      console.error(`[배포 실패]\n${stderr}`);
+      console.error(`[deploy failed]\n${stderr}`);
     } else {
-      console.log(`[배포 완료]\n${stdout}`);
+      console.log(`[deploy done]\n${stdout}`);
     }
   });
 });

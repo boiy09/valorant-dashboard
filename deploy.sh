@@ -3,24 +3,26 @@ set -e
 
 cd "$(dirname "$0")"
 
-echo "▶ git pull..."
+echo "[deploy] git pull..."
 git fetch origin master
 git reset --hard origin/master
 
-echo "▶ dependencies..."
+echo "[deploy] loading database env..."
+if [ -z "${DATABASE_URL:-}" ] && [ -f .env ]; then
+  export DATABASE_URL="$(grep '^DATABASE_URL=' .env | head -1 | cut -d= -f2- | tr -d '"')"
+fi
+
+echo "[deploy] installing dependencies..."
 npm ci --prefer-offline 2>/dev/null || npm install
 
-echo "▶ prisma generate..."
+echo "[deploy] generating Prisma client..."
 npx prisma generate
 
-echo "▶ database env..."
-export DATABASE_URL="${DATABASE_URL:-$(grep DATABASE_URL .env | cut -d= -f2- | tr -d '"')}"
-
-echo "▶ stop unused web process..."
+echo "[deploy] stopping unused web process..."
 pm2 delete valorant-dashboard 2>/dev/null || true
 
-echo "▶ pm2 restart bot..."
+echo "[deploy] restarting bot..."
 pm2 restart valorant-bot --update-env 2>/dev/null || pm2 start npm --name "valorant-bot" -- run bot
 pm2 save
 
-echo "✅ 배포 완료"
+echo "[deploy] done"

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
-import { getRecentMatches } from "@/lib/valorant";
+import { getRecentMatches, type MatchStats } from "@/lib/valorant";
 
 /**
  * POST /api/scrim/[id]/sync-match
@@ -84,7 +84,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   const representative = playerPuuids[0];
   const qRegion = representative.region === "AP" ? "ap" : "kr";
 
-  let recentMatches;
+  let recentMatches: MatchStats[];
   try {
     recentMatches = await getRecentMatches(representative.puuid, 20, qRegion, "pc", {
       skipAccountFallback: true,
@@ -108,7 +108,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   const allParticipantPuuids = new Set(playerPuuids.map((p) => p.puuid));
 
   // 매칭되는 커스텀 매치 탐색
-  let matchedMatch = null;
+  let matchedMatch: MatchStats | null = null;
   for (const match of customMatches) {
     const matchPuuids = (match.scoreboard?.players ?? [])
       .map((p) => p.puuid)

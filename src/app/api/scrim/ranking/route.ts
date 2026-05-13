@@ -40,10 +40,6 @@ export async function GET(req: NextRequest) {
     try {
       const kdaList: Array<{ userId: string; kills?: number; deaths?: number; assists?: number }> =
         game.kdaSnapshot ? JSON.parse(game.kdaSnapshot) : [];
-      const teamSnapshot: { team_a?: string[]; team_b?: string[] } =
-        game.teamSnapshot ? JSON.parse(game.teamSnapshot) : {};
-      const teamA = teamSnapshot.team_a ?? [];
-      const teamB = teamSnapshot.team_b ?? [];
 
       for (const p of kdaList) {
         const uid = p.userId;
@@ -54,29 +50,21 @@ export async function GET(req: NextRequest) {
         existing.deaths += Number(p.deaths || 0);
         existing.assists += Number(p.assists || 0);
         existing.gamesPlayed += 1;
-
-        if (game.winnerId && game.winnerId !== "draw") {
-          const onTeamA = teamA.includes(uid);
-          const onTeamB = teamB.includes(uid);
-          if (
-            (game.winnerId === "team_a" && onTeamA) ||
-            (game.winnerId === "team_b" && onTeamB)
-          ) {
-            existing.wins += 1;
-          } else if (
-            (game.winnerId === "team_a" && onTeamB) ||
-            (game.winnerId === "team_b" && onTeamA)
-          ) {
-            existing.losses += 1;
-          }
-        }
-
         statsMap.set(uid, existing);
       }
     } catch (e) {
-      console.error("Failed to parse game data", e);
+      console.error("Failed to parse kdaSnapshot", e);
     }
   }
+
+  // 내전 승률은 ScrimElo 테이블에서 가져옴
+  const eloRecords = guild
+    ? await prisma.scrimElo.findMany({
+        where: { guildId: guild.id },
+        select: { userId: true, wins: true, losses: true, draws: true },
+      })
+    : [];
+  const eloMap = new Map(eloRecords.map((e) => [e.userId, e]));
 
   const userIds = Array.from(statsMap.keys());
   const users = await prisma.user.findMany({
@@ -131,10 +119,14 @@ export async function GET(req: NextRequest) {
     const user = userTierMap.get(s.userId);
     const krTier = user?.riotAccounts?.find((a) => a.region === "KR")?.cachedTierName ?? "언랭크";
     const apTier = user?.riotAccounts?.find((a) => a.region !== "KR")?.cachedTierName ?? "언랭크";
-    const winRate = s.gamesPlayed > 0 ? Math.round((s.wins / s.gamesPlayed) * 100) : 0;
+    const elo = eloMap.get(s.userId);
+    const eloTotal = (elo?.wins ?? 0) + (elo?.losses ?? 0) + (elo?.draws ?? 0);
+    const winRate = eloTotal > 0 ? Math.round(((elo?.wins ?? 0) / eloTotal) * 100) : 0;
 
     return {
       ...s,
+      wins: elo?.wins ?? 0,
+      losses: elo?.losses ?? 0,
       name: serverNickMap.get(s.userId) ?? user?.name ?? "Unknown",
       image: user?.image ?? null,
       krTier,

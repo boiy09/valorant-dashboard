@@ -220,7 +220,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               />
             </Link>
             <Link
-              href="/"
+              href="/promo"
               className="val-mini-button text-[11px] font-black tracking-widest"
               style={{ letterSpacing: "0.12em" }}
             >

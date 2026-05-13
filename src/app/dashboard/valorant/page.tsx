@@ -462,7 +462,11 @@ export default function ValorantPage() {
           if (!prev) return { accounts: d.accounts! };
           const merged = prev.accounts.map((a) => {
             const updated = d.accounts!.find((x) => x.region === a.region);
-            return updated ?? a;
+            if (!updated) return a;
+            if (a.recentMatches.length > 0 && updated.recentMatches.length === 0) {
+              return { ...updated, recentMatches: a.recentMatches };
+            }
+            return updated;
           });
           d.accounts!.forEach((a) => {
             if (!merged.find((x) => x.region === a.region)) merged.push(a);

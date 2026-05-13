@@ -1,7 +1,9 @@
+import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getRankByPuuid, getRecentMatches, getRankIconByTier } from "@/lib/valorant";
+import { getRankByPuuid, getRecentMatches, getRankIconByTier, type MatchStats } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank } from "@/lib/rankFetcher";
+import { apiCache, TTL } from "@/lib/apiCache";
 
 type RiotRegion = "KR" | "AP";
 type PuuidRankEntry = {
@@ -9,6 +11,7 @@ type PuuidRankEntry = {
   tierName: string;
   tierIcon: string | null | undefined;
 };
+const recentMatchesLastGood = new Map<string, MatchStats[]>();
 
 function toQueryRegion(region: RiotRegion): "kr" | "ap" {
   return region === "AP" ? "ap" : "kr";
@@ -28,14 +31,49 @@ async function findUser(discordId: string, email?: string | null) {
   return user;
 }
 
-export async function GET() {
+async function getRecentMatchesCached(
+  puuid: string,
+  region: "kr" | "ap",
+  puuidRankMap: Map<string, PuuidRankEntry>,
+  force: boolean
+) {
+  const cacheKey = `valorant:recent-matches:${region}:${puuid}:10`;
+  const cached = apiCache.get<MatchStats[]>(cacheKey, TTL.MEDIUM);
+  const cacheAge = apiCache.cacheAge(cacheKey);
+  if (cached && (!force || cacheAge < 30 * 1000)) return cached;
+
+  try {
+    const matches = await getRecentMatches(puuid, 10, region, "pc", {
+      puuidRankMap,
+      skipAccountFallback: true,
+    });
+    if (matches.length > 0) {
+      apiCache.set(cacheKey, matches);
+      recentMatchesLastGood.set(cacheKey, matches);
+    }
+    return matches;
+  } catch (error) {
+    const stale = recentMatchesLastGood.get(cacheKey);
+    if (stale) {
+      console.warn("[stats] recent matches failed, using cached data:", error);
+      return stale;
+    }
+    throw error;
+  }
+}
+
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
     return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
   const user = await findUser(session.user.id!, session.user.email);
-  const accounts = user?.riotAccounts ?? [];
+  const forceRegion = req.nextUrl.searchParams.get("forceRegion")?.toUpperCase();
+  const accounts = (user?.riotAccounts ?? []).filter((account) => {
+    if (forceRegion !== "KR" && forceRegion !== "AP") return true;
+    return account.region.toUpperCase() === forceRegion;
+  });
 
   // Build puuidRankMap from DB for all guild members — used for scoreboard rank display
   const guildMemberAccounts = await prisma.riotAccount.findMany({
@@ -89,10 +127,7 @@ export async function GET() {
             return full;
           })
           .catch(() => null),
-        getRecentMatches(account.puuid, 10, qRegion, "pc", {
-          puuidRankMap: puuidRankMapRaw,
-          skipAccountFallback: true,
-        }).catch(() => []),
+        getRecentMatchesCached(account.puuid, qRegion, puuidRankMapRaw, forceRegion === region).catch(() => []),
       ]);
 
       return {

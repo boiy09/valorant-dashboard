@@ -10,7 +10,7 @@ interface Warning {
   active: boolean;
   note: string | null;
   createdAt: string;
-  user: { name: string | null; image: string | null };
+  user: { name: string | null; image: string | null; discordId: string | null };
 }
 
 interface ServerRecord {
@@ -24,7 +24,7 @@ interface ServerRecord {
   rejoinCount: number;
 }
 
-interface RoleMember {
+interface Member {
   discordId: string | null;
   name: string | null;
   image: string | null;
@@ -34,33 +34,38 @@ interface RoleMember {
 type AdminAction = "sync-members" | "restart-bot";
 type AdminView = "server-records" | "warnings";
 
-// 두끼/공복 역할 이름 매핑
-const WARNING_ROLES: Record<number, { label: string; color: string; bg: string }> = {
-  1: { label: "두끼", color: "#f59e0b", bg: "#f59e0b22" },
-  2: { label: "공복", color: "#ff4655", bg: "#ff465522" },
+const WARNING_ROLES: Record<number, { label: string; color: string; bg: string; border: string }> = {
+  1: { label: "두끼", color: "#f59e0b", bg: "#f59e0b22", border: "#f59e0b50" },
+  2: { label: "공복", color: "#ff4655", bg: "#ff465522", border: "#ff465550" },
 };
 
-function toDateInputValue(date: Date) {
-  return date.toISOString().slice(0, 10);
+function isRoleHolder(member: Member) {
+  return member.roles.some((r) => {
+    const n = r.replace(/\s/g, "").toLowerCase();
+    return n.includes("두끼") || n.includes("공복");
+  });
 }
 
-function getDefaultStartDate() {
-  const date = new Date();
-  date.setDate(1);
-  return toDateInputValue(date);
+function toDateInputValue(d: Date) {
+  return d.toISOString().slice(0, 10);
 }
 
+// ─── 메인 페이지 ───────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [view, setView] = useState<AdminView>("server-records");
   const [warnings, setWarnings] = useState<Warning[]>([]);
   const [records, setRecords] = useState<ServerRecord[]>([]);
-  const [roleMembers, setRoleMembers] = useState<RoleMember[]>([]);
-  const [startDate, setStartDate] = useState(getDefaultStartDate);
+  const [allMembers, setAllMembers] = useState<Member[]>([]);
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date(); d.setDate(1); return toDateInputValue(d);
+  });
   const [endDate, setEndDate] = useState(() => toDateInputValue(new Date()));
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [actionLoading, setActionLoading] = useState<AdminAction | null>(null);
   const [actionMessage, setActionMessage] = useState("");
+  const [showAddWarning, setShowAddWarning] = useState(false);
+  const [addWarningTarget, setAddWarningTarget] = useState<Member | null>(null);
 
   useEffect(() => {
     fetch("/api/me/roles")
@@ -72,12 +77,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isAdmin) return;
     setLoading(true);
-
     const endpoint =
       view === "server-records"
         ? `/api/admin/server-records?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`
         : "/api/warnings";
-
     fetch(endpoint, { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
@@ -91,23 +94,16 @@ export default function AdminPage() {
       .finally(() => setLoading(false));
   }, [view, startDate, endDate, isAdmin]);
 
-  // 경고 뷰에서 두끼/공복 역할 보유자 자동 로드
+  // 경고 탭에서 전체 멤버 로드
   useEffect(() => {
     if (view !== "warnings" || !isAdmin) return;
-
     fetch("/api/members", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => {
-        const members: RoleMember[] = (d.members ?? []).filter((m: RoleMember) =>
-          m.roles.some((role) => {
-            const r = role.replace(/\s/g, "").toLowerCase();
-            return r.includes("두끼") || r.includes("공복");
-          })
-        );
-        setRoleMembers(members);
-      })
-      .catch(() => setRoleMembers([]));
+      .then((d) => setAllMembers(d.members ?? []))
+      .catch(() => setAllMembers([]));
   }, [view, isAdmin]);
+
+  const roleMembers = useMemo(() => allMembers.filter(isRoleHolder), [allMembers]);
 
   const totals = useMemo(
     () => ({
@@ -137,15 +133,28 @@ export default function AdminPage() {
   }
 
   function handleNoteUpdate(warningId: string, note: string | null) {
-    setWarnings((prev) =>
-      prev.map((w) => (w.id === warningId ? { ...w, note } : w))
-    );
+    setWarnings((prev) => prev.map((w) => (w.id === warningId ? { ...w, note } : w)));
+  }
+
+  async function handleAddWarning(discordId: string, reason: string, note: string) {
+    const r = await fetch("/api/warnings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discordId, reason, note }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error ?? "오류가 발생했습니다.");
+    setWarnings((prev) => [data.warning, ...prev]);
+  }
+
+  function openAddWarning(member?: Member) {
+    setAddWarningTarget(member ?? null);
+    setShowAddWarning(true);
   }
 
   if (isAdmin === null) {
     return <div className="val-card p-12 text-center text-[#7b8a96]">권한 확인 중...</div>;
   }
-
   if (!isAdmin) {
     return (
       <div className="val-card p-12 text-center">
@@ -163,6 +172,7 @@ export default function AdminPage() {
         <p className="mt-0.5 text-sm text-[#7b8a96]">서버 기록, 경고 내역, 봇 운영 작업을 관리합니다.</p>
       </div>
 
+      {/* Bot Operations */}
       <div className="val-card mb-6 p-5">
         <div className="mb-4">
           <div className="text-xs uppercase tracking-widest text-[#7b8a96]">Bot Operations</div>
@@ -193,6 +203,7 @@ export default function AdminPage() {
         )}
       </div>
 
+      {/* View toggle */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">
           {(
@@ -213,7 +224,7 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {view === "server-records" && (
+        {view === "server-records" ? (
           <div className="flex flex-wrap items-center gap-2 text-xs text-[#8da0ad]">
             <input
               type="date"
@@ -229,6 +240,14 @@ export default function AdminPage() {
               className="rounded border border-[#263442] bg-[#0f1923] px-3 py-2 text-white"
             />
           </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => openAddWarning()}
+            className="val-btn bg-[#ff4655] px-4 py-2 text-sm font-bold text-white"
+          >
+            + 경고 추가
+          </button>
         )}
       </div>
 
@@ -237,13 +256,199 @@ export default function AdminPage() {
       ) : view === "server-records" ? (
         <ServerRecordsTable records={records} totals={totals} />
       ) : (
-        <WarningsList warnings={warnings} roleMembers={roleMembers} onNoteUpdate={handleNoteUpdate} />
+        <WarningsList
+          warnings={warnings}
+          roleMembers={roleMembers}
+          onNoteUpdate={handleNoteUpdate}
+          onAddWarning={openAddWarning}
+        />
+      )}
+
+      {showAddWarning && (
+        <AddWarningModal
+          members={allMembers}
+          defaultMember={addWarningTarget}
+          onSubmit={handleAddWarning}
+          onClose={() => { setShowAddWarning(false); setAddWarningTarget(null); }}
+        />
       )}
     </div>
   );
 }
 
-// ─── 역할 규칙 안내 배너 ───────────────────────────────────────────────────────
+// ─── 경고 추가 모달 ────────────────────────────────────────────────────────────
+function AddWarningModal({
+  members,
+  defaultMember,
+  onSubmit,
+  onClose,
+}: {
+  members: Member[];
+  defaultMember: Member | null;
+  onSubmit: (discordId: string, reason: string, note: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState(defaultMember?.discordId ?? "");
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState(defaultMember?.name ?? "");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredMembers = useMemo(
+    () =>
+      members.filter(
+        (m) =>
+          !search ||
+          (m.name ?? "").toLowerCase().includes(search.toLowerCase())
+      ),
+    [members, search]
+  );
+
+  const selectedMember = members.find((m) => m.discordId === selectedId) ?? null;
+
+  function selectMember(m: Member) {
+    setSelectedId(m.discordId ?? "");
+    setSearch(m.name ?? "");
+    setDropdownOpen(false);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedId) { setError("멤버를 선택해주세요."); return; }
+    if (!reason.trim()) { setError("경고 사유를 입력해주세요."); return; }
+    setSubmitting(true);
+    setError("");
+    try {
+      await onSubmit(selectedId, reason, note);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "오류가 발생했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+      <div className="val-card w-full max-w-md p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-[#ff4655]">Admin</div>
+            <h2 className="text-lg font-black text-white">경고 추가</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded text-[#7b8a96] hover:bg-[#1a242d] hover:text-white"
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* Member search */}
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-[#7b8a96]">
+              멤버
+            </label>
+            <div className="relative" ref={dropdownRef}>
+              <div className="flex items-center gap-2 rounded border border-[#263442] bg-[#0f1923] px-3 py-2 focus-within:border-[#ff4655]/60">
+                {selectedMember?.image && (
+                  <img src={selectedMember.image} alt="" className="h-5 w-5 rounded-full object-cover" />
+                )}
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); setDropdownOpen(true); setSelectedId(""); }}
+                  onFocus={() => setDropdownOpen(true)}
+                  placeholder="멤버 이름 검색..."
+                  className="flex-1 bg-transparent text-sm text-white placeholder-[#4a5d6b] focus:outline-none"
+                />
+              </div>
+              {dropdownOpen && filteredMembers.length > 0 && (
+                <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-auto rounded border border-[#263442] bg-[#111c24] shadow-xl">
+                  {filteredMembers.slice(0, 50).map((m) => (
+                    <button
+                      key={m.discordId}
+                      type="button"
+                      onMouseDown={() => selectMember(m)}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#c8d3db] hover:bg-[#1a242d] hover:text-white"
+                    >
+                      {m.image ? (
+                        <img src={m.image} alt="" className="h-5 w-5 rounded-full object-cover" />
+                      ) : (
+                        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#2a3540] text-[9px] text-[#7b8a96]">
+                          {m.name?.[0] ?? "?"}
+                        </div>
+                      )}
+                      <span>{m.name ?? "알 수 없음"}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Reason */}
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-[#7b8a96]">
+              경고 사유
+            </label>
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="경고 사유를 입력하세요"
+              className="w-full rounded border border-[#263442] bg-[#0f1923] px-3 py-2 text-sm text-white placeholder-[#4a5d6b] focus:border-[#ff4655]/60 focus:outline-none"
+            />
+          </div>
+
+          {/* Note/Memo */}
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-[#7b8a96]">
+              메모 <span className="normal-case tracking-normal text-[#4a5d6b]">(선택)</span>
+            </label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={"언제, 어떤 상황에서 받았는지 메모...\n예) 2026-05-13 채팅 도배로 인한 경고"}
+              rows={3}
+              className="w-full resize-none rounded border border-[#263442] bg-[#0f1923] px-3 py-2 text-sm text-white placeholder-[#4a5d6b] focus:border-[#ff4655]/60 focus:outline-none"
+            />
+          </div>
+
+          {error && (
+            <div className="rounded border border-[#ff4655]/30 bg-[#ff4655]/10 px-3 py-2 text-sm text-[#ff4655]">
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 rounded bg-[#ff4655] py-2.5 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {submitting ? "추가 중..." : "경고 추가"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded bg-[#1a242d] px-5 py-2.5 text-sm text-[#7b8a96] hover:text-white"
+            >
+              취소
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── 경고 규칙 배너 ────────────────────────────────────────────────────────────
 function WarningRulesBanner() {
   return (
     <div className="val-card mb-4 p-4">
@@ -268,8 +473,16 @@ function WarningRulesBanner() {
   );
 }
 
-// ─── 두끼/공복 역할 보유자 카드 ────────────────────────────────────────────────
-function RoleHoldersCard({ members }: { members: RoleMember[] }) {
+// ─── 역할 보유자 카드 ──────────────────────────────────────────────────────────
+function RoleHoldersCard({
+  members,
+  warnings,
+  onAddWarning,
+}: {
+  members: Member[];
+  warnings: Warning[];
+  onAddWarning: (member: Member) => void;
+}) {
   const dukkiMembers = members.filter((m) =>
     m.roles.some((r) => r.replace(/\s/g, "").toLowerCase().includes("두끼"))
   );
@@ -279,17 +492,36 @@ function RoleHoldersCard({ members }: { members: RoleMember[] }) {
 
   if (members.length === 0) return null;
 
-  function MemberChip({ member }: { member: RoleMember }) {
+  function getActiveWarnings(member: Member) {
+    return warnings.filter((w) => w.user.discordId === member.discordId && w.active);
+  }
+
+  function MemberRow({ member }: { member: Member }) {
+    const activeWarnings = getActiveWarnings(member);
     return (
-      <div className="flex items-center gap-1.5 rounded bg-[#0f1923] px-2 py-1">
-        {member.image ? (
-          <img src={member.image} alt="" className="h-5 w-5 rounded-full object-cover" />
-        ) : (
-          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#2a3540] text-[9px] text-[#7b8a96]">
-            {member.name?.[0] ?? "?"}
-          </div>
-        )}
-        <span className="text-xs text-[#ece8e1]">{member.name ?? "알 수 없음"}</span>
+      <div className="flex items-center justify-between gap-2 rounded border border-[#1e2d3a] bg-[#0f1923]/60 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {member.image ? (
+            <img src={member.image} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+          ) : (
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#2a3540] text-[9px] text-[#7b8a96]">
+              {member.name?.[0] ?? "?"}
+            </div>
+          )}
+          <span className="truncate text-sm text-[#ece8e1]">{member.name ?? "알 수 없음"}</span>
+          {activeWarnings.length > 0 && (
+            <span className="shrink-0 rounded bg-[#ff4655]/20 px-1.5 py-0.5 text-[10px] font-bold text-[#ff4655]">
+              경고 {activeWarnings.length}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => onAddWarning(member)}
+          className="shrink-0 rounded border border-[#263442] bg-[#1a242d] px-2.5 py-1 text-[11px] font-bold text-[#7b8a96] transition-colors hover:border-[#ff4655]/50 hover:bg-[#ff4655]/10 hover:text-[#ff4655]"
+        >
+          + 경고
+        </button>
       </div>
     );
   }
@@ -297,33 +529,33 @@ function RoleHoldersCard({ members }: { members: RoleMember[] }) {
   return (
     <div className="val-card mb-4 p-4">
       <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">역할 보유자 현황</div>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {dukkiMembers.length > 0 && (
           <div>
-            <div className="mb-1.5 flex items-center gap-1.5">
+            <div className="mb-2 flex items-center gap-1.5">
               <span className="rounded border border-[#f59e0b]/40 bg-[#f59e0b]/15 px-2 py-0.5 text-[11px] font-bold text-[#f59e0b]">
                 두끼
               </span>
               <span className="text-xs text-[#7b8a96]">{dukkiMembers.length}명</span>
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-col gap-1.5">
               {dukkiMembers.map((m) => (
-                <MemberChip key={m.discordId ?? m.name} member={m} />
+                <MemberRow key={m.discordId ?? m.name} member={m} />
               ))}
             </div>
           </div>
         )}
         {gongbokMembers.length > 0 && (
           <div>
-            <div className="mb-1.5 flex items-center gap-1.5">
+            <div className="mb-2 flex items-center gap-1.5">
               <span className="rounded border border-[#ff4655]/40 bg-[#ff4655]/15 px-2 py-0.5 text-[11px] font-bold text-[#ff4655]">
                 공복
               </span>
               <span className="text-xs text-[#7b8a96]">{gongbokMembers.length}명</span>
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-col gap-1.5">
               {gongbokMembers.map((m) => (
-                <MemberChip key={m.discordId ?? m.name} member={m} />
+                <MemberRow key={m.discordId ?? m.name} member={m} />
               ))}
             </div>
           </div>
@@ -333,7 +565,7 @@ function RoleHoldersCard({ members }: { members: RoleMember[] }) {
   );
 }
 
-// ─── 메모 인라인 편집 ──────────────────────────────────────────────────────────
+// ─── 메모 편집기 ───────────────────────────────────────────────────────────────
 function NoteEditor({
   warningId,
   note,
@@ -424,38 +656,35 @@ function WarningsList({
   warnings,
   roleMembers,
   onNoteUpdate,
+  onAddWarning,
 }: {
   warnings: Warning[];
-  roleMembers: RoleMember[];
+  roleMembers: Member[];
   onNoteUpdate: (warningId: string, note: string | null) => void;
+  onAddWarning: (member: Member) => void;
 }) {
-  // 유저별로 그룹화
   const grouped = useMemo(() => {
-    const map = new Map<
-      string,
-      { user: Warning["user"]; userId: string; warnings: Warning[] }
-    >();
+    const map = new Map<string, { user: Warning["user"]; userId: string; warnings: Warning[] }>();
     for (const w of warnings) {
-      if (!map.has(w.userId)) {
-        map.set(w.userId, { user: w.user, userId: w.userId, warnings: [] });
-      }
+      if (!map.has(w.userId)) map.set(w.userId, { user: w.user, userId: w.userId, warnings: [] });
       map.get(w.userId)!.warnings.push(w);
     }
-    // 활성 경고 많은 순 정렬
     return Array.from(map.values()).sort(
       (a, b) =>
-        b.warnings.filter((w) => w.active).length -
-        a.warnings.filter((w) => w.active).length
+        b.warnings.filter((w) => w.active).length - a.warnings.filter((w) => w.active).length
     );
   }, [warnings]);
 
   return (
     <div>
       <WarningRulesBanner />
-      <RoleHoldersCard members={roleMembers} />
+      <RoleHoldersCard members={roleMembers} warnings={warnings} onAddWarning={onAddWarning} />
 
       {warnings.length === 0 ? (
-        <div className="val-card p-12 text-center text-[#7b8a96]">경고 내역이 없습니다.</div>
+        <div className="val-card p-12 text-center text-[#7b8a96]">
+          경고 내역이 없습니다.
+          <div className="mt-1 text-xs">우측 상단 &quot;+ 경고 추가&quot; 또는 역할 보유자의 &quot;+ 경고&quot; 버튼으로 추가하세요.</div>
+        </div>
       ) : (
         <div className="val-card p-5">
           <div className="mb-4 text-xs uppercase tracking-widest text-[#7b8a96]">
@@ -480,16 +709,12 @@ function WarningsList({
                     <div className="flex flex-1 flex-wrap items-center gap-2">
                       <span className="font-bold text-white">{user.name ?? "알 수 없음"}</span>
                       <span className="text-xs text-[#7b8a96]">
-                        활성 경고 {activeCount}회 / 전체 {userWarnings.length}회
+                        활성 {activeCount}회 / 전체 {userWarnings.length}회
                       </span>
                       {roleInfo && (
                         <span
                           className="rounded border px-2 py-0.5 text-[11px] font-bold"
-                          style={{
-                            color: roleInfo.color,
-                            borderColor: roleInfo.color + "50",
-                            background: roleInfo.bg,
-                          }}
+                          style={{ color: roleInfo.color, borderColor: roleInfo.border, background: roleInfo.bg }}
                         >
                           {roleInfo.label} 역할 대상
                         </span>
@@ -509,17 +734,15 @@ function WarningsList({
                         }`}
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="flex items-start gap-2">
+                          <div className="flex min-w-0 flex-1 items-start gap-2">
                             <span
                               className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${
-                                w.active
-                                  ? "bg-[#ff4655]/20 text-[#ff4655]"
-                                  : "bg-[#263442] text-[#7b8a96]"
+                                w.active ? "bg-[#ff4655]/20 text-[#ff4655]" : "bg-[#263442] text-[#7b8a96]"
                               }`}
                             >
                               #{idx + 1}
                             </span>
-                            <div>
+                            <div className="min-w-0 flex-1">
                               <div className="text-sm text-[#c8d3db]">{w.reason}</div>
                               <NoteEditor
                                 warningId={w.id}
@@ -573,7 +796,6 @@ function ServerRecordsTable({
         <Summary label="기간 내 총 출석" value={`${totals.attendanceDays}일`} />
         <Summary label="전체 재입장 기록" value={`${totals.rejoinCount}회`} />
       </div>
-
       {records.length === 0 ? (
         <div className="py-10 text-center text-sm text-[#7b8a96]">서버 기록이 없습니다.</div>
       ) : (

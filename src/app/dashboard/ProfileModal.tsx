@@ -84,16 +84,17 @@ export default function ProfileModal({
   const [profileBio, setProfileBio] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const hasProfile = Boolean(profile);
 
   useEffect(() => {
     if (!profile) return;
     setSelectedRoles(parseProfileRoles(profile.valorantRole));
     setSelectedAgents(profile.favoriteAgents ?? []);
     setProfileBio(profile.profileBio ?? "");
-  }, [profile?.discordId, profile?.profileBio, profile?.name, profile?.valorantRole, profile?.favoriteAgents]);
+  }, [profile]);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!hasProfile) return;
 
     let cancelled = false;
 
@@ -109,7 +110,7 @@ export default function ProfileModal({
     return () => {
       cancelled = true;
     };
-  }, [Boolean(profile)]);
+  }, [hasProfile]);
 
   if (!profile) return null;
 

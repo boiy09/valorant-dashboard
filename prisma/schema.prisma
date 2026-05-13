@@ -325,6 +325,7 @@ model Warning {
   reason    String
   issuedBy  String
   active    Boolean  @default(true)
+  note      String?
   createdAt DateTime @default(now())
   @@index([userId, guildId])
 }

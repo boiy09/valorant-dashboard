@@ -570,7 +570,7 @@ export default function ValorantPage() {
       </div>
 
       {relinkInfo?.needsRelink && (
-        <div className="fixed right-4 top-4 z-[220] w-[calc(100vw-2rem)] max-w-lg border border-[#ff4655] bg-[#140b10] p-5 shadow-2xl shadow-black/60">
+        <div className="fixed left-1/2 top-24 z-[220] w-[min(720px,calc(100vw-2rem))] -translate-x-1/2 border border-[#ff4655] bg-[#140b10] p-5 shadow-2xl shadow-black/60 sm:top-28">
           <div className="mb-1 text-[11px] font-black uppercase tracking-[0.22em] text-[#ff4655]">
             Riot Reconnect Required
           </div>

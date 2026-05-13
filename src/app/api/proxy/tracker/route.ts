@@ -26,8 +26,8 @@ export async function GET(request: NextRequest) {
   }
 
   const encoded = `${encodeURIComponent(name)}/${encodeURIComponent(tag)}`;
-  const profileUrl = `https://api.tracker.gg/api/v2/valorant/standard/profile/riot/${encoded}`;
-  const agentUrl = `https://api.tracker.gg/api/v2/valorant/standard/profile/riot/${encoded}/segments/agent`;
+  const profileUrl = `https://api.tracker.gg/api/v2/valorant/standard/profile/pc/${encoded}`;
+  const agentUrl = `https://api.tracker.gg/api/v2/valorant/standard/profile/pc/${encoded}/segments/agent`;
   const referer = `https://tracker.gg/valorant/profile/riot/${encoded}/overview`;
 
   try {

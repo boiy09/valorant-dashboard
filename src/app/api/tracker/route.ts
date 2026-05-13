@@ -249,10 +249,10 @@ async function fetchFromScrape(
   const referer = `https://tracker.gg/valorant/profile/riot/${encoded}/overview`;
 
   const [profileRes, agentRes] = await Promise.all([
-    fetch(`https://api.tracker.gg/api/v2/valorant/standard/profile/riot/${encoded}`, {
+    fetch(`https://api.tracker.gg/api/v2/valorant/standard/profile/pc/${encoded}`, {
       headers: { ...BROWSER_HEADERS, Referer: referer },
     }),
-    fetch(`https://api.tracker.gg/api/v2/valorant/standard/profile/riot/${encoded}/segments/agent`, {
+    fetch(`https://api.tracker.gg/api/v2/valorant/standard/profile/pc/${encoded}/segments/agent`, {
       headers: { ...BROWSER_HEADERS, Referer: referer },
     }),
   ]);

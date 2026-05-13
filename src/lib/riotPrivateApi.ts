@@ -3,7 +3,9 @@
  * 공식 API가 아니므로 rate limit 및 변경에 주의
  */
 
-import type { MatchStats } from "@/lib/valorant";
+import type { MatchStats, RankData, RankSeasonSummary } from "@/lib/valorant";
+import { formatValorantSeasonLabel } from "@/lib/seasonLabel";
+import { tierIdToKorean } from "@/lib/tierName";
 
 const CLIENT_PLATFORM =
   "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9";
@@ -39,7 +41,23 @@ type PrivateContent = {
   maps: Map<string, string>;
 };
 
+type PrivateSeason = {
+  id: string;
+  label: string;
+  isActive: boolean;
+  startTime: number;
+};
+
+type PrivateRankSeasonRecord = {
+  CompetitiveTier?: number;
+  RankedRating?: number;
+  NumberOfGames?: number;
+  NumberOfWins?: number;
+};
+
 let contentCache: { data: PrivateContent; cachedAt: number } | null = null;
+let seasonsCache: { data: PrivateSeason[]; cachedAt: number } | null = null;
+let tierIconCache: { data: Map<number, string>; cachedAt: number } | null = null;
 const CONTENT_TTL = 60 * 60 * 1000;
 
 async function getPrivateContent(): Promise<PrivateContent> {
@@ -77,6 +95,86 @@ async function getPrivateContent(): Promise<PrivateContent> {
   const data = { agents, maps };
   contentCache = { data, cachedAt: now };
   return data;
+}
+
+async function getPrivateSeasons(): Promise<PrivateSeason[]> {
+  const now = Date.now();
+  if (seasonsCache && now - seasonsCache.cachedAt < CONTENT_TTL) return seasonsCache.data;
+
+  const response = await fetch(`${VALORANT_API_BASE}/seasons?language=ko-KR`, { cache: "force-cache" }).catch(() => null);
+  if (!response?.ok) return [];
+
+  const payload = await response.json() as {
+    data?: Array<{ uuid?: string; displayName?: string; type?: string; isActive?: boolean; startTime?: string }>;
+  };
+  const seasons = (payload.data ?? [])
+    .filter((season) => season.uuid && season.type === "act")
+    .map((season) => ({
+      id: season.uuid!.toLowerCase(),
+      label: season.displayName || formatValorantSeasonLabel(season.uuid!),
+      isActive: Boolean(season.isActive),
+      startTime: season.startTime ? new Date(season.startTime).getTime() : 0,
+    }))
+    .sort((a, b) => b.startTime - a.startTime);
+
+  seasonsCache = { data: seasons, cachedAt: now };
+  return seasons;
+}
+
+async function getPrivateRankIconByTier(tierId: number) {
+  if (tierId <= 0) return null;
+
+  const now = Date.now();
+  if (!tierIconCache || now - tierIconCache.cachedAt >= CONTENT_TTL) {
+    const response = await fetch(`${VALORANT_API_BASE}/competitivetiers?language=ko-KR`, { cache: "force-cache" }).catch(() => null);
+    const icons = new Map<number, string>();
+    if (response?.ok) {
+      const payload = await response.json() as {
+        data?: Array<{ tiers?: Array<{ tier?: number; smallIcon?: string; largeIcon?: string }> }>;
+      };
+      for (const bundle of payload.data ?? []) {
+        for (const tier of bundle.tiers ?? []) {
+          if (typeof tier.tier === "number" && (tier.smallIcon || tier.largeIcon)) {
+            icons.set(tier.tier, tier.smallIcon ?? tier.largeIcon ?? "");
+          }
+        }
+      }
+    }
+    tierIconCache = { data: icons, cachedAt: now };
+  }
+
+  return tierIconCache.data.get(tierId) ?? null;
+}
+
+function selectCurrentSeasonRecord(
+  records: Record<string, PrivateRankSeasonRecord>,
+  seasons: PrivateSeason[]
+) {
+  const active = seasons.find((season) => season.isActive && records[season.id]);
+  if (active) return { id: active.id, season: active, record: records[active.id] };
+
+  for (const season of seasons) {
+    const record = records[season.id];
+    if ((record?.NumberOfGames ?? 0) > 0) return { id: season.id, season, record };
+  }
+
+  const fallback = Object.entries(records).find(([, record]) => (record.NumberOfGames ?? 0) > 0);
+  return fallback ? { id: fallback[0], season: null, record: fallback[1] } : null;
+}
+
+async function buildRankSeasonSummary(id: string, season: PrivateSeason | null, record: PrivateRankSeasonRecord): Promise<RankSeasonSummary | null> {
+  const tierId = record.CompetitiveTier ?? 0;
+  if (tierId <= 0 && (record.NumberOfGames ?? 0) <= 0) return null;
+
+  return {
+    season: id,
+    label: season?.label ?? formatValorantSeasonLabel(id),
+    tierId,
+    tierName: tierIdToKorean(tierId),
+    wins: record.NumberOfWins ?? 0,
+    games: record.NumberOfGames ?? 0,
+    rankIcon: await getPrivateRankIconByTier(tierId),
+  };
 }
 
 async function getClientVersion(): Promise<string> {
@@ -407,14 +505,87 @@ export async function getPrivateMMR(
 
     const seasons = data.QueueSkills?.competitive?.SeasonalInfoBySeasonID ?? {};
     // 가장 최근 시즌 (게임 수 > 0) 찾기
-    const latest = Object.values(seasons)
-      .filter((s) => (s.NumberOfGames ?? 0) > 0)
-      .sort((a, b) => (b.CompetitiveTier ?? 0) - (a.CompetitiveTier ?? 0))[0];
+    const latest = selectCurrentSeasonRecord(seasons, await getPrivateSeasons())?.record;
 
     const tierId = latest?.CompetitiveTier ?? 0;
     if (tierId <= 0) return null;
 
     return { currentTierId: tierId, rankedRating: latest?.RankedRating ?? 0 };
+  } catch {
+    return null;
+  }
+}
+
+export async function getPrivateRankData(
+  puuid: string,
+  region: string,
+  accessToken: string,
+  entitlementsToken: string
+): Promise<RankData | null> {
+  try {
+    const shard = regionToShard(region);
+    const headers = await pvpHeaders(accessToken, entitlementsToken);
+    const response = await fetch(`https://pd.${shard}.a.pvp.net/mmr/v1/players/${puuid}`, { headers, signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return null;
+
+    const data = await response.json() as {
+      QueueSkills?: {
+        competitive?: {
+          SeasonalInfoBySeasonID?: Record<string, PrivateRankSeasonRecord>;
+        };
+      };
+    };
+
+    const records = data.QueueSkills?.competitive?.SeasonalInfoBySeasonID ?? {};
+    const seasons = await getPrivateSeasons();
+    const current = selectCurrentSeasonRecord(records, seasons);
+    if (!current) return null;
+
+    const currentIndex = seasons.findIndex((season) => season.id === current.id);
+    const previousSeason = currentIndex >= 0 ? seasons.slice(currentIndex + 1).find((season) => records[season.id]) ?? null : null;
+    const previousRecord = previousSeason ? records[previousSeason.id] : null;
+    const peakEntry = Object.entries(records)
+      .filter(([, record]) => (record.CompetitiveTier ?? 0) > 0)
+      .sort((left, right) => {
+        const tierDiff = (right[1].CompetitiveTier ?? 0) - (left[1].CompetitiveTier ?? 0);
+        if (tierDiff !== 0) return tierDiff;
+        const leftSeason = seasons.find((season) => season.id === left[0]);
+        const rightSeason = seasons.find((season) => season.id === right[0]);
+        return (rightSeason?.startTime ?? 0) - (leftSeason?.startTime ?? 0);
+      })[0] ?? null;
+
+    const currentSummary = await buildRankSeasonSummary(current.id, current.season, current.record);
+    const previousSummary = previousRecord && previousSeason
+      ? await buildRankSeasonSummary(previousSeason.id, previousSeason, previousRecord)
+      : null;
+    const peakSeason = peakEntry
+      ? await buildRankSeasonSummary(peakEntry[0], seasons.find((season) => season.id === peakEntry[0]) ?? null, peakEntry[1])
+      : null;
+
+    const currentTierId = current.record.CompetitiveTier ?? 0;
+    const peakTierId = peakEntry?.[1].CompetitiveTier ?? 0;
+    const [rankIcon, peakRankIcon] = await Promise.all([
+      getPrivateRankIconByTier(currentTierId),
+      getPrivateRankIconByTier(peakTierId),
+    ]);
+
+    return {
+      tier: tierIdToKorean(currentTierId),
+      tierName: tierIdToKorean(currentTierId),
+      tierId: currentTierId,
+      rr: current.record.RankedRating ?? null,
+      rrChange: null,
+      isCurrent: currentTierId > 0,
+      peakTier: peakTierId > 0 ? tierIdToKorean(peakTierId) : "기록 없음",
+      peakTierName: peakTierId > 0 ? tierIdToKorean(peakTierId) : "기록 없음",
+      wins: current.record.NumberOfWins ?? currentSummary?.wins ?? 0,
+      games: current.record.NumberOfGames ?? currentSummary?.games ?? 0,
+      rankIcon,
+      peakRankIcon,
+      currentSeason: currentSummary,
+      previousSeason: previousSummary,
+      peakSeason,
+    };
   } catch {
     return null;
   }

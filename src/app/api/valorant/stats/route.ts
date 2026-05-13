@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getRankByPuuid, getRecentMatches, getRankIconByTier, type MatchStats, type RankData } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank } from "@/lib/rankFetcher";
-import { getPrivateRecentMatches } from "@/lib/riotPrivateApi";
+import { getPrivateRankData, getPrivateRecentMatches } from "@/lib/riotPrivateApi";
 import { apiCache, TTL } from "@/lib/apiCache";
 
 type RiotRegion = "KR" | "AP";
@@ -65,7 +65,10 @@ async function getRankCached(
 
   try {
     const current = await fetchRank(puuid, region, gameName, tagLine, tokens);
-    const full = await getRankByPuuid(puuid, qRegion, { gameName, tagLine }).catch(() => staleRank);
+    const privateFull = tokens
+      ? await getPrivateRankData(puuid, region, tokens.accessToken, tokens.entitlementsToken).catch(() => null)
+      : null;
+    const full = privateFull ?? await getRankByPuuid(puuid, qRegion, { gameName, tagLine }).catch(() => staleRank);
     const merged = mergeCurrentRank(full, current);
 
     if (merged && (hasRankHistory(merged) || current.tierId > 0)) {

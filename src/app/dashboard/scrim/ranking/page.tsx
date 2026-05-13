@@ -15,6 +15,8 @@ interface KdRankingPlayer {
   wins: number;
   losses: number;
   winRate: number;
+  totalAcs: number;
+  avgAcs: number;
   kd: number;
   krTier: string;
   krTierIcon: string;
@@ -23,14 +25,16 @@ interface KdRankingPlayer {
   rank: number;
 }
 
-type SortKey = "gamesPlayed" | "kills" | "deaths" | "winRate" | "kd";
+type SortKey = "gamesPlayed" | "kills" | "deaths" | "winRate" | "totalAcs" | "avgAcs" | "kd";
 
 const COLUMNS: { key: SortKey; label: string; width: string; defaultDesc: boolean }[] = [
-  { key: "gamesPlayed", label: "판수",   width: "w-14", defaultDesc: true },
-  { key: "kills",       label: "킬",     width: "w-14", defaultDesc: true },
-  { key: "deaths",      label: "데스",   width: "w-14", defaultDesc: false },
-  { key: "winRate",     label: "승률",   width: "w-16", defaultDesc: true },
-  { key: "kd",          label: "KD",    width: "w-16", defaultDesc: true },
+  { key: "gamesPlayed", label: "판수",    width: "w-12", defaultDesc: true },
+  { key: "kills",       label: "킬",      width: "w-12", defaultDesc: true },
+  { key: "deaths",      label: "데스",    width: "w-12", defaultDesc: false },
+  { key: "winRate",     label: "승률",    width: "w-14", defaultDesc: true },
+  { key: "totalAcs",    label: "ACS합",   width: "w-16", defaultDesc: true },
+  { key: "avgAcs",      label: "ACS평균", width: "w-16", defaultDesc: true },
+  { key: "kd",          label: "KD",     width: "w-14", defaultDesc: true },
 ];
 
 export default function ScrimRankingPage() {
@@ -89,7 +93,7 @@ export default function ScrimRankingPage() {
         </div>
 
         {/* 내 순위 */}
-        <div className="mx-auto max-w-5xl mb-6">
+        <div className="mx-auto max-w-6xl mb-6">
           <div className="mb-3 flex items-center gap-2">
             <div className="h-4 w-1 bg-[#ff4655]" />
             <h2 className="text-sm font-black uppercase tracking-wider text-white">MY STANDING</h2>
@@ -109,7 +113,7 @@ export default function ScrimRankingPage() {
       </div>
 
       {/* 리더보드 */}
-      <div className="flex-1 min-h-0 mx-auto w-full max-w-5xl flex flex-col mb-8">
+      <div className="flex-1 min-h-0 mx-auto w-full max-w-6xl flex flex-col mb-8">
         {/* 필터 */}
         <div className="flex-none mb-4 flex items-center justify-between gap-4 rounded-lg bg-[#0f1923] p-4 border border-[#2a3540]">
           <div className="flex items-center gap-2">
@@ -291,39 +295,32 @@ function RankingRow({
 
       {/* 스탯 (데스크탑) */}
       <div className="hidden sm:flex items-center gap-3">
-        {/* 판수 */}
-        <div className="w-14 text-right">
+        <div className="w-12 text-right">
           <StatCell colKey="gamesPlayed" value={player.gamesPlayed} />
           <div className="text-[9px] text-[#7b8a96] uppercase">판수</div>
         </div>
-        {/* 킬 */}
-        <div className="w-14 text-right">
+        <div className="w-12 text-right">
           <StatCell colKey="kills" value={player.kills} />
           <div className="text-[9px] text-[#7b8a96] uppercase">킬</div>
         </div>
-        {/* 데스 */}
-        <div className="w-14 text-right">
+        <div className="w-12 text-right">
           <StatCell colKey="deaths" value={player.deaths} />
           <div className="text-[9px] text-[#7b8a96] uppercase">데스</div>
         </div>
-        {/* 승률 */}
-        <div className="w-16 text-right">
-          <StatCell
-            colKey="winRate"
-            value={player.winRate}
-            format={(v) => `${v}%`}
-            highlight={player.winRate >= 60}
-          />
+        <div className="w-14 text-right">
+          <StatCell colKey="winRate" value={player.winRate} format={(v) => `${v}%`} highlight={player.winRate >= 60} />
           <div className="text-[9px] text-[#7b8a96] uppercase">승률</div>
         </div>
-        {/* KD */}
         <div className="w-16 text-right">
-          <StatCell
-            colKey="kd"
-            value={player.kd}
-            format={(v) => v.toFixed(2)}
-            highlight
-          />
+          <StatCell colKey="totalAcs" value={player.totalAcs} format={(v) => v > 0 ? String(v) : "-"} />
+          <div className="text-[9px] text-[#7b8a96] uppercase">ACS합</div>
+        </div>
+        <div className="w-16 text-right">
+          <StatCell colKey="avgAcs" value={player.avgAcs} format={(v) => v > 0 ? String(v) : "-"} highlight={player.avgAcs >= 200} />
+          <div className="text-[9px] text-[#7b8a96] uppercase">ACS평균</div>
+        </div>
+        <div className="w-14 text-right">
+          <StatCell colKey="kd" value={player.kd} format={(v) => v.toFixed(2)} highlight />
           <div className="text-[9px] font-bold text-[#7b8a96] uppercase">KD</div>
         </div>
       </div>

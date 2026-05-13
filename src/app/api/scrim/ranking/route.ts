@@ -34,22 +34,47 @@ export async function GET(req: NextRequest) {
     gamesPlayed: number;
     wins: number;
     losses: number;
+    totalAcs: number;
+    acsGames: number;
   }>();
 
   for (const game of games) {
     try {
-      const kdaList: Array<{ userId: string; kills?: number; deaths?: number; assists?: number }> =
-        game.kdaSnapshot ? JSON.parse(game.kdaSnapshot) : [];
+      const kdaList: Array<{
+        userId: string;
+        kills?: number;
+        deaths?: number;
+        assists?: number;
+        score?: number;
+        team?: string;
+        teamRoundsWon?: number;
+      }> = game.kdaSnapshot ? JSON.parse(game.kdaSnapshot) : [];
+
+      // 팀별 라운드 합산으로 총 라운드 수 계산
+      const teamRounds = new Map<string, number>();
+      for (const p of kdaList) {
+        if (p.team && (p.teamRoundsWon ?? 0) > 0) {
+          teamRounds.set(p.team, p.teamRoundsWon!);
+        }
+      }
+      const totalRounds = Array.from(teamRounds.values()).reduce((a, b) => a + b, 0);
 
       for (const p of kdaList) {
         const uid = p.userId;
         const existing = statsMap.get(uid) ?? {
-          userId: uid, kills: 0, deaths: 0, assists: 0, gamesPlayed: 0, wins: 0, losses: 0,
+          userId: uid, kills: 0, deaths: 0, assists: 0, gamesPlayed: 0,
+          wins: 0, losses: 0, totalAcs: 0, acsGames: 0,
         };
         existing.kills += Number(p.kills || 0);
         existing.deaths += Number(p.deaths || 0);
         existing.assists += Number(p.assists || 0);
         existing.gamesPlayed += 1;
+
+        if (totalRounds > 0 && p.score) {
+          existing.totalAcs += Math.round(Number(p.score) / totalRounds);
+          existing.acsGames += 1;
+        }
+
         statsMap.set(uid, existing);
       }
     } catch (e) {
@@ -122,11 +147,13 @@ export async function GET(req: NextRequest) {
     const elo = eloMap.get(s.userId);
     const eloTotal = (elo?.wins ?? 0) + (elo?.losses ?? 0) + (elo?.draws ?? 0);
     const winRate = eloTotal > 0 ? Math.round(((elo?.wins ?? 0) / eloTotal) * 100) : 0;
+    const avgAcs = s.acsGames > 0 ? Math.round(s.totalAcs / s.acsGames) : 0;
 
     return {
       ...s,
       wins: elo?.wins ?? 0,
       losses: elo?.losses ?? 0,
+      avgAcs,
       name: serverNickMap.get(s.userId) ?? user?.name ?? "Unknown",
       image: user?.image ?? null,
       krTier,

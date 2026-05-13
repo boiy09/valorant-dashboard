@@ -251,6 +251,22 @@ export function registerEvents(client: BotClient) {
         },
       });
 
+      if (message.member) {
+        await prisma.guildMember.upsert({
+          where: { userId_guildId: { userId: user.id, guildId: guild.id } },
+          update: {
+            roles: message.member.roles.cache.map((role) => role.name),
+            nickname: message.member.nickname ?? undefined,
+          },
+          create: {
+            userId: user.id,
+            guildId: guild.id,
+            roles: message.member.roles.cache.map((role) => role.name),
+            nickname: message.member.nickname ?? undefined,
+          },
+        });
+      }
+
       for (const video of videos) {
         const exists = await prisma.highlight.findFirst({
           where: { guildId: guild.id, url: video.url },

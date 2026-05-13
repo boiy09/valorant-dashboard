@@ -2,6 +2,127 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+type DiscordAttachment = {
+  id: string;
+  filename?: string;
+  url?: string;
+  proxy_url?: string;
+};
+
+type HighlightWithUser = Awaited<ReturnType<typeof getHighlights>>[number];
+
+function parseDiscordMessageUrl(url: string | null | undefined) {
+  if (!url) return null;
+  const match = url.match(/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/);
+  if (!match) return null;
+  return { guildId: match[1], channelId: match[2], messageId: match[3] };
+}
+
+function isDiscordAttachmentUrl(url: string) {
+  return /(?:cdn|media)\.discordapp\.(?:com|net)\/attachments\//.test(url);
+}
+
+function shouldRefreshDiscordAttachmentUrl(url: string) {
+  if (!isDiscordAttachmentUrl(url)) return false;
+
+  const expiresAt = (() => {
+    try {
+      return new URL(url).searchParams.get("ex");
+    } catch {
+      return null;
+    }
+  })();
+  if (!expiresAt) return true;
+
+  const expiresAtSeconds = Number.parseInt(expiresAt, 16);
+  if (!Number.isFinite(expiresAtSeconds)) return true;
+
+  return expiresAtSeconds * 1000 < Date.now() + 30 * 60 * 1000;
+}
+
+function selectFreshAttachmentUrl(highlight: HighlightWithUser, attachments: DiscordAttachment[]) {
+  const oldUrl = highlight.url;
+  const title = highlight.title.toLowerCase();
+
+  const attachment =
+    attachments.find((item) => item.id && oldUrl.includes(item.id)) ??
+    attachments.find((item) => item.filename && item.filename.toLowerCase() === title) ??
+    attachments.find((item) => item.filename && title.includes(item.filename.toLowerCase())) ??
+    attachments[0];
+
+  return attachment?.url ?? attachment?.proxy_url ?? null;
+}
+
+async function getFreshDiscordAttachmentUrl(highlight: HighlightWithUser) {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token || !shouldRefreshDiscordAttachmentUrl(highlight.url)) return null;
+
+  const messageRef = parseDiscordMessageUrl(highlight.description);
+  if (!messageRef) return null;
+
+  const response = await fetch(
+    `https://discord.com/api/v10/channels/${messageRef.channelId}/messages/${messageRef.messageId}`,
+    {
+      headers: { Authorization: `Bot ${token}` },
+      cache: "no-store",
+    }
+  ).catch(() => null);
+
+  if (!response?.ok) return null;
+
+  const message = (await response.json().catch(() => null)) as { attachments?: DiscordAttachment[] } | null;
+  if (!message?.attachments?.length) return null;
+
+  return selectFreshAttachmentUrl(highlight, message.attachments);
+}
+
+async function refreshHighlightUrl(highlight: HighlightWithUser) {
+  const freshUrl = await getFreshDiscordAttachmentUrl(highlight);
+  if (!freshUrl || freshUrl === highlight.url) return highlight;
+
+  await prisma.highlight.update({
+    where: { id: highlight.id },
+    data: { url: freshUrl },
+  }).catch(() => null);
+
+  return { ...highlight, url: freshUrl };
+}
+
+async function getHighlights(type: string, limit: number) {
+  return prisma.highlight.findMany({
+    where: { type },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          discordId: true,
+          guilds: { select: { guildId: true, nickname: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+}
+
+function serializeHighlight(highlight: HighlightWithUser) {
+  const serverNickname =
+    highlight.user?.guilds.find((member) => member.guildId === highlight.guildId)?.nickname ?? null;
+
+  return {
+    ...highlight,
+    user: highlight.user
+      ? {
+          name: serverNickname ?? highlight.user.name,
+          image: highlight.user.image,
+          discordId: highlight.user.discordId,
+        }
+      : null,
+  };
+}
+
 async function getUser(session: any) {
   let user = await prisma.user.findUnique({ where: { discordId: session.user.id } });
   if (!user && session.user.email) {
@@ -14,14 +135,9 @@ export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get("type") ?? "clip";
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "20", 10);
 
-  const highlights = await prisma.highlight.findMany({
-    where: { type },
-    include: { user: { select: { name: true, image: true, discordId: true } } },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-  });
+  const highlights = await Promise.all((await getHighlights(type, limit)).map(refreshHighlightUrl));
 
-  return Response.json({ highlights });
+  return Response.json({ highlights: highlights.map(serializeHighlight) });
 }
 
 export async function POST(req: NextRequest) {

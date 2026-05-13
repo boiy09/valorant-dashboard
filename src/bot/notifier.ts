@@ -78,14 +78,29 @@ function buildMatchResultTitle(result: string) {
   return "무효";
 }
 
+const running = {
+  tracked: false,
+  rank: false,
+  events: false,
+  patch: false,
+};
+
+function guard<T>(key: keyof typeof running, fn: () => Promise<T>) {
+  return async () => {
+    if (running[key]) return;
+    running[key] = true;
+    try { await fn(); } finally { running[key] = false; }
+  };
+}
+
 export function startNotifier(client: Client) {
   console.log("알림 서비스 시작");
 
-  setInterval(() => void checkAllTracked(client), MATCH_INTERVAL);
-  setInterval(() => void checkRankUpdates(client), RANK_INTERVAL);
-  setInterval(() => void checkScheduledEvents(client), EVENT_INTERVAL);
-  setInterval(() => void checkPatchNotes(client), PATCH_INTERVAL);
-  setTimeout(() => void checkPatchNotes(client), 5000);
+  setInterval(guard("tracked", () => checkAllTracked(client)), MATCH_INTERVAL);
+  setInterval(guard("rank", () => checkRankUpdates(client)), RANK_INTERVAL);
+  setInterval(guard("events", () => checkScheduledEvents(client)), EVENT_INTERVAL);
+  setInterval(guard("patch", () => checkPatchNotes(client)), PATCH_INTERVAL);
+  setTimeout(guard("patch", () => checkPatchNotes(client)), 5000);
 }
 
 async function checkAllTracked(client: Client) {

@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { normalizeTierName } from "@/lib/tierName";
 import { getRankIconByTier } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 
@@ -18,17 +17,6 @@ async function settleInBatches<T, R>(items: T[], size: number, task: (item: T) =
   return results;
 }
 
-async function getProfileColumns() {
-  const rows = await prisma.$queryRaw<{ column_name: string }[]>`
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'User'
-      AND column_name IN ('profileBio', 'valorantRole', 'favoriteAgents')
-  `;
-  return new Set(rows.map((row) => row.column_name));
-}
-
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -42,11 +30,6 @@ export async function GET(req: NextRequest) {
 
   if (!guild) return Response.json({ members: [], guildName: null });
 
-  const profileColumns = await getProfileColumns();
-  const hasProfileBio = profileColumns.has("profileBio");
-  const hasValorantRole = profileColumns.has("valorantRole");
-  const hasFavoriteAgents = profileColumns.has("favoriteAgents");
-
   const members = await prisma.guildMember.findMany({
     where: { guildId: guild.id },
     include: {
@@ -57,9 +40,6 @@ export async function GET(req: NextRequest) {
           discordId: true,
           riotGameName: true,
           riotTagLine: true,
-          ...(hasProfileBio ? { profileBio: true } : {}),
-          ...(hasValorantRole ? { valorantRole: true } : {}),
-          ...(hasFavoriteAgents ? { favoriteAgents: true } : {}),
           riotAccounts: {
             select: {
               puuid: true,
@@ -96,34 +76,6 @@ export async function GET(req: NextRequest) {
   const RANK_CACHE_TTL = 2 * 60 * 60 * 1000;
   const now = Date.now();
 
-  const latestVoiceByUser = new Map<string, {
-    channelName: string;
-    joinedAt: Date;
-    leftAt: Date | null;
-    duration: number | null;
-  }>();
-  const memberUserIds = members.map((member) => member.userId);
-  if (memberUserIds.length > 0) {
-    const voiceActivities = await prisma.voiceActivity.findMany({
-      where: { guildId: guild.id, userId: { in: memberUserIds } },
-      orderBy: { joinedAt: "desc" },
-      take: Math.max(memberUserIds.length * 5, 50),
-      select: {
-        userId: true,
-        channelName: true,
-        joinedAt: true,
-        leftAt: true,
-        duration: true,
-      },
-    });
-
-    for (const activity of voiceActivities) {
-      if (!latestVoiceByUser.has(activity.userId)) {
-        latestVoiceByUser.set(activity.userId, activity);
-      }
-    }
-  }
-
   const allAccounts = members.flatMap((m) => m.user.riotAccounts);
 
   await settleInBatches(allAccounts, 5, async (account) => {
@@ -141,7 +93,7 @@ export async function GET(req: NextRequest) {
         riotId: `${account.gameName}#${account.tagLine}`,
         level: account.cachedLevel,
         card: account.cachedCard,
-        tier: normalizeTierName(account.cachedTierName, account.cachedTierId),
+        tier: account.cachedTierName ?? "언랭크",
         rankIcon,
       });
       return;
@@ -160,7 +112,7 @@ export async function GET(req: NextRequest) {
       fetchProfile(account.puuid, account.region, account.gameName, account.tagLine, tokens),
     ]);
 
-    prisma.riotAccount.update({
+    await prisma.riotAccount.update({
       where: { puuid: account.puuid },
       data: {
         cachedTierId: rank.tierId,
@@ -169,7 +121,7 @@ export async function GET(req: NextRequest) {
         cachedCard: profile.card,
         rankCachedAt: new Date(),
       },
-    }).catch(() => {});
+    }).catch((e) => console.error("[members] rank cache update failed:", account.puuid, e));
 
     accountDetails.set(account.puuid, {
       region,
@@ -183,42 +135,25 @@ export async function GET(req: NextRequest) {
 
   return Response.json({
     guildName: guild.name,
-    members: members.map((member) => {
-      const latestVoice = latestVoiceByUser.get(member.userId);
-      const voiceActive = Boolean(latestVoice && !latestVoice.leftAt);
-
-      return {
-        id: member.id,
-        name: member.nickname ?? member.user.name,
-        image: member.user.image,
-        discordId: member.user.discordId,
-        roles: member.roles ? member.roles.split(",").filter(Boolean) : [],
-        riotId: member.user.riotGameName
-          ? `${member.user.riotGameName}#${member.user.riotTagLine}`
-          : null,
-        profileBio: hasProfileBio ? (member.user as any).profileBio ?? "" : "",
-        valorantRole: hasValorantRole ? (member.user as any).valorantRole : null,
-        favoriteAgents: hasFavoriteAgents && (member.user as any).favoriteAgents
-          ? (member.user as any).favoriteAgents.split(",").map((agent: string) => agent.trim()).filter(Boolean).slice(0, 3)
-          : [],
-        riotAccounts: member.user.riotAccounts.map((account) => accountDetails.get(account.puuid) ?? {
-          region: toRegionLabel(account.region),
-          riotId: `${account.gameName}#${account.tagLine}`,
-          level: null,
-          card: null,
-          tier: "언랭크",
-          rankIcon: null,
-        }),
-        isOnline: member.isOnline,
-        joinedAt: member.joinedAt,
-        voiceActivity: latestVoice ? {
-          isActive: voiceActive,
-          channelName: latestVoice.channelName,
-          joinedAt: latestVoice.joinedAt.toISOString(),
-          leftAt: latestVoice.leftAt?.toISOString() ?? null,
-          duration: latestVoice.duration,
-        } : null,
-      };
-    }),
+    members: members.map((member) => ({
+      id: member.id,
+      name: member.nickname ?? member.user.name,
+      image: member.user.image,
+      discordId: member.user.discordId,
+      roles: member.roles ? member.roles.split(",").filter(Boolean) : [],
+      riotId: member.user.riotGameName
+        ? `${member.user.riotGameName}#${member.user.riotTagLine}`
+        : null,
+      riotAccounts: member.user.riotAccounts.map((account) => accountDetails.get(account.puuid) ?? {
+        region: toRegionLabel(account.region),
+        riotId: `${account.gameName}#${account.tagLine}`,
+        level: null,
+        card: null,
+        tier: "언랭크",
+        rankIcon: null,
+      }),
+      isOnline: member.isOnline,
+      joinedAt: member.joinedAt,
+    })),
   });
 }

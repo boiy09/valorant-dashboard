@@ -8,7 +8,6 @@
 import { prisma } from "@/lib/prisma";
 import { refreshTokens } from "@/lib/riotAuth";
 import { getPrivateMMR, getPrivateProfile } from "@/lib/riotPrivateApi";
-import { normalizeTierName, tierIdToKorean } from "@/lib/tierName";
 import { getTrackerCurrentRank } from "@/lib/trackergg";
 import { getRankByPuuid, getRankIconByTier, getPlayerByRiotId, type ValorantRegion } from "@/lib/valorant";
 
@@ -86,7 +85,7 @@ export async function ensureValidTokens(
         entitlementsToken: newEnt,
         tokenExpiresAt: new Date(now + 55 * 60 * 1000),
       },
-    }).catch(() => {});
+    }).catch((e) => console.error("[rankFetcher] token cache update failed:", puuid, e));
 
     return { accessToken: newAccess, entitlementsToken: newEnt };
   } catch {
@@ -112,7 +111,7 @@ export async function fetchRank(
     );
     if (mmr && mmr.currentTierId > 0) {
       const rankIcon = await getRankIconByTier(mmr.currentTierId).catch(() => null);
-      return { tierId: mmr.currentTierId, tierName: tierIdToKorean(mmr.currentTierId), rankIcon };
+      return { tierId: mmr.currentTierId, tierName: tierIdToName(mmr.currentTierId), rankIcon };
     }
   }
 
@@ -123,7 +122,7 @@ export async function fetchRank(
   );
   if (tgg && tgg.tierId > 0) {
     const rankIcon = tgg.rankIcon ?? await getRankIconByTier(tgg.tierId).catch(() => null);
-    return { tierId: tgg.tierId, tierName: normalizeTierName(tgg.tierName, tgg.tierId), rankIcon };
+    return { tierId: tgg.tierId, tierName: tgg.tierName, rankIcon };
   }
 
   // 3. Henrik (최후 수단)
@@ -132,7 +131,7 @@ export async function fetchRank(
     10000
   );
   if (henrik && henrik.tierId > 0) {
-    return { tierId: henrik.tierId, tierName: normalizeTierName(henrik.tierName, henrik.tierId), rankIcon: henrik.rankIcon ?? null };
+    return { tierId: henrik.tierId, tierName: henrik.tierName, rankIcon: henrik.rankIcon ?? null };
   }
 
   return { tierId: 0, tierName: "언랭크", rankIcon: null };
@@ -171,3 +170,18 @@ export async function fetchProfile(
   };
 }
 
+function tierIdToName(tierId: number): string {
+  const map: Record<number, string> = {
+    0: "언랭크",
+    3: "아이언 1", 4: "아이언 2", 5: "아이언 3",
+    6: "브론즈 1", 7: "브론즈 2", 8: "브론즈 3",
+    9: "실버 1", 10: "실버 2", 11: "실버 3",
+    12: "골드 1", 13: "골드 2", 14: "골드 3",
+    15: "플래티넘 1", 16: "플래티넘 2", 17: "플래티넘 3",
+    18: "다이아몬드 1", 19: "다이아몬드 2", 20: "다이아몬드 3",
+    21: "초월자 1", 22: "초월자 2", 23: "초월자 3",
+    24: "불멸 1", 25: "불멸 2", 26: "불멸 3",
+    27: "레디언트",
+  };
+  return map[tierId] ?? "언랭크";
+}

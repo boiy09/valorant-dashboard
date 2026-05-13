@@ -325,7 +325,12 @@ export async function getAuthTokens(
   let region = fallbackRegion;
   if (geoResponse.ok) {
     const geoData = await geoResponse.json() as { affinities?: { live?: string } };
-    region = geoData.affinities?.live as "kr" | "ap" | undefined;
+    const live = geoData.affinities?.live;
+    if (live === "kr" || live === "ap") {
+      region = live;
+    } else if (live) {
+      console.warn(`[riotAuth] 알 수 없는 리전 "${live}", fallback: ${fallbackRegion ?? "kr"}`);
+    }
   } else {
     console.warn(`[riotAuth] GEO 확인 실패 ${geoResponse.status}, fallback: ${region ?? "kr"}`);
   }

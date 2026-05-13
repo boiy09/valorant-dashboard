@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 
-const DASHBOARD_URL = process.env.DASHBOARD_URL ?? process.env.NEXTAUTH_URL ?? "https://valorant-dashboard-henna.vercel.app";
+const DASHBOARD_URL = process.env.DASHBOARD_URL ?? "https://valorant-dashboard-henna.vercel.app";
 
 export const data = new SlashCommandBuilder()
   .setName("발로세끼")

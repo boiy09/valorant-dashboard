@@ -1,17 +1,19 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { getAdminSession } from "@/lib/admin";
+
+type ScrimGameRow = {
+  kdaSnapshot: string | null;
+};
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
+  const { session, guild } = await getAdminSession();
   const tierFilter = req.nextUrl.searchParams.get("tier");
 
   // 1. 모든 내전 경기 데이터 가져오기
-  const games = await prisma.scrimGame.findMany({
-    select: {
-      kdaSnapshot: true,
-    },
-  });
+  const games = await prisma.$queryRaw<ScrimGameRow[]>`
+    SELECT "kdaSnapshot" FROM "ScrimGame"
+  `;
 
   const statsMap = new Map<string, {
     userId: string;
@@ -24,9 +26,7 @@ export async function GET(req: NextRequest) {
   // 2. KDA 데이터 합산
   for (const game of games) {
     try {
-      const kdaList = typeof game.kdaSnapshot === "string" 
-        ? JSON.parse(game.kdaSnapshot) 
-        : game.kdaSnapshot;
+      const kdaList = game.kdaSnapshot ? JSON.parse(game.kdaSnapshot) : [];
       
       for (const p of kdaList) {
         const uid = p.userId;
@@ -66,6 +66,13 @@ export async function GET(req: NextRequest) {
   });
 
   const userTierMap = new Map(users.map(u => [u.id, u]));
+  const guildMembers = guild
+    ? await prisma.guildMember.findMany({
+        where: { guildId: guild.id, userId: { in: userIds } },
+        select: { userId: true, nickname: true },
+      })
+    : [];
+  const serverNickMap = new Map(guildMembers.map((member) => [member.userId, member.nickname]));
 
   // 최신 발로란트 티어 아이콘 URL 매핑 (ID: 03621f52-342b-cf4e-4f86-9350a49c6d04)
   function getTierIconUrl(tierName: string | null): string {
@@ -130,7 +137,7 @@ export async function GET(req: NextRequest) {
 
     return {
       ...s,
-      name: user?.name || "Unknown",
+      name: serverNickMap.get(s.userId) || user?.name || "Unknown",
       image: user?.image || null,
       krTier,
       krTierIcon: getTierIconUrl(krTier),

@@ -785,7 +785,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
             subtitle={settings.useTeamBoard ? "드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." : "내전에 참여 중인 플레이어 목록입니다."} 
             onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
             <div className="flex flex-wrap gap-2">
-              {participantPlayers.map((p) => <PlayerCard key={p.user.id} player={p} onRemove={() => removePlayer(p.user.id)} />)}
+              {participantPlayers.map((p) => <PlayerCard key={p.user.id} player={p} guildMembers={guildMembers} onRemove={() => removePlayer(p.user.id)} />)}
               {participantPlayers.length === 0 && <EmptyState text="참가자가 없습니다." />}
             </div>
           </DropArea>
@@ -799,14 +799,14 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                   captain={captain} members={members} 
                   onDropCaptain={settings.useCaptain ? (pId) => movePlayer(pId, tId, "captain") : undefined} 
                   onDropMember={(pId) => movePlayer(pId, tId, settings.useCaptain ? "member" : "participant")} 
-                  onRename={(n) => updateTeamName(tId, n)} onRemove={removePlayer} />;
+                  onRename={(n) => updateTeamName(tId, n)} onRemove={removePlayer} guildMembers={guildMembers} />;
               })}
             </section>
           )}
 
           {/* KDA 입력 패널 */}
           {assignedPlayers.length > 0 && (
-            <KdaPanel players={assignedPlayers} teamNames={teamNames} onSave={(kdaPlayers) => void patchScrim({ kdaPlayers })} />
+            <KdaPanel players={assignedPlayers} teamNames={teamNames} onSave={(kdaPlayers) => void patchScrim({ kdaPlayers })} guildMembers={guildMembers} />
           )}
 
           {/* 경기 기록 섹션 */}
@@ -1079,7 +1079,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                                           const kda = kdaData.find((k) => k.userId === uid);
                                           return (
                                             <div key={uid} className="flex items-center justify-between text-xs text-[#c8d3db]">
-                                              <span>{p?.user.name ?? uid.slice(0, 8)}</span>
+                                              <span>{resolveServerNick(uid, guildMembers, p?.user.name) ?? uid.slice(0, 8)}</span>
                                               {kda && <span className="text-[#9aa8b3]">{kda.kills}/{kda.deaths}/{kda.assists}</span>}
                                             </div>
                                           );
@@ -1099,6 +1099,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                               gameKda={gameKda}
                               setGameKda={setGameKda}
                               onSave={(kda) => void patchGame(game.id, { kdaSnapshot: kda })}
+                              guildMembers={guildMembers}
                             />
                           )}
                         </>
@@ -1322,7 +1323,7 @@ function AuctionScrimPage({
                         <div className="flex items-center gap-2">
                           {p.user.image ? <img src={p.user.image} alt="" className="h-8 w-8 rounded-full object-cover" /> : <div className="h-8 w-8 rounded-full bg-[#24313c]" />}
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-black text-white">{p.user.name ?? "이름 없음"}</div>
+                            <div className="truncate text-sm font-black text-white">{resolveServerNick(p.user.id, guildMembers, p.user.name) ?? "이름 없음"}</div>
                             <div className="truncate text-[11px] text-[#7b8a96]">{p.user.riotAccounts[0] ? `${p.user.riotAccounts[0].gameName}#${p.user.riotAccounts[0].tagLine}` : "Riot 미연동"}</div>
                           </div>
                           <button type="button" onClick={() => toggleCaptain(p.user.id)} className={`rounded px-2 py-1 text-[11px] font-black transition-colors ${selected ? "bg-[#f6c945] text-black" : "bg-[#2a3540] text-[#9aa8b3] hover:bg-[#f6c945]/30"}`}>
@@ -1358,7 +1359,7 @@ function AuctionScrimPage({
               <div className="mb-3 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">참가자 목록 ({participants.length}명)</div>
               {participants.length === 0
                 ? <div className="rounded border border-dashed border-[#2a3540] py-8 text-center text-xs text-[#7b8a96]">아직 참가자가 없습니다. 디스코드 모집 글에 이모지를 달면 자동 등록됩니다.</div>
-                : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 items-stretch">{participants.map((p) => <div key={p.id}><PlayerCard player={p} compact /></div>)}</div>
+                : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 items-stretch">{participants.map((p) => <div key={p.id}><PlayerCard player={p} compact guildMembers={guildMembers} /></div>)}</div>
               }
             </section>
           </div>
@@ -1445,7 +1446,7 @@ function AuctionScrimPage({
                     : <div className="h-20 w-20 rounded-lg bg-[#24313c]" />
                   }
                   <div className="min-w-0 flex-1">
-                    <div className="text-2xl font-black text-white">{currentPlayer.user.name ?? "이름 없음"}</div>
+                    <div className="text-2xl font-black text-white">{resolveServerNick(currentPlayer.user.id, guildMembers, currentPlayer.user.name) ?? "이름 없음"}</div>
                     {currentPlayer.user.riotAccounts.map((a) => (
                       <div key={a.gameName} className="mt-1 text-sm text-[#9aa8b3]">
                         {a.region.toUpperCase()} · {a.gameName}#{a.tagLine}
@@ -1483,7 +1484,7 @@ function AuctionScrimPage({
                       <div className="flex items-center gap-2">
                         {captain?.user.image ? <img src={captain.user.image} alt="" className="h-8 w-8 rounded-full object-cover" /> : <div className="h-8 w-8 rounded-full bg-[#24313c]" />}
                         <div>
-                          <div className="text-sm font-black text-white">{captain?.user.name ?? "팀장"}</div>
+                          <div className="text-sm font-black text-white">{captain ? resolveServerNick(captain.user.id, guildMembers, captain.user.name) : "팀장"}</div>
                           <div className="text-[11px]" style={{ color }}>{getDefaultTeamName(i)}</div>
                         </div>
                       </div>
@@ -1535,7 +1536,7 @@ function AuctionScrimPage({
                     {members.map((p) => (
                       <div key={p.id} className="flex items-center gap-2 px-4 py-2">
                         {p.user.image ? <img src={p.user.image} alt="" className="h-7 w-7 rounded-full object-cover" /> : <div className="h-7 w-7 rounded-full bg-[#24313c]" />}
-                        <span className="flex-1 truncate text-sm font-bold text-white">{p.user.name ?? "이름 없음"}</span>
+                        <span className="flex-1 truncate text-sm font-bold text-white">{resolveServerNick(p.user.id, guildMembers, p.user.name) ?? "이름 없음"}</span>
                         {p.role === "captain" && <span className="rounded bg-[#f6c945]/15 px-2 py-0.5 text-[10px] font-black text-[#f6c945]">팀장</span>}
                       </div>
                     ))}
@@ -1558,7 +1559,7 @@ function AuctionScrimPage({
             return (
               <div key={cId} className="val-card p-4" style={{ borderTop: `3px solid ${color}` }}>
                 <div className="text-xs font-black" style={{ color }}>{getDefaultTeamName(i)}</div>
-                <div className="mt-1 text-sm font-bold text-white truncate">{captain?.user.name ?? "팀장"}</div>
+                <div className="mt-1 text-sm font-bold text-white truncate">{captain ? resolveServerNick(captain.user.id, guildMembers, captain.user.name) : "팀장"}</div>
                 <div className="mt-2 text-2xl font-black text-white">{(captainPoints[cId] ?? 0).toLocaleString()}<span className="ml-1 text-xs text-[#7b8a96]">P</span></div>
                 <div className="mt-1 text-[11px] text-[#7b8a96]">팀원 {memberCount}명</div>
               </div>
@@ -1577,7 +1578,7 @@ function AuctionScrimPage({
               return (
                 <div key={uid} className="flex items-center gap-1.5 rounded border border-[#2a3540] bg-[#0f1923]/70 px-2 py-1">
                   {p?.user.image ? <img src={p.user.image} alt="" className="h-5 w-5 rounded-full object-cover" /> : <div className="h-5 w-5 rounded-full bg-[#24313c]" />}
-                  <span className="text-xs font-bold text-[#9aa8b3]">{p?.user.name ?? uid}</span>
+                  <span className="text-xs font-bold text-[#9aa8b3]">{resolveServerNick(uid, guildMembers, p?.user.name) ?? uid}</span>
                 </div>
               );
             })}
@@ -1615,7 +1616,7 @@ function DropArea({ title, subtitle, children, onDrop }: { title: string; subtit
   );
 }
 
-function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename }: { teamIds: string[]; teamNames: Record<string, string>; players: ScrimPlayer[]; onDrop: (playerId: string, teamId: string) => void; onRename: (teamId: string, name: string) => void }) {
+function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename, guildMembers = [] }: { teamIds: string[]; teamNames: Record<string, string>; players: ScrimPlayer[]; onDrop: (playerId: string, teamId: string) => void; onRename: (teamId: string, name: string) => void; guildMembers?: GuildMemberOption[] }) {
   return (
     <div className="val-card p-4">
       <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">Team Captains</div>
@@ -1625,7 +1626,7 @@ function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename }: { te
           return (
             <div key={tId} className="rounded border border-[#2a3540] bg-[#0f1923]/80 p-3" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDrop(id, tId); }}>
               <input defaultValue={teamNames[tId] ?? getDefaultTeamName(i)} onBlur={(e) => onRename(tId, e.target.value.trim())} className="mb-2 w-full rounded border border-[#384653] bg-[#111c24] px-2 py-1 text-xs font-black text-white outline-none focus:border-[#ff4655]" />
-              {captain ? <PlayerCard player={captain} compact /> : <EmptyState text="팀장 슬롯" small />}
+              {captain ? <PlayerCard player={captain} compact guildMembers={guildMembers} /> : <EmptyState text="팀장 슬롯" small />}
             </div>
           );
         })}
@@ -1634,7 +1635,7 @@ function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename }: { te
   );
 }
 
-function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename, onRemove }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain?: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void; onRemove?: (id: string) => void }) {
+function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename, onRemove, guildMembers = [] }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain?: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void; onRemove?: (id: string) => void; guildMembers?: GuildMemberOption[] }) {
   return (
     <article className="val-card overflow-hidden">
       <div className="border-b border-[#2a3540] bg-[#1d2732] px-5 py-4" style={{ borderTop: `3px solid ${color}` }}>
@@ -1645,11 +1646,11 @@ function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDro
       </div>
       <div className="grid gap-4 p-4">
         {onDropCaptain && (
-          <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
+          <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} guildMembers={guildMembers} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
         )}
         <DropAreaMini label="팀원" onDrop={onDropMember}>
           <div className="grid gap-2">
-            {members.map((p) => <PlayerCard key={p.id} player={p} onRemove={onRemove ? () => onRemove(p.id) : undefined} />)}
+            {members.map((p) => <PlayerCard key={p.id} player={p} guildMembers={guildMembers} onRemove={onRemove ? () => onRemove(p.id) : undefined} />)}
             {members.length === 0 && <EmptyState text="팀원 배치" />}
           </div>
         </DropAreaMini>
@@ -1738,11 +1739,12 @@ function ManagerPanel({ managerIds, guildMembers, newManagerId, setNewManagerId,
 
 // ─── KDA 입력 패널 ──────────────────────────────────────────────────────────────
 function KdaPanel({
-  players, teamNames, onSave,
+  players, teamNames, onSave, guildMembers = [],
 }: {
   players: ScrimPlayer[];
   teamNames: Record<string, string>;
   onSave: (kdaPlayers: { id: string; kills: number; deaths: number; assists: number }[]) => void;
+  guildMembers?: GuildMemberOption[];
 }) {
   const [kda, setKda] = useState<Record<string, { kills: string; deaths: string; assists: string }>>(() => {
     const init: Record<string, { kills: string; deaths: string; assists: string }> = {};
@@ -1813,7 +1815,7 @@ function KdaPanel({
                         <td className="py-2 pr-3">
                           <div className="flex items-center gap-2">
                             {p.user.image ? <img src={p.user.image} alt="" className="h-6 w-6 rounded-full object-cover" /> : <div className="h-6 w-6 rounded-full bg-[#24313c]" />}
-                            <span className="font-bold text-white truncate max-w-[120px]">{p.user.name ?? "이름 없음"}</span>
+                            <span className="font-bold text-white truncate max-w-[120px]">{resolveServerNick(p.user.id, guildMembers, p.user.name) ?? "이름 없음"}</span>
                             {p.role === "captain" && <span className="rounded bg-[#f6c945]/15 px-1.5 py-0.5 text-[10px] font-black text-[#f6c945]">C</span>}
                           </div>
                         </td>
@@ -1843,7 +1845,7 @@ function KdaPanel({
 
 // ─── 경기별 KDA 입력 패널 ────────────────────────────────────────────────────────
 function GameKdaPanel({
-  game, players, teamNames, gameKda, setGameKda, onSave,
+  game, players, teamNames, gameKda, setGameKda, onSave, guildMembers = [],
 }: {
   game: ScrimGame;
   players: ScrimPlayer[];
@@ -1851,6 +1853,7 @@ function GameKdaPanel({
   gameKda: Record<string, Record<string, number>>;
   setGameKda: React.Dispatch<React.SetStateAction<Record<string, Record<string, number>>>>;
   onSave: (kda: { userId: string; kills: number; deaths: number; assists: number }[]) => void;
+  guildMembers?: GuildMemberOption[];
 }) {
   const [saved, setSaved] = useState(false);
   const kdaData = parseJson<Array<{ userId: string; kills: number; deaths: number; assists: number }>>(game.kdaSnapshot, []);
@@ -1912,7 +1915,7 @@ function GameKdaPanel({
                 <tbody className="divide-y divide-[#1d2732]">
                   {teamPlayers.map((p) => (
                     <tr key={p.id}>
-                      <td className="py-1 pr-2 text-white truncate max-w-[100px]">{p.user.name ?? "이름 없음"}</td>
+                      <td className="py-1 pr-2 text-white truncate max-w-[100px]">{resolveServerNick(p.user.id, guildMembers, p.user.name) ?? "이름 없음"}</td>
                       {(["kills", "deaths", "assists"] as const).map((field) => (
                         <td key={field} className="py-1 px-1">
                           <input

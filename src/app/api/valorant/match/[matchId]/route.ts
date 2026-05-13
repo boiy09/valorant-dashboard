@@ -1,8 +1,6 @@
 import { NextRequest } from "next/server";
 import axios from "axios";
 import { apiCache } from "@/lib/apiCache";
-import { getOpGgProfileFallback } from "@/lib/opgg";
-import { normalizeTierName } from "@/lib/tierName";
 
 const MATCH_TTL = 7 * 24 * 60 * 60 * 1000; // 7일 (매치는 불변)
 
@@ -132,7 +130,7 @@ async function getCurrentRankByPuuid(puuid: string) {
 
   return {
     tierId,
-    tierName: normalizeTierName(firstString(tier.name, current.currenttierpatched, data?.currenttierpatched) || "Unranked", tierId),
+    tierName: firstString(tier.name, current.currenttierpatched, data?.currenttierpatched) || "Unranked",
     tierIcon: await getRankIconByTier(tierId),
   };
 }
@@ -192,8 +190,14 @@ export async function GET(
       const rawNameIsUsable = !isAgentName(rawName, agentName) && !isPrivateLikeName(rawName);
       const localName = firstPlayerName(agentName, player.game_name, player.gameName, player.name, player.player_name, player.playerName);
       const localTag = firstString(player.tag, player.tagLine, player.tag_line, player.game_tag);
-      const accountFallback =
-        !localName || !localTag || !rawNameIsUsable ? await getAccountByPuuid(puuid).catch(() => null) : null;
+      const matchTierId = toNumber(tier.id);
+
+      // 계정·랭크 fallback을 병렬로 요청
+      const [accountFallback, rankFallback] = await Promise.all([
+        !localName || !localTag || !rawNameIsUsable ? getAccountByPuuid(puuid).catch(() => null) : Promise.resolve(null),
+        matchTierId <= 0 ? getCurrentRankByPuuid(puuid).catch(() => null) : Promise.resolve(null),
+      ]);
+
       const fallbackCard = asRecord(accountFallback?.card);
       const fallbackName = firstPlayerName(
         agentName,
@@ -204,20 +208,10 @@ export async function GET(
       const displayName = localName || fallbackName || rawName;
       const displayTag = localTag || firstString(accountFallback?.tag, accountFallback?.tagLine, accountFallback?.tag_line);
       const isPrivate = !localName && !fallbackName && !rawNameIsUsable;
-      const opGgFallback = !isPrivate && displayName && displayTag
-        ? await getOpGgProfileFallback(displayName, displayTag).catch(() => null)
-        : null;
-      const matchTierId = toNumber(tier.id);
-      const rankFallback = matchTierId > 0 ? null : await getCurrentRankByPuuid(puuid).catch(() => null);
-      const opGgRank = matchTierId <= 0 && !rankFallback && opGgFallback?.rank
-        ? { tierId: opGgFallback.rank.tierId, tierName: opGgFallback.rank.tierName, tierIcon: opGgFallback.rank.rankIcon }
-        : null;
-      const finalTierId = matchTierId || rankFallback?.tierId || opGgRank?.tierId || 0;
-      const finalTierName = normalizeTierName(
-        matchTierId > 0 ? firstString(tier.name) || "Unranked" : rankFallback?.tierName ?? opGgRank?.tierName ?? "Unranked",
-        finalTierId
-      );
-      const finalTierIcon = rankFallback?.tierIcon ?? opGgRank?.tierIcon ?? (await getRankIconByTier(finalTierId));
+      const finalTierId = matchTierId || rankFallback?.tierId || 0;
+      const finalTierName =
+        matchTierId > 0 ? firstString(tier.name) || "Unranked" : rankFallback?.tierName ?? "Unranked";
+      const finalTierIcon = rankFallback?.tierIcon ?? (await getRankIconByTier(finalTierId));
 
       return {
         puuid,
@@ -225,7 +219,7 @@ export async function GET(
         tag: isPrivate ? "" : displayTag,
         isPrivate,
         teamId: player.team_id,
-        level: toNumber(player.level ?? player.account_level, -1) >= 0 ? toNumber(player.level ?? player.account_level) : opGgFallback?.level ?? null,
+        level: toNumber(player.level ?? player.account_level, -1) >= 0 ? toNumber(player.level ?? player.account_level) : null,
         cardIcon:
           (card.small as string) ??
           (card.wide as string) ??
@@ -235,7 +229,6 @@ export async function GET(
           (fallbackCard.small as string) ??
           (fallbackCard.wide as string) ??
           (fallbackCard.large as string) ??
-          opGgFallback?.playerCardIcon ??
           "",
         agent: agentName,
         agentIcon,

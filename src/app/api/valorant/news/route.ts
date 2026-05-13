@@ -72,7 +72,8 @@ export async function GET() {
 
     patchNotes.sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)));
     return NextResponse.json({ patchNotes: patchNotes.slice(0, 4) });
-  } catch {
+  } catch (e) {
+    console.error("[valorant/news] 패치노트 스크래핑 실패:", e);
     return NextResponse.json({ patchNotes: [] });
   }
 }

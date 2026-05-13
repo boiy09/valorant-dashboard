@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 type DiscordAttachment = {
   id: string;
   filename?: string;
@@ -137,7 +139,10 @@ export async function GET(req: NextRequest) {
 
   const highlights = await Promise.all((await getHighlights(type, limit)).map(refreshHighlightUrl));
 
-  return Response.json({ highlights: highlights.map(serializeHighlight) });
+  return Response.json(
+    { highlights: highlights.map(serializeHighlight) },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 
 export async function POST(req: NextRequest) {

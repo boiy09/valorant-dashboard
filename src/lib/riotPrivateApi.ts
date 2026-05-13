@@ -46,6 +46,7 @@ type PrivateSeason = {
   label: string;
   isActive: boolean;
   startTime: number;
+  endTime: number;
 };
 
 type PrivateRankSeasonRecord = {
@@ -105,15 +106,20 @@ async function getPrivateSeasons(): Promise<PrivateSeason[]> {
   if (!response?.ok) return [];
 
   const payload = await response.json() as {
-    data?: Array<{ uuid?: string; displayName?: string; type?: string; isActive?: boolean; startTime?: string }>;
+    data?: Array<{ uuid?: string; displayName?: string; type?: string | null; isActive?: boolean; startTime?: string; endTime?: string }>;
   };
   const seasons = (payload.data ?? [])
-    .filter((season) => season.uuid && season.type === "act")
+    .filter((season) => season.uuid && season.type?.toLowerCase().includes("act"))
     .map((season) => ({
       id: season.uuid!.toLowerCase(),
       label: season.displayName || formatValorantSeasonLabel(season.uuid!),
-      isActive: Boolean(season.isActive),
+      isActive: Boolean(season.isActive) || (
+        Boolean(season.startTime && season.endTime) &&
+        new Date(season.startTime!).getTime() <= now &&
+        now < new Date(season.endTime!).getTime()
+      ),
       startTime: season.startTime ? new Date(season.startTime).getTime() : 0,
+      endTime: season.endTime ? new Date(season.endTime).getTime() : 0,
     }))
     .sort((a, b) => b.startTime - a.startTime);
 

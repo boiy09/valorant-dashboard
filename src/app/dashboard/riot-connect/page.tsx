@@ -15,6 +15,39 @@ const RIOT_LOGIN_URL =
 type FormState = "idle" | "loading" | "success" | "error";
 type RiotRegion = "KR" | "AP";
 
+const guideSteps = [
+  {
+    title: "Riot 로그인 페이지 열기",
+    desc: "연동 버튼을 누르면 Riot 공식 로그인 화면이 새 탭으로 열립니다.",
+    image: "/guides/riot-link/step-01-open-link.jpg",
+  },
+  {
+    title: "Riot 계정으로 로그인",
+    desc: "아이디와 비밀번호는 Riot 공식 페이지에서만 입력합니다.",
+    image: "/guides/riot-link/step-02-riot-login.jpg",
+  },
+  {
+    title: "보안 인증 진행",
+    desc: "인증 코드가 나오면 Riot 안내에 따라 인증을 완료합니다.",
+    image: "/guides/riot-link/step-03-auth-check.jpg",
+  },
+  {
+    title: "404 화면 확인",
+    desc: "로그인 후 404 화면이 보여도 정상입니다. 주소창의 URL이 필요합니다.",
+    image: "/guides/riot-link/step-04-copy-url.jpg",
+  },
+  {
+    title: "주소 전체 복사 후 붙여넣기",
+    desc: "주소창을 클릭하고 Ctrl+A, Ctrl+C로 전체 URL을 복사한 뒤 입력칸에 붙여넣습니다.",
+    image: "/guides/riot-link/step-05-paste-url.jpg",
+  },
+  {
+    title: "연동 완료 확인",
+    desc: "연동이 완료되면 연결된 Riot 계정과 서버가 표시됩니다.",
+    image: "/guides/riot-link/step-06-complete.jpg",
+  },
+];
+
 function regionLabel(region: RiotRegion) {
   return region === "KR" ? "한국 서버" : "아시아 서버";
 }
@@ -195,6 +228,33 @@ export default function RiotConnectPage() {
           </form>
         </section>
       </div>
+
+      <section className="val-card p-5">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-[#ff4655]">Image Guide</div>
+            <h2 className="mt-1 text-lg font-black text-white">이미지로 보는 연동 방법</h2>
+          </div>
+          <div className="text-xs text-[#7b8a96]">404 화면은 실패가 아니라 정상 단계입니다.</div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {guideSteps.map((step, index) => (
+            <article key={step.image} className="overflow-hidden rounded border border-[#263746] bg-[#0f1923]">
+              <div className="relative aspect-[16/9] overflow-hidden border-b border-[#263746] bg-black/30">
+                <img src={step.image} alt={step.title} className="h-full w-full object-cover" loading="lazy" />
+                <div className="absolute left-3 top-3 rounded bg-[#ff4655] px-2 py-1 text-xs font-black text-white">
+                  STEP {index + 1}
+                </div>
+              </div>
+              <div className="p-4">
+                <h3 className="break-keep text-base font-black text-white">{step.title}</h3>
+                <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">{step.desc}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

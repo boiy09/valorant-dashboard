@@ -1660,8 +1660,8 @@ function ParticipantList({
   return (
     <div className="overflow-hidden rounded border border-[#2a3540] bg-[#0b141c]/50">
       <div className="overflow-x-auto">
-        <div className="min-w-[760px]">
-          <div className="grid grid-cols-[minmax(160px,1.2fr)_minmax(180px,1.1fr)_92px_72px_94px_minmax(100px,0.75fr)_30px] items-center gap-2 border-b border-[#2a3540] bg-[#0f1923] px-2.5 py-2 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]">
+        <div className="min-w-[720px]">
+          <div className="grid grid-cols-[minmax(150px,1.15fr)_minmax(170px,1.05fr)_86px_66px_86px_minmax(86px,0.65fr)_28px] items-center gap-1.5 border-b border-[#2a3540] bg-[#0f1923] px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]">
             <div>Player</div>
             <div>Riot ID</div>
             <div>Tier</div>
@@ -1712,13 +1712,13 @@ function ParticipantRow({
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", player.id);
       }}
-      className="grid cursor-grab grid-cols-[minmax(160px,1.2fr)_minmax(180px,1.1fr)_92px_72px_94px_minmax(100px,0.75fr)_30px] items-center gap-2 px-2.5 py-2 transition hover:bg-[#13212b] active:cursor-grabbing"
+      className="grid cursor-grab grid-cols-[minmax(150px,1.15fr)_minmax(170px,1.05fr)_86px_66px_86px_minmax(86px,0.65fr)_28px] items-center gap-1.5 px-2 py-1.5 transition hover:bg-[#13212b] active:cursor-grabbing"
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-1.5">
         {player.user.image ? (
-          <img src={player.user.image} alt="" className="h-7 w-7 flex-shrink-0 rounded object-cover" />
+          <img src={player.user.image} alt="" className="h-6 w-6 flex-shrink-0 rounded object-cover" />
         ) : (
-          <div className="h-7 w-7 flex-shrink-0 rounded bg-[#24313c]" />
+          <div className="h-6 w-6 flex-shrink-0 rounded bg-[#24313c]" />
         )}
         <div className="min-w-0">
           <div className="truncate text-sm font-black text-white">{displayName}</div>
@@ -1756,7 +1756,7 @@ function ParticipantRow({
           <span className="text-xs font-bold text-[#52616d]">-</span>
         )}
       </div>
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-1">
         {agents.length > 0 ? (
           agents.slice(0, 3).map((agent) => {
             const portrait = agentPortraits[normalizeAgentKey(agent)];
@@ -1766,10 +1766,10 @@ function ParticipantRow({
                 src={portrait}
                 alt={agent}
                 title={agent}
-                className="h-7 w-7 rounded bg-[#24313c] object-cover object-top ring-1 ring-white/10"
+                className="h-6 w-6 rounded bg-[#24313c] object-cover object-top ring-1 ring-white/10"
               />
             ) : (
-              <span key={agent} title={agent} className="flex h-7 w-7 items-center justify-center rounded bg-[#24313c] text-[10px] font-black text-[#9aa8b3] ring-1 ring-white/10">
+              <span key={agent} title={agent} className="flex h-6 w-6 items-center justify-center rounded bg-[#24313c] text-[10px] font-black text-[#9aa8b3] ring-1 ring-white/10">
                 {agent.slice(0, 1)}
               </span>
             );

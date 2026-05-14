@@ -149,7 +149,7 @@ async function getPrivateSeasons(): Promise<PrivateSeason[]> {
         // displayName에서 액트 번호 추출 (예: "에피소드 10 // 액트 III" → III → 3)
         const actMatch = (season.displayName ?? "").match(/(?:act|액트|엑트)\s+([IVX]+|\d+)/i);
         const actRaw = actMatch?.[1] ?? "";
-        const actNum = ROMAN_TO_NUM[actRaw.toUpperCase()] ?? Number(actRaw) || undefined;
+        const actNum = (ROMAN_TO_NUM[actRaw.toUpperCase()] ?? Number(actRaw)) || undefined;
         label = actNum ? buildSeasonLabel(episodeNum, actNum) : buildSeasonLabel(episodeNum, 1);
       } else {
         label = season.displayName || formatValorantSeasonLabel(season.uuid!);

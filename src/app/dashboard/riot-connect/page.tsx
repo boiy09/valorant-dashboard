@@ -14,6 +14,7 @@ const RIOT_LOGIN_URL =
 
 type FormState = "idle" | "loading" | "success" | "error";
 type RiotRegion = "KR" | "AP";
+type AuthMethod = "url" | "ssid";
 
 const guideSteps = [
   {
@@ -52,30 +53,40 @@ function regionLabel(region: RiotRegion) {
   return region === "KR" ? "한국 서버" : "아시아 서버";
 }
 
-function LoadingLabel() {
+function LoadingLabel({ label }: { label: string }) {
   return (
     <span className="inline-flex items-center justify-center gap-2">
       <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white" style={{ animationDelay: "0ms" }} />
       <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white" style={{ animationDelay: "120ms" }} />
       <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white" style={{ animationDelay: "240ms" }} />
-      <span>연동 중</span>
+      <span>{label}</span>
     </span>
   );
 }
 
 export default function RiotConnectPage() {
   const router = useRouter();
+  const [method, setMethod] = useState<AuthMethod>("url");
+
+  // URL 방식 상태
   const [url, setUrl] = useState("");
   const [region, setRegion] = useState<RiotRegion>("KR");
-  const [state, setState] = useState<FormState>("idle");
-  const [error, setError] = useState("");
+  const [urlState, setUrlState] = useState<FormState>("idle");
+  const [urlError, setUrlError] = useState("");
+
+  // SSID 방식 상태
+  const [cookieInput, setCookieInput] = useState("");
+  const [ssidState, setSsidState] = useState<FormState>("idle");
+  const [ssidError, setSsidError] = useState("");
+
+  // 공통 성공 상태
   const [riotId, setRiotId] = useState("");
   const [connectedRegion, setConnectedRegion] = useState<RiotRegion | "">("");
 
-  async function handleSubmit(event: React.FormEvent) {
+  async function handleUrlSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setState("loading");
-    setError("");
+    setUrlState("loading");
+    setUrlError("");
 
     try {
       const response = await fetch("/api/riot/auth/token", {
@@ -89,22 +100,56 @@ export default function RiotConnectPage() {
       };
 
       if (!response.ok) {
-        setError(data.error ?? "연동에 실패했습니다. 주소 전체를 다시 붙여넣어 주세요.");
-        setState("error");
+        setUrlError(data.error ?? "연동에 실패했습니다. 주소 전체를 다시 붙여넣어 주세요.");
+        setUrlState("error");
         return;
       }
 
       setRiotId(data.account?.riotId ?? "");
       setConnectedRegion(data.account?.region ?? "");
       window.dispatchEvent(new Event("riot-accounts-updated"));
-      setState("success");
+      setUrlState("success");
     } catch {
-      setError("네트워크 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
-      setState("error");
+      setUrlError("네트워크 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+      setUrlState("error");
     }
   }
 
-  if (state === "success") {
+  async function handleSsidSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setSsidState("loading");
+    setSsidError("");
+
+    try {
+      const response = await fetch("/api/riot/auth/ssid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: cookieInput.trim() }),
+      });
+      const data = (await response.json()) as {
+        error?: string;
+        account?: { riotId?: string; region?: string };
+      };
+
+      if (!response.ok) {
+        setSsidError(data.error ?? "연동에 실패했습니다. Cookie 값을 다시 확인해 주세요.");
+        setSsidState("error");
+        return;
+      }
+
+      setRiotId(data.account?.riotId ?? "");
+      setConnectedRegion((data.account?.region as RiotRegion) ?? "");
+      window.dispatchEvent(new Event("riot-accounts-updated"));
+      setSsidState("success");
+    } catch {
+      setSsidError("네트워크 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+      setSsidState("error");
+    }
+  }
+
+  const isSuccess = urlState === "success" || ssidState === "success";
+
+  if (isSuccess) {
     return (
       <div className="mx-auto max-w-lg">
         <div className="val-card p-8 text-center">
@@ -113,7 +158,11 @@ export default function RiotConnectPage() {
           <div className="mt-5 rounded border border-[#2a3540] bg-[#0f1923] px-4 py-3">
             <div className="text-sm text-[#8da0ad]">연결된 계정</div>
             <div className="mt-1 text-lg font-black text-[#ff4655]">{riotId}</div>
-            {connectedRegion ? <div className="mt-1 text-xs font-bold text-green-400">{connectedRegion} / {regionLabel(connectedRegion)}</div> : null}
+            {connectedRegion ? (
+              <div className="mt-1 text-xs font-bold text-green-400">
+                {connectedRegion} / {regionLabel(connectedRegion as RiotRegion)}
+              </div>
+            ) : null}
           </div>
           <button
             type="button"
@@ -133,128 +182,253 @@ export default function RiotConnectPage() {
         <div className="mb-1 text-xs font-black uppercase tracking-[0.24em] text-[#ff4655]">Riot Account Link</div>
         <h1 className="text-2xl font-black text-white">Riot 계정 연동</h1>
         <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-          Riot 공식 로그인 후 나오는 주소를 붙여넣으면 연동됩니다. 비밀번호는 이 대시보드에 입력하거나 저장하지 않습니다.
+          비밀번호는 이 대시보드에 입력하거나 저장하지 않습니다. 아래에서 연동 방식을 선택하세요.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-        <section className="val-card p-5">
-          <div className="mb-4 text-base font-black text-white">따라하기</div>
-          <ol className="space-y-3">
-            <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
-              <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">Step 1</div>
-              <div className="mt-1 font-bold text-white">Riot 공식 로그인 페이지를 엽니다.</div>
-              <a
-                href={RIOT_LOGIN_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-flex rounded bg-[#ff4655] px-4 py-2 text-sm font-black text-white hover:bg-[#cc3644]"
-              >
-                Riot 로그인 열기
-              </a>
-            </li>
-            <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
-              <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">Step 2</div>
-              <div className="mt-1 font-bold text-white">로그인 후 404 화면이 떠도 정상입니다.</div>
-              <p className="mt-2 break-keep text-sm text-[#9aa8b3]">
-                그 화면의 주소창을 클릭하고 <span className="font-black text-white">Ctrl+A</span>, <span className="font-black text-white">Ctrl+C</span>로 주소 전체를 복사하세요.
-              </p>
-            </li>
-            <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
-              <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">Step 3</div>
-              <div className="mt-1 font-bold text-white">오른쪽 입력칸에 붙여넣고 연동합니다.</div>
-              <p className="mt-2 break-keep text-sm text-[#9aa8b3]">
-                주소에는 임시 로그인 토큰이 들어있습니다. 다른 곳에 공유하지 말고 이 화면에만 붙여넣어 주세요.
-              </p>
-            </li>
-          </ol>
-        </section>
-
-        <section className="val-card p-5">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-black text-white">서버 선택</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(["KR", "AP"] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setRegion(value)}
-                    disabled={state === "loading"}
-                    className={`rounded border px-3 py-3 text-sm font-black transition-colors ${
-                      region === value
-                        ? "border-[#ff4655] bg-[#ff4655]/10 text-white"
-                        : "border-[#2a3540] text-[#8da0ad] hover:border-[#ff4655]/60 hover:text-white"
-                    }`}
-                  >
-                    {value} / {regionLabel(value)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-black text-white">복사한 주소 붙여넣기</label>
-              <textarea
-                value={url}
-                onChange={(event) => {
-                  setUrl(event.target.value);
-                  if (state === "error") setState("idle");
-                }}
-                rows={8}
-                required
-                disabled={state === "loading"}
-                placeholder="https://playvalorant.com/opt_in#access_token=..."
-                className="w-full resize-none rounded border border-[#2a3540] bg-[#0f1923] px-4 py-3 font-mono text-sm text-white placeholder:text-[#465766] focus:border-[#ff4655] focus:outline-none"
-              />
-              <p className="mt-2 break-keep text-xs leading-relaxed text-[#7b8a96]">
-                예전 주소는 재사용할 수 없습니다. 토큰이 만료되면 Riot 로그인 페이지를 다시 열어 새 주소를 받아야 합니다.
-              </p>
-            </div>
-
-            {state === "error" && (
-              <div className="rounded border border-[#ff4655]/40 bg-[#ff4655]/10 px-4 py-3 text-sm font-bold text-[#ff8b95]">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={state === "loading" || !url.trim()}
-              className="val-btn w-full bg-[#ff4655] py-3 text-sm font-black text-white hover:bg-[#cc3644] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {state === "loading" ? <LoadingLabel /> : "Riot 계정 연동하기"}
-            </button>
-          </form>
-        </section>
+      {/* 방식 선택 */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => setMethod("url")}
+          className={`val-card p-4 text-left transition-all ${
+            method === "url"
+              ? "border-[#ff4655] bg-[#ff4655]/5"
+              : "border-[#2a3540] hover:border-[#ff4655]/50"
+          }`}
+        >
+          <div className={`text-xs font-black uppercase tracking-widest ${method === "url" ? "text-[#ff4655]" : "text-[#7b8a96]"}`}>
+            URL 방식
+          </div>
+          <div className="mt-1 font-black text-white">로그인 후 주소 복사</div>
+          <p className="mt-1 break-keep text-xs leading-relaxed text-[#7b8a96]">
+            간단하지만 토큰이 만료되면 재연동이 필요합니다.
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMethod("ssid")}
+          className={`val-card p-4 text-left transition-all ${
+            method === "ssid"
+              ? "border-[#7fffe6] bg-[#7fffe6]/5"
+              : "border-[#2a3540] hover:border-[#7fffe6]/50"
+          }`}
+        >
+          <div className={`text-xs font-black uppercase tracking-widest ${method === "ssid" ? "text-[#7fffe6]" : "text-[#7b8a96]"}`}>
+            Cookie 방식
+          </div>
+          <div className="mt-1 font-black text-white">F12 Cookie 복사</div>
+          <p className="mt-1 break-keep text-xs leading-relaxed text-[#7b8a96]">
+            한 번 연동하면 토큰이 자동으로 갱신됩니다.
+          </p>
+        </button>
       </div>
 
-      <section className="val-card p-5">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-[#ff4655]">Image Guide</div>
-            <h2 className="mt-1 text-lg font-black text-white">이미지로 보는 연동 방법</h2>
-          </div>
-          <div className="text-xs text-[#7b8a96]">404 화면은 실패가 아니라 정상 단계입니다.</div>
-        </div>
+      {/* URL 방식 */}
+      {method === "url" && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <section className="val-card p-5">
+            <div className="mb-4 text-base font-black text-white">따라하기</div>
+            <ol className="space-y-3">
+              <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
+                <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">Step 1</div>
+                <div className="mt-1 font-bold text-white">Riot 공식 로그인 페이지를 엽니다.</div>
+                <a
+                  href={RIOT_LOGIN_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex rounded bg-[#ff4655] px-4 py-2 text-sm font-black text-white hover:bg-[#cc3644]"
+                >
+                  Riot 로그인 열기
+                </a>
+              </li>
+              <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
+                <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">Step 2</div>
+                <div className="mt-1 font-bold text-white">로그인 후 404 화면이 떠도 정상입니다.</div>
+                <p className="mt-2 break-keep text-sm text-[#9aa8b3]">
+                  그 화면의 주소창을 클릭하고 <span className="font-black text-white">Ctrl+A</span>, <span className="font-black text-white">Ctrl+C</span>로 주소 전체를 복사하세요.
+                </p>
+              </li>
+              <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
+                <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">Step 3</div>
+                <div className="mt-1 font-bold text-white">오른쪽 입력칸에 붙여넣고 연동합니다.</div>
+                <p className="mt-2 break-keep text-sm text-[#9aa8b3]">
+                  주소에는 임시 로그인 토큰이 들어있습니다. 다른 곳에 공유하지 말고 이 화면에만 붙여넣어 주세요.
+                </p>
+              </li>
+            </ol>
+          </section>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {guideSteps.map((step, index) => (
-            <article key={step.image} className="overflow-hidden rounded border border-[#263746] bg-[#0f1923]">
-              <div className="relative aspect-[16/9] overflow-hidden border-b border-[#263746] bg-black/30">
-                <img src={step.image} alt={step.title} className="h-full w-full object-cover" loading="lazy" />
-                <div className="absolute left-3 top-3 rounded bg-[#ff4655] px-2 py-1 text-xs font-black text-white">
-                  STEP {index + 1}
+          <section className="val-card p-5">
+            <form onSubmit={handleUrlSubmit} className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-black text-white">서버 선택</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["KR", "AP"] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setRegion(value)}
+                      disabled={urlState === "loading"}
+                      className={`rounded border px-3 py-3 text-sm font-black transition-colors ${
+                        region === value
+                          ? "border-[#ff4655] bg-[#ff4655]/10 text-white"
+                          : "border-[#2a3540] text-[#8da0ad] hover:border-[#ff4655]/60 hover:text-white"
+                      }`}
+                    >
+                      {value} / {regionLabel(value)}
+                    </button>
+                  ))}
                 </div>
               </div>
-              <div className="p-4">
-                <h3 className="break-keep text-base font-black text-white">{step.title}</h3>
-                <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">{step.desc}</p>
+
+              <div>
+                <label className="mb-2 block text-sm font-black text-white">복사한 주소 붙여넣기</label>
+                <textarea
+                  value={url}
+                  onChange={(event) => {
+                    setUrl(event.target.value);
+                    if (urlState === "error") setUrlState("idle");
+                  }}
+                  rows={8}
+                  required
+                  disabled={urlState === "loading"}
+                  placeholder="https://playvalorant.com/opt_in#access_token=..."
+                  className="w-full resize-none rounded border border-[#2a3540] bg-[#0f1923] px-4 py-3 font-mono text-sm text-white placeholder:text-[#465766] focus:border-[#ff4655] focus:outline-none"
+                />
+                <p className="mt-2 break-keep text-xs leading-relaxed text-[#7b8a96]">
+                  예전 주소는 재사용할 수 없습니다. 토큰이 만료되면 Riot 로그인 페이지를 다시 열어 새 주소를 받아야 합니다.
+                </p>
               </div>
-            </article>
-          ))}
+
+              {urlState === "error" && (
+                <div className="rounded border border-[#ff4655]/40 bg-[#ff4655]/10 px-4 py-3 text-sm font-bold text-[#ff8b95]">
+                  {urlError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={urlState === "loading" || !url.trim()}
+                className="val-btn w-full bg-[#ff4655] py-3 text-sm font-black text-white hover:bg-[#cc3644] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {urlState === "loading" ? <LoadingLabel label="연동 중" /> : "Riot 계정 연동하기"}
+              </button>
+            </form>
+          </section>
         </div>
-      </section>
+      )}
+
+      {/* Cookie(SSID) 방식 */}
+      {method === "ssid" && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <section className="val-card p-5">
+            <div className="mb-4 text-base font-black text-white">따라하기</div>
+            <ol className="space-y-3">
+              <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
+                <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 1</div>
+                <div className="mt-1 font-bold text-white">아래 버튼으로 Riot 로그인을 완료합니다.</div>
+                <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
+                  새 탭이 열리면 평소처럼 Riot 계정으로 로그인하세요. 로그인 후 페이지가 이동하면 완료입니다.
+                </p>
+                <a
+                  href={RIOT_LOGIN_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex rounded bg-[#ff4655] px-4 py-2 text-sm font-black text-white hover:bg-[#cc3644]"
+                >
+                  Riot 로그인 열기
+                </a>
+              </li>
+              <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
+                <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 2</div>
+                <div className="mt-1 font-bold text-white">F12 → Network 탭에서 Cookie를 복사합니다.</div>
+                <ol className="mt-2 space-y-1 break-keep text-sm leading-relaxed text-[#9aa8b3]">
+                  <li>① 로그인된 탭에서 <span className="font-black text-white">F12</span> 를 눌러 개발자 도구를 엽니다.</li>
+                  <li>② 상단 탭에서 <span className="font-black text-white">Network</span> 를 클릭합니다.</li>
+                  <li>③ 페이지를 <span className="font-black text-white">새로고침(F5)</span> 합니다.</li>
+                  <li>④ 왼쪽 요청 목록에서 <span className="font-black text-white">check-session-iframe</span> 을 클릭합니다.</li>
+                  <li>⑤ 오른쪽 <span className="font-black text-white">Headers → Request Headers → Cookie</span> 값 전체를 복사합니다.</li>
+                </ol>
+              </li>
+              <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
+                <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 3</div>
+                <div className="mt-1 font-bold text-white">복사한 값을 오른쪽에 붙여넣고 연동합니다.</div>
+                <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
+                  성공하면 토큰이 만료될 때마다 자동으로 갱신되어 재연동 팝업이 뜨지 않습니다.
+                </p>
+              </li>
+            </ol>
+          </section>
+
+          <section className="val-card p-5">
+            <form onSubmit={handleSsidSubmit} className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-black text-white">Cookie 값 붙여넣기</label>
+                <textarea
+                  value={cookieInput}
+                  onChange={(event) => {
+                    setCookieInput(event.target.value);
+                    if (ssidState === "error") setSsidState("idle");
+                  }}
+                  rows={10}
+                  required
+                  disabled={ssidState === "loading"}
+                  placeholder="ssid=...; clid=...; csid=..."
+                  className="w-full resize-none rounded border border-[#2a3540] bg-[#0f1923] px-4 py-3 font-mono text-sm text-white placeholder:text-[#465766] focus:border-[#7fffe6] focus:outline-none"
+                />
+                <p className="mt-2 break-keep text-xs leading-relaxed text-[#7b8a96]">
+                  Cookie에는 로그인 세션 정보가 들어 있습니다. 이 화면 외 다른 곳에는 절대 공유하지 마세요.
+                </p>
+              </div>
+
+              {ssidState === "error" && (
+                <div className="rounded border border-[#ff4655]/40 bg-[#ff4655]/10 px-4 py-3 text-sm font-bold text-[#ff8b95]">
+                  {ssidError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={ssidState === "loading" || !cookieInput.trim()}
+                className="val-btn w-full bg-[#7fffe6]/10 py-3 text-sm font-black text-[#7fffe6] ring-1 ring-[#7fffe6]/40 hover:bg-[#7fffe6]/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {ssidState === "loading" ? <LoadingLabel label="연동 중" /> : "Cookie로 연동하기"}
+              </button>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {/* 이미지 가이드 (URL 방식에서만 표시) */}
+      {method === "url" && (
+        <section className="val-card p-5">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.22em] text-[#ff4655]">Image Guide</div>
+              <h2 className="mt-1 text-lg font-black text-white">이미지로 보는 연동 방법</h2>
+            </div>
+            <div className="text-xs text-[#7b8a96]">404 화면은 실패가 아니라 정상 단계입니다.</div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {guideSteps.map((step, index) => (
+              <article key={step.image} className="overflow-hidden rounded border border-[#263746] bg-[#0f1923]">
+                <div className="relative aspect-[16/9] overflow-hidden border-b border-[#263746] bg-black/30">
+                  <img src={step.image} alt={step.title} className="h-full w-full object-cover" loading="lazy" />
+                  <div className="absolute left-3 top-3 rounded bg-[#ff4655] px-2 py-1 text-xs font-black text-white">
+                    STEP {index + 1}
+                  </div>
+                </div>
+                <div className="p-4">
+                  <h3 className="break-keep text-base font-black text-white">{step.title}</h3>
+                  <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">{step.desc}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

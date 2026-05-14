@@ -4,7 +4,14 @@ import { useState } from "react";
 
 type FormState = "idle" | "loading" | "success" | "error";
 
-const COOKIE_PAGE_URL = "https://auth.riotgames.com/";
+const RIOT_LOGIN_URL =
+  "https://auth.riotgames.com/authorize" +
+  "?client_id=play-valorant-web-prod" +
+  "&redirect_uri=https://playvalorant.com/opt_in" +
+  "&response_type=token+id_token" +
+  "&scope=account+openid" +
+  "&nonce=1" +
+  "&prompt=login";
 
 function LoadingLabel() {
   return (
@@ -65,8 +72,8 @@ export default function RiotSsidTestPage() {
         <div className="mb-1 text-xs font-black uppercase tracking-[0.24em] text-[#7fffe6]">Riot SSID Test</div>
         <h1 className="text-2xl font-black text-white">Riot 장기 연동 테스트</h1>
         <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-          기존 라이엇 연동 탭은 그대로 두고, 여기에서만 SSID 방식으로 자동 갱신 가능 여부를 테스트합니다.
-          성공하면 서버에 SSID가 저장되어 토큰 만료 시 재연동 없이 갱신을 시도할 수 있습니다.
+          기존 Riot 연동은 그대로 두고, 여기서만 SSID 방식의 자동 갱신 가능 여부를 테스트합니다.
+          성공하면 서버에 SSID가 저장되어 토큰 만료 후에도 재연동 없이 갱신을 시도할 수 있습니다.
         </p>
       </section>
 
@@ -78,19 +85,19 @@ export default function RiotSsidTestPage() {
               <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 1</div>
               <div className="mt-1 font-bold text-white">Riot 로그인 상태를 만듭니다.</div>
               <a
-                href={COOKIE_PAGE_URL}
+                href={RIOT_LOGIN_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-3 inline-flex rounded bg-[#ff4655] px-4 py-2 text-sm font-black text-white hover:bg-[#cc3644]"
               >
-                Riot 페이지 열기
+                Riot 로그인 열기
               </a>
             </li>
             <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
               <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 2</div>
               <div className="mt-1 font-bold text-white">브라우저 쿠키에서 ssid 값을 복사합니다.</div>
               <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-                Chrome 기준으로 Riot 페이지에서 F12를 누른 뒤 Application, Cookies, auth.riotgames.com 순서로 들어가
+                Chrome 기준으로 Riot 로그인 탭에서 F12를 누른 뒤 Application, Cookies, auth.riotgames.com 순서로 들어가
                 이름이 ssid인 값을 복사합니다.
               </p>
             </li>
@@ -167,7 +174,7 @@ export default function RiotSsidTestPage() {
           </div>
           <div className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
             <div className="text-xs font-black text-[#ff8b95]">주의</div>
-            <p className="mt-2 text-sm leading-relaxed text-[#9aa8b3]">이 탭은 실험용입니다. 결과가 안정적이면 기존 연동 UX에 반영합니다.</p>
+            <p className="mt-2 text-sm leading-relaxed text-[#9aa8b3]">이 기능은 테스트용입니다. 결과가 안정적이면 기존 연동 UX에 반영합니다.</p>
           </div>
         </div>
       </section>

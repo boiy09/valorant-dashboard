@@ -605,6 +605,178 @@ async function getAgentIconByName(agentName: string) {
   return typeof agent?.displayIcon === "string" ? agent.displayIcon : "";
 }
 
+async function getAgentByUuid(characterId: string): Promise<{ name: string; icon: string }> {
+  if (!characterId) return { name: "Unknown", icon: "" };
+
+  const { data } = await apiCache.getOrFetch("agents:en-US", TTL.VERY_LONG, async () => {
+    const response = await fetch("https://valorant-api.com/v1/agents?isPlayableCharacter=true&language=en-US");
+    const payload = await response.json();
+    return payload?.data ?? [];
+  });
+
+  const uuid = characterId.toLowerCase();
+  const agent = asArray<Record<string, unknown>>(data).find(
+    (item) => typeof item.uuid === "string" && item.uuid.toLowerCase() === uuid
+  );
+
+  return {
+    name: typeof agent?.displayName === "string" ? agent.displayName : "Unknown",
+    icon: typeof agent?.displayIcon === "string" ? agent.displayIcon : "",
+  };
+}
+
+function riotMapIdToName(mapId: string): string {
+  const last = mapId.split("/").pop() ?? mapId;
+  const known: Record<string, string> = {
+    Ascent: "Ascent", Split: "Split", Fracture: "Fracture", Bind: "Bind",
+    Breeze: "Breeze", Icebox: "Icebox", Haven: "Haven", Pearl: "Pearl",
+    Lotus: "Lotus", Sunset: "Sunset", Abyss: "Abyss", District: "District",
+    Kasbah: "Kasbah", Piazza: "Piazza", Juliett: "Juliett",
+  };
+  return known[last] ?? last;
+}
+
+function riotQueueIdToMode(queueId: string): string {
+  const map: Record<string, string> = {
+    competitive: "경쟁전", unrated: "일반전", spikerush: "스파이크 돌격",
+    deathmatch: "데스매치", ggteam: "팀 데스매치", swiftplay: "스위프트플레이",
+    onefa: "스노우볼 파이트", hurm: "팀 데스매치", custom: "커스텀",
+  };
+  return map[queueId?.toLowerCase()] ?? queueId ?? "기타";
+}
+
+export async function getRiotOfficialRecentMatches(
+  puuid: string,
+  region: "kr" | "ap",
+  count = 10
+): Promise<MatchStats[]> {
+  if (!process.env.RIOT_API_KEY) return [];
+
+  const host = `${region}.api.riotgames.com`;
+  const headers = { "X-Riot-Token": process.env.RIOT_API_KEY };
+
+  const listRes = await fetch(
+    `https://${host}/val/match/v1/matchlists/by-puuid/${puuid}`,
+    { headers, signal: AbortSignal.timeout(8000) }
+  );
+  if (!listRes.ok) return [];
+
+  const listData = await listRes.json() as {
+    history?: Array<{ matchId: string; gameStartTimeMillis: number; queueId: string }>;
+  };
+  const history = (listData.history ?? []).slice(0, count);
+
+  const details = await Promise.allSettled(
+    history.map(async (h) => {
+      const res = await fetch(
+        `https://${host}/val/match/v1/matches/${h.matchId}`,
+        { headers, signal: AbortSignal.timeout(8000) }
+      );
+      if (!res.ok) return null;
+      return { match: await res.json() as Record<string, unknown>, hist: h };
+    })
+  );
+
+  const results = await Promise.all(
+    details.map(async (r): Promise<MatchStats | null> => {
+      if (r.status === "rejected" || !r.value) return null;
+      const { match, hist } = r.value;
+      const matchInfo = asRecord(match.matchInfo);
+      const players = asArray<Record<string, unknown>>(match.players);
+      const teams = asArray<Record<string, unknown>>(match.teams);
+
+      const me = players.find((p) => toString(p.puuid, "") === puuid);
+      if (!me) return null;
+
+      const myStats = asRecord(me.stats);
+      const myTeamId = toString(me.teamId, "red").toLowerCase();
+      const myTeam = teams.find((t) => toString(t.teamId, "").toLowerCase() === myTeamId);
+      const enemyTeam = teams.find((t) => toString(t.teamId, "").toLowerCase() !== myTeamId);
+
+      const won = Boolean(myTeam?.won);
+      const teamScore = toNumber(myTeam?.roundsWon ?? 0);
+      const enemyScore = toNumber(enemyTeam?.roundsWon ?? 0);
+      const matchResult: MatchResult = teamScore + enemyScore === 0 ? "무효" : won ? "승리" : "패배";
+
+      const { name: agentName, icon: agentIcon } = await getAgentByUuid(toString(me.characterId, ""));
+      const mapName = riotMapIdToName(toString(matchInfo.mapId, ""));
+      const mode = riotQueueIdToMode(toString((matchInfo.queueID ?? hist.queueId) as string, ""));
+
+      const scoreboardPlayers: ScoreboardPlayer[] = await Promise.all(
+        players.map(async (p) => {
+          const ps = asRecord(p.stats);
+          const { name: pAgent, icon: pAgentIcon } = await getAgentByUuid(toString(p.characterId, ""));
+          const pk = toNumber(ps.kills);
+          const pd = toNumber(ps.deaths);
+          const pa = toNumber(ps.assists);
+          const rp = Math.max(toNumber(ps.roundsPlayed), 1);
+          return {
+            puuid: toString(p.puuid, ""),
+            name: toString(p.gameName ?? p.displayName, ""),
+            tag: toString(p.tagLine, ""),
+            isPrivate: false,
+            teamId: normalizeTeamId(p.teamId),
+            level: null,
+            cardIcon: "",
+            agent: pAgent,
+            agentIcon: pAgentIcon,
+            tierName: "",
+            tierId: toNumber(p.competitiveTier),
+            tierIcon: null,
+            acs: Math.round(toNumber(ps.score) / rp),
+            kills: pk,
+            deaths: pd,
+            assists: pa,
+            plusMinus: pk - pd,
+            kd: pd > 0 ? Math.round((pk / pd) * 100) / 100 : pk,
+            hsPercent: 0,
+            adr: null,
+          };
+        })
+      );
+
+      const scoreboardTeams: ScoreboardTeam[] = teams.map((t) => ({
+        teamId: normalizeTeamId(t.teamId),
+        roundsWon: toNumber(t.roundsWon),
+        won: Boolean(t.won),
+      }));
+
+      const startedAt = new Date(toNumber(matchInfo.gameStartMillis ?? hist.gameStartTimeMillis, Date.now()));
+
+      return {
+        matchId: toString(matchInfo.matchId ?? hist.matchId, ""),
+        map: mapName,
+        mode,
+        agent: agentName,
+        agentIcon,
+        result: matchResult,
+        kills: toNumber(myStats.kills),
+        deaths: toNumber(myStats.deaths),
+        assists: toNumber(myStats.assists),
+        score: toNumber(myStats.score),
+        teamScore,
+        enemyScore,
+        headshots: 0,
+        bodyshots: 0,
+        legshots: 0,
+        adr: null,
+        playedAt: startedAt,
+        scoreboard: {
+          map: mapName,
+          mode,
+          startedAt: startedAt.toISOString(),
+          gameLengthMs: 0,
+          totalRounds: teamScore + enemyScore,
+          players: scoreboardPlayers,
+          teams: scoreboardTeams,
+          rounds: [],
+        },
+      };
+    })
+  );
+  return results.filter((m): m is MatchStats => m !== null);
+}
+
 export async function getPlayerByRiotId(
   gameName: string,
   tagLine: string

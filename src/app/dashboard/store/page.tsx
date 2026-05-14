@@ -85,7 +85,7 @@ function SkinCard({ offer }: { offer: StoreOffer }) {
 function BundleCard({ bundle }: { bundle: StoreBundle }) {
   return (
     <div className="val-card overflow-hidden">
-      <div className="relative flex h-48 items-center justify-center bg-[#0a1520]">
+      <div className="relative flex h-44 items-center justify-center bg-[#0a1520]">
         {bundle.displayIcon ? (
           <img
             src={bundle.displayIcon}
@@ -95,14 +95,16 @@ function BundleCard({ bundle }: { bundle: StoreBundle }) {
         ) : (
           <div className="flex h-full w-full items-center justify-center text-[#2a3540] text-5xl">▣</div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
         <div className="absolute bottom-0 inset-x-0 p-3">
-          <div className="text-base font-black text-white">{bundle.name}</div>
-          <div className="flex items-center gap-1.5 mt-1">
-            <VpIcon />
-            <span className="font-bold text-[#0bc4b4]">{bundle.cost.toLocaleString()}</span>
+          <div className="text-sm font-black text-white leading-snug">{bundle.name}</div>
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            <div className="flex items-center gap-1">
+              <VpIcon />
+              <span className="font-bold text-[#0bc4b4] text-sm">{bundle.cost.toLocaleString()}</span>
+            </div>
             {bundle.remainingSeconds > 0 && (
-              <span className="ml-2 text-[10px] text-[#7b8a96]">
+              <span className="text-[10px] text-[#7b8a96]">
                 {formatCountdown(bundle.remainingSeconds)} 남음
               </span>
             )}
@@ -256,10 +258,16 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
           </div>
 
           {/* 추천 번들 */}
-          {data.store?.bundle && (
+          {(data.store?.bundles?.length ?? 0) > 0 && (
             <div className="mb-5">
-              <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">추천 번들</div>
-              <BundleCard bundle={data.store.bundle} />
+              <div className="mb-3 text-xs uppercase tracking-widest text-[#7b8a96]">
+                추천 번들 <span className="text-[#4a5a68] normal-case tracking-normal">({data.store!.bundles.length}개)</span>
+              </div>
+              <div className={`grid gap-3 ${data.store!.bundles.length === 1 ? "grid-cols-1" : data.store!.bundles.length === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
+                {data.store!.bundles.map((bundle, i) => (
+                  <BundleCard key={i} bundle={bundle} />
+                ))}
+              </div>
             </div>
           )}
 

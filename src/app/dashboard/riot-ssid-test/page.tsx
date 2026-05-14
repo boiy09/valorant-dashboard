@@ -84,7 +84,10 @@ export default function RiotSsidTestPage() {
           <ol className="space-y-3">
             <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
               <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 1</div>
-              <div className="mt-1 font-bold text-white">Riot 로그인 상태를 만듭니다.</div>
+              <div className="mt-1 font-bold text-white">아래 버튼으로 Riot 로그인을 완료합니다.</div>
+              <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
+                새 탭이 열리면 평소처럼 Riot 계정으로 로그인하세요. 로그인 후 페이지가 이동하면 완료입니다.
+              </p>
               <a
                 href={RIOT_LOGIN_URL}
                 target="_blank"
@@ -96,16 +99,20 @@ export default function RiotSsidTestPage() {
             </li>
             <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
               <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 2</div>
-              <div className="mt-1 font-bold text-white">Cookie 값을 복사합니다.</div>
-              <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-                Network 요청의 Cookie 헤더 전체나 auth.riotgames.com 쿠키들을 name=value; 형식으로 이어 붙인 값을 사용합니다.
-              </p>
+              <div className="mt-1 font-bold text-white">F12 → Network 탭에서 Cookie를 복사합니다.</div>
+              <ol className="mt-2 space-y-1 break-keep text-sm leading-relaxed text-[#9aa8b3]">
+                <li>① 로그인된 탭에서 <span className="font-bold text-white">F12</span> 를 눌러 개발자 도구를 엽니다.</li>
+                <li>② 상단 탭에서 <span className="font-bold text-white">Network</span> 를 클릭합니다.</li>
+                <li>③ 페이지를 <span className="font-bold text-white">새로고침(F5)</span> 합니다.</li>
+                <li>④ 왼쪽 요청 목록에서 <span className="font-bold text-white">check-session-iframe</span> 을 클릭합니다.</li>
+                <li>⑤ 오른쪽 <span className="font-bold text-white">Headers → Request Headers → Cookie</span> 값 전체를 복사합니다.</li>
+              </ol>
             </li>
             <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
               <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 3</div>
-              <div className="mt-1 font-bold text-white">오른쪽 입력칸에 붙여넣고 테스트합니다.</div>
+              <div className="mt-1 font-bold text-white">복사한 값을 오른쪽 입력칸에 붙여넣고 테스트합니다.</div>
               <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-                ssid 값 하나만으로는 Riot이 거부할 수 있습니다. 실패하면 Cookie 헤더 전체로 다시 테스트하세요.
+                성공하면 Riot 계정이 장기 연동됩니다. 이후 토큰은 만료될 때마다 자동으로 갱신되며 재연동 팝업이 뜨지 않습니다.
               </p>
             </li>
           </ol>

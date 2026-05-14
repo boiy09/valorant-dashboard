@@ -347,15 +347,38 @@ export async function getAuthTokens(
   };
 }
 
-export async function refreshTokens(ssid: string): Promise<AuthResult> {
+export async function refreshTokens(cookies: string): Promise<AuthResult> {
+  const proxyUrl = process.env.RIOT_AUTH_PROXY_URL;
+  const proxySecret = process.env.RIOT_AUTH_PROXY_SECRET;
+
+  if (proxyUrl && proxySecret) {
+    // Playwright 브라우저에서 쿠키 주입 후 갱신 (TLS 핑거프린트 일치)
+    try {
+      const res = await fetch(`${proxyUrl}/auth/refresh`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-proxy-secret": proxySecret,
+        },
+        body: JSON.stringify({ cookies }),
+        cache: "no-store",
+      });
+      const data = await res.json() as AuthResult;
+      return data;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "알 수 없는 오류";
+      return { status: "error", message: `프록시 갱신 오류: ${message}` };
+    }
+  }
+
+  // 프록시 없을 때 직접 시도 (TLS 불일치로 실패할 수 있음)
   try {
-    // ssid 쿠키를 init POST에 포함 → 유효한 ssid면 즉시 token 반환
     const response = await fetch(AUTH_URL, {
       method: "POST",
       headers: {
         ...BASE_HEADERS,
         "Content-Type": "application/json",
-        Cookie: ssid,
+        Cookie: cookies,
       },
       body: JSON.stringify(AUTH_CLIENT_PAYLOAD),
       cache: "no-store",
@@ -367,7 +390,7 @@ export async function refreshTokens(ssid: string): Promise<AuthResult> {
     }
 
     const newCookies = parseCookies(response);
-    const mergedCookies = mergeCookies(ssid, newCookies);
+    const mergedCookies = mergeCookies(cookies, newCookies);
     const data = await response.json() as Record<string, unknown>;
 
     console.log(`[riotAuth] refreshTokens 응답 type:`, data.type);
@@ -380,7 +403,6 @@ export async function refreshTokens(ssid: string): Promise<AuthResult> {
       return { status: "success", ...tokens, cookies: mergedCookies };
     }
 
-    // type === "auth": ssid 만료 또는 무효
     console.error(`[riotAuth] refreshTokens 실패 응답:`, JSON.stringify(data).slice(0, 200));
     return { status: "error", message: "ssid가 만료되었거나 유효하지 않습니다. 다시 로그인 후 복사해 주세요." };
   } catch (err: unknown) {

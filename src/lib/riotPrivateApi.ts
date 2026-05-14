@@ -415,14 +415,17 @@ async function getBundleList(): Promise<Array<{ uuid: string } & BundleInfo>> {
 }
 
 async function checkCdnImage(uuid: string): Promise<string | null> {
-  // HEAD가 막혀있어도 405는 파일 존재를 의미하므로 200/405 모두 사용 가능으로 처리
+  // GET 요청으로 실제 파일 존재 여부 확인 (HEAD는 CDN에서 막힐 수 있음)
+  // 성공하면 브라우저 hotlink 차단 우회를 위해 프록시 URL 반환
   for (const filename of ["displayicon.png", "displayicon2.png", "verticalpromoimage.png"]) {
-    const url = `https://media.valorant-api.com/bundles/${uuid}/${filename}`;
+    const cdnUrl = `https://media.valorant-api.com/bundles/${uuid}/${filename}`;
     try {
-      const r = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(4000) });
-      if (r.status === 200 || r.status === 405) return url;
+      const r = await fetch(cdnUrl, { signal: AbortSignal.timeout(5000) });
+      if (r.ok) {
+        return `/api/bundle-image?u=${encodeURIComponent(cdnUrl)}`;
+      }
     } catch {
-      // 다음 시도
+      // 다음 파일명 시도
     }
   }
   return null;

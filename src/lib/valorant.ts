@@ -961,6 +961,7 @@ export async function getRecentMatches(
       headshots: toNumber(stats?.headshots),
       bodyshots: toNumber(stats?.bodyshots),
       legshots: toNumber(stats?.legshots),
+      adr: null,
       playedAt: new Date(match?.metadata?.started_at ?? Date.now()),
       scoreboard,
     };

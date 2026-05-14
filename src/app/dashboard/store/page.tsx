@@ -114,26 +114,31 @@ function BundleCard({ bundle }: { bundle: StoreBundle }) {
 }
 
 function BattlepassBar({ bp }: { bp: BattlepassData }) {
-  const XP_PER_LEVEL = 2000;
-  const progress = Math.min(100, Math.round((bp.progressionTowardsObjective / XP_PER_LEVEL) * 100));
   return (
     <div className="val-card p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-xs uppercase tracking-widest text-[#7b8a96]">배틀패스</div>
-        <div className="text-xs font-bold text-[#8da0ad]">레벨 {bp.totalLevelsCompleted}</div>
+        <div className="text-sm font-black text-white">레벨 {bp.totalLevelsCompleted}</div>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-[#1a2d3e]">
-        <div
-          className="h-full rounded-full bg-[#ff4655] transition-all"
-          style={{ width: `${progress}%` }}
-        />
+
+      {/* 현재 레벨 진행도 */}
+      <div className="mb-3">
+        <div className="mb-1 flex items-center justify-between text-[11px] text-[#7b8a96]">
+          <span>현재 레벨 진행도</span>
+          <span className="font-bold text-[#ece8e1]">{bp.progressionTowardsObjective.toLocaleString()} XP</span>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#1a2d3e]">
+          <div
+            className="h-full rounded-full bg-[#ff4655] transition-all"
+            style={{ width: `${Math.min(100, (bp.progressionTowardsObjective / 2000) * 100)}%` }}
+          />
+        </div>
       </div>
-      <div className="mt-2 flex items-center justify-between text-[11px] text-[#7b8a96]">
-        <span>{bp.progressionTowardsObjective.toLocaleString()} XP</span>
-        <span>{XP_PER_LEVEL.toLocaleString()} XP</span>
-      </div>
-      <div className="mt-1 text-[11px] text-[#7b8a96]">
-        이번 시즌 총 <span className="font-bold text-white">{bp.progressionEarnedThisAct.toLocaleString()}</span> XP 획득
+
+      {/* 시즌 누적 XP */}
+      <div className="border-t border-[#1a2d3e] pt-3 flex items-center justify-between text-[11px] text-[#7b8a96]">
+        <span>이번 시즌 누적 XP</span>
+        <span className="font-bold text-white">{bp.progressionEarnedThisAct.toLocaleString()} XP</span>
       </div>
     </div>
   );

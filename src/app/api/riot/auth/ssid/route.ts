@@ -53,14 +53,14 @@ function parseTokensFromUrl(input: string): { accessToken: string; idToken: stri
       const params = new URLSearchParams(input.slice(hashIdx + 1));
       const accessToken = params.get("access_token");
       const idToken = params.get("id_token");
-      if (accessToken && idToken) return { accessToken, idToken };
+      if (accessToken) return { accessToken, idToken: idToken ?? "" };
     }
 
     if (input.includes("access_token=")) {
       const params = new URLSearchParams(input);
       const accessToken = params.get("access_token");
       const idToken = params.get("id_token");
-      if (accessToken && idToken) return { accessToken, idToken };
+      if (accessToken) return { accessToken, idToken: idToken ?? "" };
     }
 
     return null;
@@ -69,8 +69,22 @@ function parseTokensFromUrl(input: string): { accessToken: string; idToken: stri
   }
 }
 
+function normalizeCookieInput(input: string): string {
+  let raw = input.trim();
+  const cookieHeader = raw.match(/(?:^|\n)\s*cookie\s*:\s*(.+)$/im);
+  if (cookieHeader?.[1]) raw = cookieHeader[1].trim();
+
+  const ssidPair = raw.match(/(?:^|[;\s])ssid=([^;\s]+)/);
+  if (ssidPair?.[1]) return raw.includes("=") ? raw : `ssid=${ssidPair[1]}`;
+
+  const ssidTableValue = raw.match(/(?:^|\n)\s*ssid\s+([^\s;]+)/i);
+  if (ssidTableValue?.[1]) return `ssid=${ssidTableValue[1]}`;
+
+  return raw.includes("=") ? raw : `ssid=${raw}`;
+}
+
 async function getTokensFromCookie(raw: string) {
-  const ssidCookie = raw.includes("=") ? raw : `ssid=${raw}`;
+  const ssidCookie = normalizeCookieInput(raw);
   if (!ssidCookie.includes("ssid=")) {
     throw new Error("ssid 쿠키가 포함되어 있지 않습니다. 주소창 URL 전체 또는 Network 탭의 Cookie 헤더 전체를 복사해 주세요.");
   }

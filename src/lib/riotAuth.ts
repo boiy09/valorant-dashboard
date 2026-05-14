@@ -271,11 +271,6 @@ export async function getAuthTokens(
   cookies: string,
   fallbackRegion?: "kr" | "ap"
 ): Promise<AuthTokens> {
-  if (!idToken) {
-    throw new Error("id_token이 없어 서버 지역을 확인할 수 없습니다. 주소창 URL 전체를 다시 복사해 주세요.");
-  }
-
-  // Step 4: entitlements token
   const entResponse = await fetch(ENTITLEMENTS_URL, {
     method: "POST",
     headers: {
@@ -286,19 +281,18 @@ export async function getAuthTokens(
   });
 
   if (!entResponse.ok) {
-    throw new Error(`Entitlements 오류: ${entResponse.status}`);
+    throw new Error(`Entitlements error: ${entResponse.status}`);
   }
 
   const entData = await entResponse.json() as { entitlements_token: string };
   const entitlementsToken = entData.entitlements_token;
 
-  // Step 5: userinfo
   const userResponse = await fetch(USERINFO_URL, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
   if (!userResponse.ok) {
-    throw new Error(`Userinfo 오류: ${userResponse.status}`);
+    throw new Error(`Userinfo error: ${userResponse.status}`);
   }
 
   const userData = await userResponse.json() as {
@@ -310,32 +304,34 @@ export async function getAuthTokens(
   const gameName = userData.acct?.game_name ?? "";
   const tagLine = userData.acct?.tag_line ?? "";
 
-  // Step 6: region
-  const geoResponse = await fetch(GEO_URL, {
-    method: "PUT",
-    headers: {
-      ...BASE_HEADERS,
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      "X-Riot-Entitlements-JWT": entitlementsToken,
-    },
-    body: JSON.stringify({ id_token: idToken }),
-  });
-
   let region = fallbackRegion;
-  if (geoResponse.ok) {
-    const geoData = await geoResponse.json() as { affinities?: { live?: string } };
-    const live = geoData.affinities?.live;
-    if (live === "kr" || live === "ap") {
-      region = live;
-    } else if (live) {
-      console.warn(`[riotAuth] 알 수 없는 리전 "${live}", fallback: ${fallbackRegion ?? "kr"}`);
+  if (idToken) {
+    const geoResponse = await fetch(GEO_URL, {
+      method: "PUT",
+      headers: {
+        ...BASE_HEADERS,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "X-Riot-Entitlements-JWT": entitlementsToken,
+      },
+      body: JSON.stringify({ id_token: idToken }),
+    });
+
+    if (geoResponse.ok) {
+      const geoData = await geoResponse.json() as { affinities?: { live?: string } };
+      const live = geoData.affinities?.live;
+      if (live === "kr" || live === "ap") {
+        region = live;
+      } else if (live) {
+        console.warn(`[riotAuth] unknown region "${live}", fallback: ${fallbackRegion ?? "kr"}`);
+      }
+    } else {
+      console.warn(`[riotAuth] GEO check failed ${geoResponse.status}, fallback: ${region ?? "kr"}`);
     }
   } else {
-    console.warn(`[riotAuth] GEO 확인 실패 ${geoResponse.status}, fallback: ${region ?? "kr"}`);
+    console.warn(`[riotAuth] id_token missing, using fallback region: ${region ?? "kr"}`);
   }
 
-  // GEO 실패 시 KR 기본값 사용 (한국 사용자 대상 서비스)
   if (!region) region = "kr";
 
   const ssid = extractSsid(cookies);

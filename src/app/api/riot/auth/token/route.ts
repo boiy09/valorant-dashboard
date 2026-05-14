@@ -59,7 +59,7 @@ function parseTokensFromUrl(input: string): { accessToken: string; idToken: stri
       const params = new URLSearchParams(input.slice(hashIdx + 1));
       const accessToken = params.get("access_token");
       const idToken = params.get("id_token");
-      if (accessToken && idToken) return { accessToken, idToken };
+      if (accessToken) return { accessToken, idToken: idToken ?? "" };
     }
 
     // Case 2: raw fragment string with access_token= key (access_token=eyJ...&id_token=eyJ...)
@@ -67,7 +67,7 @@ function parseTokensFromUrl(input: string): { accessToken: string; idToken: stri
       const params = new URLSearchParams(input);
       const accessToken = params.get("access_token");
       const idToken = params.get("id_token");
-      if (accessToken && idToken) return { accessToken, idToken };
+      if (accessToken) return { accessToken, idToken: idToken ?? "" };
     }
 
     // Case 3: raw JWT value directly, with &id_token= embedded (eyJ...value...&id_token=eyJ...)

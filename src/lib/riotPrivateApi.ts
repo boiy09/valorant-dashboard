@@ -98,15 +98,6 @@ async function getPrivateContent(): Promise<PrivateContent> {
   return data;
 }
 
-const ROMAN_TO_NUM: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
-
-function buildSeasonLabel(episodeNum: number, actNum: number): string {
-  const romans = ["I", "II", "III", "IV", "V", "VI"];
-  const actRoman = romans[actNum - 1] ?? String(actNum);
-  if (episodeNum >= 10) return `V${episodeNum + 15} // 액트 ${actRoman}`;
-  return `에피소드 ${episodeNum} // 액트 ${actRoman}`;
-}
-
 async function getPrivateSeasons(): Promise<PrivateSeason[]> {
   const now = Date.now();
   if (seasonsCache && now - seasonsCache.cachedAt < CONTENT_TTL) return seasonsCache.data;
@@ -128,15 +119,14 @@ async function getPrivateSeasons(): Promise<PrivateSeason[]> {
 
   const all = payload.data ?? [];
 
-  // 실제 액트의 부모로 참조된 항목만 에피소드로 취급 (클베 등 비에피소드 루트 항목 제외)
-  const referencedParents = new Set(
-    all.filter((s) => s.uuid && s.parentUuid).map((s) => s.parentUuid!.toLowerCase())
-  );
-  const episodeNumberMap = new Map<string, number>();
-  all
-    .filter((s) => s.uuid && !s.parentUuid && referencedParents.has(s.uuid.toLowerCase()))
-    .sort((a, b) => new Date(a.startTime ?? 0).getTime() - new Date(b.startTime ?? 0).getTime())
-    .forEach((ep, idx) => episodeNumberMap.set(ep.uuid!.toLowerCase(), idx + 1));
+  // 부모 항목(에피소드/V시즌)의 displayName 맵: uuid → displayName
+  // 예) "에피소드 1", "V25", "V26"
+  const parentNameMap = new Map<string, string>();
+  for (const entry of all) {
+    if (entry.uuid && !entry.parentUuid && entry.displayName) {
+      parentNameMap.set(entry.uuid.toLowerCase(), entry.displayName);
+    }
+  }
 
   // parentUuid가 있는 항목 = 액트
   const seasons = all
@@ -145,19 +135,14 @@ async function getPrivateSeasons(): Promise<PrivateSeason[]> {
       const startTime = season.startTime ? new Date(season.startTime).getTime() : 0;
       const endTime = season.endTime ? new Date(season.endTime).getTime() : 0;
 
-      // parentUuid로 에피소드 번호 확인
-      const episodeNum = season.parentUuid ? episodeNumberMap.get(season.parentUuid.toLowerCase()) : undefined;
-
-      let label: string;
-      if (episodeNum) {
-        // displayName에서 액트 번호 추출 (예: "에피소드 10 // 액트 III" → III → 3)
-        const actMatch = (season.displayName ?? "").match(/(?:act|액트|엑트)\s+([IVX]+|\d+)/i);
-        const actRaw = actMatch?.[1] ?? "";
-        const actNum = (ROMAN_TO_NUM[actRaw.toUpperCase()] ?? Number(actRaw)) || undefined;
-        label = actNum ? buildSeasonLabel(episodeNum, actNum) : buildSeasonLabel(episodeNum, 1);
-      } else {
-        label = season.displayName || formatValorantSeasonLabel(season.uuid!);
-      }
+      // 부모 displayName + 액트 displayName 직접 조합
+      // 예) "V26" + "액트 III" → "V26 // 액트 III"
+      // 예) "에피소드 1" + "액트 I" → "에피소드 1 // 액트 I"
+      const parentName = parentNameMap.get(season.parentUuid!.toLowerCase()) ?? "";
+      const actName = season.displayName ?? "";
+      const label = parentName && actName
+        ? `${parentName} // ${actName}`
+        : (season.displayName || formatValorantSeasonLabel(season.uuid!));
 
       return {
         id: season.uuid!.toLowerCase(),

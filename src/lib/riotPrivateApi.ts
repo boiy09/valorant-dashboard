@@ -426,10 +426,19 @@ export async function getStore(
 
   const VP_CURRENCY = "85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741";
 
+  type BundleItem = {
+    Item?: { ItemTypeID?: string; ItemID?: string };
+    BasePrice?: number;
+    DiscountedPrice?: number;
+    CurrencyID?: string;
+  };
+
   type BundlePayload = {
+    ID?: string;
     DataAssetID?: string;
     TotalDiscountedCost?: Record<string, number>;
     DurationRemainingInSeconds?: number;
+    Items?: BundleItem[];
   };
 
   const data = await response.json() as {
@@ -441,9 +450,7 @@ export async function getStore(
         Cost?: Record<string, number>;
       }>;
     };
-    // v2 단일 번들
     FeaturedBundle?: { Bundle?: BundlePayload };
-    // v3 복수 번들 배열
     FeaturedBundles?: { Bundles?: BundlePayload[] };
   };
 
@@ -473,21 +480,31 @@ export async function getStore(
     })
   );
 
-  // 번들: v3는 FeaturedBundles.Bundles[0], v2는 FeaturedBundle.Bundle
-  const bundleRaw =
-    data.FeaturedBundles?.Bundles?.[0] ?? data.FeaturedBundle?.Bundle;
-
+  // 번들: v3 FeaturedBundles 또는 v2 FeaturedBundle
+  const bundleRaw = data.FeaturedBundles?.Bundles?.[0] ?? data.FeaturedBundle?.Bundle;
   let bundle: StoreBundle | undefined;
-  if (bundleRaw?.DataAssetID) {
-    const bundleInfo = await resolveBundle(bundleRaw.DataAssetID);
-    if (bundleInfo) {
-      bundle = {
-        name: bundleInfo.name,
-        displayIcon: bundleInfo.displayIcon,
-        cost: bundleRaw.TotalDiscountedCost?.[VP_CURRENCY] ?? bundleInfo.price,
-        remainingSeconds: bundleRaw.DurationRemainingInSeconds ?? 0,
-      };
+
+  if (bundleRaw) {
+    // valorant-api.com에서 이름/이미지 조회 (DataAssetID, ID 순으로 시도)
+    const candidates = [bundleRaw.DataAssetID, bundleRaw.ID].filter(Boolean) as string[];
+    let bundleInfo: { name: string; displayIcon: string; price: number } | null = null;
+    for (const uuid of candidates) {
+      bundleInfo = await resolveBundle(uuid);
+      if (bundleInfo) break;
     }
+
+    // valorant-api.com 실패 시 번들 아이템 합산 비용으로 구성
+    const totalCost =
+      bundleRaw.TotalDiscountedCost?.[VP_CURRENCY] ??
+      bundleInfo?.price ??
+      (bundleRaw.Items ?? []).reduce((sum, item) => sum + (item.DiscountedPrice ?? item.BasePrice ?? 0), 0);
+
+    bundle = {
+      name: bundleInfo?.name ?? "번들",
+      displayIcon: bundleInfo?.displayIcon ?? "",
+      cost: totalCost,
+      remainingSeconds: bundleRaw.DurationRemainingInSeconds ?? 0,
+    };
   }
 
   console.log(`[store] offers=${offers.length} bundle=${bundle?.name ?? "none"}`);
@@ -543,32 +560,75 @@ export async function getBattlepass(
     throw new Error(`배틀패스 조회 실패: ${response.status}`);
   }
 
+  type ContractEntry = {
+    ContractDefinitionID: string;
+    ContractProgression?: { TotalProgressionEarned?: number };
+    ProgressionLevelReached?: number;
+    ProgressionTowardsNextLevel?: number;
+  };
+
   const data = await response.json() as {
     ActiveSpecialContract?: string;
-    Contracts?: Array<{
-      ContractDefinitionID: string;
-      ContractProgression?: {
-        TotalProgressionEarned?: number;
-        TotalProgressionEarnedVersion?: number;
-        HighestRewardedLevel?: Record<string, unknown>;
-      };
-      ProgressionLevelReached?: number;
+    Contracts?: ContractEntry[];
+    BTEMilestone?: {
+      TotalMilestonesCompleted?: number;
+      ProgressionTowardsNextMilestone?: number;
+      TotalProgressionEarned?: number;
+      // 다른 가능한 필드명
+      CurrentMilestoneLevel?: number;
       ProgressionTowardsNextLevel?: number;
-    }>;
+    };
   };
 
+  // 1. 기존 방식 (ActiveSpecialContract)
   const activeId = data.ActiveSpecialContract;
-  if (!activeId || !data.Contracts) return null;
+  if (activeId && data.Contracts) {
+    const contract = data.Contracts.find((c) => c.ContractDefinitionID === activeId);
+    if (contract) {
+      return {
+        contractId: activeId,
+        progressionTowardsObjective: contract.ProgressionTowardsNextLevel ?? 0,
+        progressionEarnedThisAct: contract.ContractProgression?.TotalProgressionEarned ?? 0,
+        totalLevelsCompleted: contract.ProgressionLevelReached ?? 0,
+      };
+    }
+  }
 
-  const contract = data.Contracts.find((c) => c.ContractDefinitionID === activeId);
-  if (!contract) return null;
+  // 2. BTEMilestone (V시즌 신규 배틀패스 시스템)
+  const bte = data.BTEMilestone;
+  if (bte) {
+    const level = bte.TotalMilestonesCompleted ?? bte.CurrentMilestoneLevel ?? 0;
+    const towards = bte.ProgressionTowardsNextMilestone ?? bte.ProgressionTowardsNextLevel ?? 0;
+    const total = bte.TotalProgressionEarned ?? 0;
+    if (level > 0 || towards > 0 || total > 0) {
+      return {
+        contractId: "bte",
+        progressionTowardsObjective: towards,
+        progressionEarnedThisAct: total,
+        totalLevelsCompleted: level,
+      };
+    }
+  }
 
-  return {
-    contractId: activeId,
-    progressionTowardsObjective: contract.ProgressionTowardsNextLevel ?? 0,
-    progressionEarnedThisAct: contract.ContractProgression?.TotalProgressionEarned ?? 0,
-    totalLevelsCompleted: contract.ProgressionLevelReached ?? 0,
-  };
+  // 3. 폴백: 가장 진행도가 높은 계약
+  if (data.Contracts?.length) {
+    const best = [...data.Contracts]
+      .filter((c) => (c.ContractProgression?.TotalProgressionEarned ?? 0) > 0)
+      .sort((a, b) =>
+        (b.ContractProgression?.TotalProgressionEarned ?? 0) -
+        (a.ContractProgression?.TotalProgressionEarned ?? 0)
+      )[0];
+    if (best) {
+      return {
+        contractId: best.ContractDefinitionID,
+        progressionTowardsObjective: best.ProgressionTowardsNextLevel ?? 0,
+        progressionEarnedThisAct: best.ContractProgression?.TotalProgressionEarned ?? 0,
+        totalLevelsCompleted: best.ProgressionLevelReached ?? 0,
+      };
+    }
+  }
+
+  return null;
 }
 
 // ────────────────────────────────────────────────────────────

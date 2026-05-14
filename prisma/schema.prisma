@@ -52,6 +52,7 @@ model RiotAccount {
   isPrimary         Boolean   @default(false)
   createdAt         DateTime  @default(now())
   ssid              String?
+  authCookie        String?
   accessToken       String?
   entitlementsToken String?
   tokenExpiresAt    DateTime?

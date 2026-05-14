@@ -22,6 +22,9 @@ elif [ -f proxy/package.json ]; then
   (cd proxy && (npm install || (rm -rf node_modules && npm install)))
 fi
 
+echo "[deploy] applying database migrations..."
+node scripts/db-deploy.cjs
+
 echo "[deploy] generating Prisma client..."
 npx prisma generate
 node scripts/link-prisma-client.cjs

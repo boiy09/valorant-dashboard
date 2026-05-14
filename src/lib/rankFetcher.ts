@@ -52,6 +52,7 @@ export async function ensureTokenState(
   accessToken: string | null,
   entitlementsToken: string | null,
   ssid: string | null,
+  authCookie: string | null,
   tokenExpiresAt: Date | null
 ): Promise<TokenState> {
   const now = Date.now();
@@ -70,7 +71,8 @@ export async function ensureTokenState(
     };
   }
 
-  if (!ssid) {
+  const refreshCookie = authCookie || ssid;
+  if (!refreshCookie) {
     return {
       tokens: null,
       needsRelink: true,
@@ -81,7 +83,7 @@ export async function ensureTokenState(
 
   try {
     const result = await withTimeout(
-      refreshTokens(ssid).catch(() => null),
+      refreshTokens(refreshCookie).catch(() => null),
       6000
     );
     if (!result || result.status !== "success") {
@@ -143,9 +145,10 @@ export async function ensureValidTokens(
   accessToken: string | null,
   entitlementsToken: string | null,
   ssid: string | null,
+  authCookie: string | null,
   tokenExpiresAt: Date | null
 ): Promise<AccountTokens | null> {
-  return (await ensureTokenState(puuid, accessToken, entitlementsToken, ssid, tokenExpiresAt)).tokens;
+  return (await ensureTokenState(puuid, accessToken, entitlementsToken, ssid, authCookie, tokenExpiresAt)).tokens;
 }
 
 // 랭크 조회: Private API(5s) → tracker.gg(6s) → Henrik(10s)

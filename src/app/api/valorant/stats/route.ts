@@ -200,6 +200,7 @@ export async function GET(req: NextRequest) {
         account.accessToken,
         account.entitlementsToken,
         account.ssid,
+        account.authCookie,
         account.tokenExpiresAt
       );
       const tokens = tokenState.tokens;

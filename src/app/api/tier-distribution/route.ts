@@ -36,6 +36,7 @@ type RankAccountRow = {
   accessToken: string | null;
   entitlementsToken: string | null;
   ssid: string | null;
+  authCookie: string | null;
   tokenExpiresAt: Date | null;
   cachedTierId: number | null;
   rankCachedAt: Date | null;
@@ -129,6 +130,7 @@ export async function GET(req: NextRequest) {
       accessToken: true,
       entitlementsToken: true,
       ssid: true,
+      authCookie: true,
       tokenExpiresAt: true,
       cachedTierId: true,
       rankCachedAt: true,
@@ -150,6 +152,7 @@ export async function GET(req: NextRequest) {
       account.accessToken,
       account.entitlementsToken,
       account.ssid,
+      account.authCookie,
       account.tokenExpiresAt
     );
 

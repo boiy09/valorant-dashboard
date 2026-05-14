@@ -82,13 +82,19 @@ async function getTokensFromCookie(raw: string) {
     throw new Error(`ssid 쿠키가 유효하지 않습니다. (${detail})`);
   }
 
-  return getAuthTokens(authResult.accessToken, authResult.idToken, authResult.cookies);
+  return {
+    tokens: await getAuthTokens(authResult.accessToken, authResult.idToken, authResult.cookies),
+    authCookie: authResult.cookies || ssidCookie,
+  };
 }
 
 async function getTokensFromInput(raw: string) {
   const urlTokens = parseTokensFromUrl(raw);
   if (urlTokens) {
-    return getAuthTokens(urlTokens.accessToken, urlTokens.idToken, "");
+    return {
+      tokens: await getAuthTokens(urlTokens.accessToken, urlTokens.idToken, ""),
+      authCookie: null,
+    };
   }
 
   return getTokensFromCookie(raw);
@@ -112,7 +118,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const tokens = await getTokensFromInput(raw);
+    const { tokens, authCookie } = await getTokensFromInput(raw);
     const region = normalizeRegion(tokens.region);
     const tokenExpiresAt = new Date(Date.now() + 55 * 60 * 1000);
 
@@ -135,6 +141,7 @@ export async function POST(req: NextRequest) {
           gameName: tokens.gameName,
           tagLine: tokens.tagLine,
           ssid: tokens.ssid,
+          authCookie: authCookie ?? existing.authCookie,
           accessToken: tokens.accessToken,
           entitlementsToken: tokens.entitlementsToken,
           tokenExpiresAt,
@@ -151,6 +158,7 @@ export async function POST(req: NextRequest) {
           region,
           isPrimary: false,
           ssid: tokens.ssid,
+          authCookie,
           accessToken: tokens.accessToken,
           entitlementsToken: tokens.entitlementsToken,
           tokenExpiresAt,

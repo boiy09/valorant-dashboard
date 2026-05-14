@@ -55,6 +55,7 @@ function toAccountResponse(account: {
   accessToken: string | null;
   entitlementsToken: string | null;
   ssid: string | null;
+  authCookie: string | null;
   tokenExpiresAt: Date | null;
   cachedTierId: number | null;
   cachedTierName: string | null;
@@ -89,6 +90,7 @@ async function toDetailedAccountResponse(account: Parameters<typeof toAccountRes
     account.accessToken,
     account.entitlementsToken,
     account.ssid,
+    account.authCookie,
     account.tokenExpiresAt
   );
   const [rank, profile] = await Promise.all([

@@ -561,20 +561,47 @@ export async function getStore(
       if (bundleInfo) break;
     }
 
-    // 번들 이미지가 없을 때: 번들 아이템 중 첫 번째 스킨의 아이콘을 사용
+    // 번들 이미지가 없을 때: 모든 아이템을 순서대로 조회해 첫 번째 아이콘 사용
+    // 타입별 valorant-api.com 엔드포인트 매핑
+    const ITEM_TYPE_ENDPOINTS: Record<string, string> = {
+      "e7c63390-eda7-46e0-bb7a-a6abdacd2433": "weapons/skinlevels",
+      "dd3bf334-87f3-40bd-b043-682a57a8dc3a": "sprays",
+      "3f296c07-64c3-494c-923b-fe692a4fa1bd": "playercards",
+      "77258665-71d1-4623-bc72-44db9bd5b3b3": "buddies/levels",
+      "d5f120f8-ff8c-4aac-92ea-f2b5acbe9475": "sprays",
+    };
     let fallbackIcon = "";
+    let fallbackName = "";
     if (!bundleInfo?.displayIcon) {
-      const SKIN_LEVEL_TYPE = "e7c63390-eda7-46e0-bb7a-a6abdacd2433";
-      const skinItems = (bundleRaw.Items ?? []).filter(
-        (item) => item.Item?.ItemTypeID?.toLowerCase() === SKIN_LEVEL_TYPE.toLowerCase()
-      );
       const skinMap = await getSkinLevelMap();
-      for (const item of skinItems) {
-        const skinId = item.Item?.ItemID ?? "";
-        const skin = skinMap.get(skinId.toLowerCase());
+      for (const item of bundleRaw.Items ?? []) {
+        const itemId = item.Item?.ItemID ?? "";
+        // 먼저 skin map에서 조회
+        const skin = skinMap.get(itemId.toLowerCase());
         if (skin?.displayIcon) {
           fallbackIcon = skin.displayIcon;
+          if (!fallbackName && skin.name) {
+            const parts = skin.name.split(" ");
+            fallbackName = parts.length > 1 ? parts.slice(0, -1).join(" ") + " 번들" : skin.name + " 번들";
+          }
           break;
+        }
+        // valorant-api.com 직접 조회 (스프레이, 카드 등)
+        const endpoint = ITEM_TYPE_ENDPOINTS[item.Item?.ItemTypeID?.toLowerCase() ?? ""];
+        if (endpoint) {
+          try {
+            const r = await fetch(`${VALORANT_API_BASE}/${endpoint}/${itemId}?language=ko-KR`, {
+              signal: AbortSignal.timeout(3000),
+            });
+            if (r.ok) {
+              const d = await r.json() as { data?: { displayIcon?: string; displayName?: string } };
+              if (d.data?.displayIcon) {
+                fallbackIcon = d.data.displayIcon;
+                if (!fallbackName && d.data.displayName) fallbackName = d.data.displayName + " 번들";
+                break;
+              }
+            }
+          } catch { /* 다음 아이템 */ }
         }
       }
     }
@@ -584,23 +611,7 @@ export async function getStore(
       bundleInfo?.price ??
       (bundleRaw.Items ?? []).reduce((sum, item) => sum + (item.DiscountedPrice ?? item.BasePrice ?? 0), 0);
 
-    // 번들명: CDN에서 이미지만 얻은 경우 name이 "" → 아이템 스킨명에서 유추
-    let bundleName = bundleInfo?.name || "";
-    if (!bundleName) {
-      const skinMap = await getSkinLevelMap();
-      const SKIN_LEVEL_TYPE = "e7c63390-eda7-46e0-bb7a-a6abdacd2433";
-      for (const item of bundleRaw.Items ?? []) {
-        if (item.Item?.ItemTypeID?.toLowerCase() !== SKIN_LEVEL_TYPE.toLowerCase()) continue;
-        const skin = skinMap.get((item.Item?.ItemID ?? "").toLowerCase());
-        if (skin?.name) {
-          // "레이버 반달" → "레이버 번들" 형태로 무기명 제거
-          const parts = skin.name.split(" ");
-          bundleName = parts.length > 1 ? parts.slice(0, -1).join(" ") + " 번들" : skin.name + " 번들";
-          break;
-        }
-      }
-    }
-    if (!bundleName) bundleName = "번들";
+    const bundleName = bundleInfo?.name || fallbackName || "번들";
 
     bundle = {
       name: bundleName,

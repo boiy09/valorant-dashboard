@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getRankByPuuid, getRecentMatches, getRankIconByTier, type MatchStats, type RankData } from "@/lib/valorant";
 import { ensureTokenState, fetchRank } from "@/lib/rankFetcher";
-import { getPrivateRankData, getPrivateRecentMatches } from "@/lib/riotPrivateApi";
+import { getPrivateRankData, getPrivateRecentMatches, getPrivateCompetitiveUpdates, getPrivateProfile, type CompetitiveUpdate } from "@/lib/riotPrivateApi";
 import { apiCache, TTL } from "@/lib/apiCache";
 
 type RiotRegion = "KR" | "AP";
@@ -248,9 +248,15 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      const [rank, recentMatchResult] = await Promise.all([
+      const [rank, recentMatchResult, rrHistory, privateProfile] = await Promise.all([
         getRankCached(account.puuid, region, account.gameName, account.tagLine, tokens),
         getRecentMatchesCached(account.puuid, qRegion, puuidRankMapRaw, forceRegion === region, tokens),
+        tokens
+          ? getPrivateCompetitiveUpdates(account.puuid, qRegion, tokens.accessToken, tokens.entitlementsToken, 20).catch(() => [] as CompetitiveUpdate[])
+          : Promise.resolve([] as CompetitiveUpdate[]),
+        tokens
+          ? getPrivateProfile(account.puuid, qRegion, tokens.accessToken, tokens.entitlementsToken).catch(() => null)
+          : Promise.resolve(null),
       ]);
 
       return {
@@ -264,6 +270,9 @@ export async function GET(req: NextRequest) {
           ...m,
           playedAt: m.playedAt.toISOString(),
         })),
+        rrHistory,
+        playerCardId: privateProfile?.cardId ?? null,
+        accountLevel: privateProfile?.level ?? null,
       };
     })
   )).flatMap((r) => {

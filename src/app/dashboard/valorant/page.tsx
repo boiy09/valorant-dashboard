@@ -17,6 +17,9 @@ interface RegionStats {
   recentMatches: (Omit<MatchStats, "playedAt"> & { playedAt: string; scrimSessionId?: string | null; scrimTitle?: string | null })[];
   fromCache?: boolean;
   cacheAge?: number | null;
+  rrHistory?: Array<{ matchId: string; mapName: string; startTime: number; tierAfter: number; rrAfter: number; rrEarned: number }>;
+  playerCardId?: string | null;
+  accountLevel?: number | null;
 }
 
 interface RiotAuthRelinkInfo {
@@ -322,12 +325,18 @@ function RegionMatchList({ matches, trackerUrl, puuid, message, source }: {
                 <span className="text-white text-sm">{hs}%</span>
                 <span className="text-[#7b8a96] text-xs">HS</span>
               </div>
+              {match.adr != null && (
+                <div className="hidden lg:flex items-center gap-1 flex-shrink-0">
+                  <span className="text-white text-sm">{match.adr}</span>
+                  <span className="text-[#7b8a96] text-xs">ADR</span>
+                </div>
+              )}
               <div className="text-[#7b8a96] text-xs text-right flex-shrink-0">
                 {playedDate.toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}
               </div>
             </summary>
             <div className="border-t border-[#2a3540] bg-[#07131e]">
-              <div className="grid grid-cols-2 gap-3 px-4 py-3 text-sm sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 px-4 py-3 text-sm sm:grid-cols-5">
                 <div>
                   <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">Score</div>
                   <div className="font-bold text-white">{match.teamScore !== null && match.enemyScore !== null ? `${match.teamScore} : ${match.enemyScore}` : "-"}</div>
@@ -349,6 +358,10 @@ function RegionMatchList({ matches, trackerUrl, puuid, message, source }: {
                       </a>
                     ) : match.mode}
                   </div>
+                </div>
+                <div>
+                  <div className="text-[#7b8a96] text-[10px] uppercase tracking-widest">ADR</div>
+                  <div className="font-bold text-white">{match.adr ?? "--"}</div>
                 </div>
               </div>
               <MatchDetailScoreboard matchId={match.matchId} myPuuid={puuid} result={match.result} initialScoreboard={match.scoreboard} />
@@ -404,6 +417,62 @@ function RegionSkeleton() {
   );
 }
 
+function RrHistoryGraph({ history }: { history: RegionStats["rrHistory"] }) {
+  if (!history || history.length === 0) return null;
+  const reversed = [...history].reverse();
+  const maxAbs = Math.max(...reversed.map((u) => Math.abs(u.rrEarned)), 1);
+  const totalEarned = reversed.reduce((s, u) => s + u.rrEarned, 0);
+  return (
+    <div className="val-card p-4 mb-5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[#7b8a96] text-xs tracking-widest uppercase">
+          RR 변동 — 최근 {reversed.length}경기
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-green-400 font-bold">+{reversed.filter((u) => u.rrEarned > 0).reduce((s, u) => s + u.rrEarned, 0)}</span>
+          <span className="text-[#ff4655] font-bold">{reversed.filter((u) => u.rrEarned < 0).reduce((s, u) => s + u.rrEarned, 0)}</span>
+          <span className={`font-black ${totalEarned >= 0 ? "text-green-400" : "text-[#ff4655]"}`}>
+            순 {totalEarned >= 0 ? "+" : ""}{totalEarned} RR
+          </span>
+        </div>
+      </div>
+      <div className="relative flex items-center gap-0.5" style={{ height: 68 }}>
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-[#2a3540]" />
+        {reversed.map((update, i) => {
+          const ratio = Math.abs(update.rrEarned) / maxAbs;
+          const barH = Math.max(3, Math.round(ratio * 30));
+          const isPos = update.rrEarned >= 0;
+          const date = update.startTime > 0
+            ? new Date(update.startTime).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })
+            : "";
+          return (
+            <div key={`${update.matchId}-${i}`} className="group relative flex flex-1 flex-col items-center" style={{ height: 68 }}>
+              <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded border border-[#2a3540] bg-[#0a1520] px-2 py-1.5 text-xs shadow-xl group-hover:block">
+                <div className={`font-black ${isPos ? "text-green-400" : "text-[#ff4655]"}`}>{isPos ? "+" : ""}{update.rrEarned} RR</div>
+                <div className="text-white font-bold">{update.rrAfter} RR</div>
+                {update.mapName !== "Unknown" && <div className="text-[#7b8a96]">{update.mapName}</div>}
+                {date && <div className="text-[#7b8a96]">{date}</div>}
+              </div>
+              <div className="flex h-full w-full flex-col" style={{ paddingTop: 0 }}>
+                <div className="flex flex-1 items-end justify-center">
+                  {isPos && (
+                    <div className="w-full rounded-t" style={{ height: barH, background: "rgba(74,222,128,0.75)" }} />
+                  )}
+                </div>
+                <div className="flex flex-1 items-start justify-center">
+                  {!isPos && (
+                    <div className="w-full rounded-b" style={{ height: barH, background: "rgba(255,70,85,0.75)" }} />
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RegionSection({ data, onRefresh, refreshing }: { data: RegionStats; onRefresh?: () => void; refreshing?: boolean }) {
   const visibleMatches = data.recentMatches.filter(isDetailedMatch);
   const summary = buildSummary(visibleMatches);
@@ -415,8 +484,20 @@ function RegionSection({ data, onRefresh, refreshing }: { data: RegionStats; onR
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#2a3540]">
         <div className="flex items-center gap-3">
           <div className="w-1 h-8 rounded-full bg-[#ff4655] flex-shrink-0" />
+          {data.playerCardId && (
+            <img
+              src={`https://media.valorant-api.com/playercards/${data.playerCardId}/smallart.png`}
+              alt="player card"
+              className="h-11 w-11 flex-shrink-0 rounded object-cover ring-1 ring-[#2a3540]"
+            />
+          )}
           <div>
-            <div className="text-[#ff4655] text-[10px] tracking-[0.2em] uppercase mb-0.5">{data.region} · {REGION_LABELS[data.region]}</div>
+            <div className="flex items-center gap-2">
+              <div className="text-[#ff4655] text-[10px] tracking-[0.2em] uppercase">{data.region} · {REGION_LABELS[data.region]}</div>
+              {data.accountLevel != null && (
+                <span className="rounded bg-[#1a2d3e] px-1.5 py-0.5 text-[10px] font-bold text-[#7b8a96]">Lv.{data.accountLevel}</span>
+              )}
+            </div>
             <h2 className="text-lg font-black text-white">{data.riotId}</h2>
           </div>
         </div>
@@ -447,6 +528,8 @@ function RegionSection({ data, onRefresh, refreshing }: { data: RegionStats; onR
         <RankSummaryCard title="전 티어" rankName={rank?.previousSeason?.tierName} tierId={rank?.previousSeason?.tierId} icon={rank?.previousSeason?.rankIcon} season={rank?.previousSeason?.label} wins={rank?.previousSeason?.wins} games={rank?.previousSeason?.games} />
         <RankSummaryCard title="최고 티어" rankName={rank?.peakTierName ?? rank?.peakSeason?.tierName} tierId={rank?.peakSeason?.tierId} icon={rank?.peakRankIcon ?? rank?.peakSeason?.rankIcon} season={rank?.peakSeason?.label} wins={rank?.peakSeason?.wins} games={rank?.peakSeason?.games} />
       </div>
+
+      <RrHistoryGraph history={data.rrHistory} />
 
       <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="val-card p-5">

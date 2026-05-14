@@ -662,6 +662,27 @@ export async function getPrivateProfile(
   }
 }
 
+const QUEUE_NAMES: Record<string, string> = {
+  competitive: "경쟁전",
+  unrated: "일반전",
+  spikerush: "스파이크 돌진",
+  deathmatch: "데스매치",
+  escalation: "에스컬레이션",
+  replication: "레플리케이션",
+  swiftplay: "스위프트플레이",
+  snowballfight: "눈싸움",
+  onefa: "원포올",
+  custom: "커스텀",
+  premier: "프리미어",
+  hurm: "팀 데스매치",
+  ggteam: "에스컬레이션",
+  newmap: "신규 맵",
+};
+
+export function queueIdToKorean(queueId: string): string {
+  return QUEUE_NAMES[queueId.toLowerCase()] ?? queueId;
+}
+
 export interface PrivateRecentMatchesOptions {
   count?: number;
 }
@@ -729,6 +750,7 @@ export async function getPrivateRecentMatches(
     let headshots = 0;
     let bodyshots = 0;
     let legshots = 0;
+    let totalDamage = 0;
 
     for (const round of roundResults) {
       const playerStats = asArray<Record<string, unknown>>(round.playerStats);
@@ -737,6 +759,7 @@ export async function getPrivateRecentMatches(
         headshots += toNumber(damage.Headshots);
         bodyshots += toNumber(damage.Bodyshots);
         legshots += toNumber(damage.Legshots);
+        totalDamage += toNumber(damage.damage);
       }
     }
 
@@ -750,7 +773,7 @@ export async function getPrivateRecentMatches(
     return [{
       matchId: firstString(matchInfo.MatchID),
       map: mapName,
-      mode: firstString(matchInfo.QueueID, "Unknown"),
+      mode: queueIdToKorean(firstString(matchInfo.QueueID)) || firstString(matchInfo.QueueID) || "Unknown",
       agent: agent?.name ?? "Unknown",
       agentIcon: agent?.icon ?? "",
       result: (myTeam?.Won === true ? "?밸━" : otherTeam?.Won === true ? "?⑤같" : "臾댄슚") as MatchStats["result"],
@@ -763,6 +786,7 @@ export async function getPrivateRecentMatches(
       headshots,
       bodyshots,
       legshots,
+      adr: roundsPlayed > 0 ? Math.round(totalDamage / roundsPlayed) : null,
       playedAt: new Date(toNumber(matchInfo.GameStartMillis, Date.now())),
       scoreboard: null,
     }];
@@ -776,4 +800,52 @@ export async function getPrivateRecentMatches(
 
   return [];
 
+}
+
+export interface CompetitiveUpdate {
+  matchId: string;
+  mapName: string;
+  startTime: number;
+  tierAfter: number;
+  rrAfter: number;
+  rrEarned: number;
+}
+
+export async function getPrivateCompetitiveUpdates(
+  puuid: string,
+  region: string,
+  accessToken: string,
+  entitlementsToken: string,
+  count = 20
+): Promise<CompetitiveUpdate[]> {
+  try {
+    const shard = regionToShard(region);
+    const headers = await pvpHeaders(accessToken, entitlementsToken);
+    const res = await fetch(
+      `https://pd.${shard}.a.pvp.net/mmr/v1/players/${puuid}/competitiveupdates?queue=competitive&startIndex=0&endIndex=${count}`,
+      { headers, signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) throw new Error(`competitiveupdates ${res.status}`);
+    const data = await res.json() as {
+      Matches?: Array<{
+        MatchID?: string;
+        MapID?: string;
+        MatchStartTime?: number;
+        TierAfterUpdate?: number;
+        RankedRatingAfterUpdate?: number;
+        RankedRatingEarned?: number;
+      }>;
+    };
+    const content = await getPrivateContent();
+    return (data.Matches ?? []).map((m) => ({
+      matchId: m.MatchID ?? "",
+      mapName: content.maps.get(firstString(m.MapID).toLowerCase()) ?? "Unknown",
+      startTime: m.MatchStartTime ?? 0,
+      tierAfter: m.TierAfterUpdate ?? 0,
+      rrAfter: m.RankedRatingAfterUpdate ?? 0,
+      rrEarned: m.RankedRatingEarned ?? 0,
+    }));
+  } catch {
+    return [];
+  }
 }

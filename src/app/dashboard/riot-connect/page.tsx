@@ -233,7 +233,7 @@ export default function RiotConnectPage() {
             <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#7fffe6] text-[10px] font-black text-black">✓</span>
           )}
           <div className="mb-3 flex flex-wrap gap-1.5">
-            <span className="rounded bg-[#1a3a33] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#7fffe6] ring-1 ring-[#7fffe6]/30">Cookie 방식</span>
+            <span className="rounded bg-[#1a3a33] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#7fffe6] ring-1 ring-[#7fffe6]/30">숙련자용</span>
           </div>
           <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Cookie 방식</div>
           <div className="mt-1 text-base font-black text-white">F12 Cookie 복사</div>

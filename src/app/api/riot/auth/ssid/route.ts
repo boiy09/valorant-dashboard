@@ -171,6 +171,7 @@ export async function POST(req: NextRequest) {
 
     return Response.json({
       success: true,
+      authMode: authCookie ? "cookie" : "url",
       account: {
         id: account.id,
         region: account.region,

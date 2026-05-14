@@ -46,6 +46,7 @@ export default function RiotSsidTestPage() {
       });
       const data = (await response.json()) as {
         error?: string;
+        authMode?: "cookie" | "url";
         account?: { riotId?: string; region?: string; isVerified?: boolean };
       };
 
@@ -58,7 +59,11 @@ export default function RiotSsidTestPage() {
       setState("success");
       setRiotId(data.account?.riotId ?? "");
       setRegion(data.account?.region ?? "");
-      setMessage("SSID 저장과 토큰 자동 갱신 테스트가 완료되었습니다.");
+      setMessage(
+        data.authMode === "cookie"
+          ? "Cookie 저장과 토큰 자동 갱신 테스트가 완료되었습니다."
+          : "URL 토큰 연동이 완료되었습니다. 장기 갱신 테스트는 Cookie 헤더 전체로 다시 확인해야 합니다."
+      );
       window.dispatchEvent(new Event("riot-accounts-updated"));
     } catch {
       setState("error");

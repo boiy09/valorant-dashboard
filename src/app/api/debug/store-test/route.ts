@@ -14,22 +14,13 @@ export async function GET() {
   });
 
   const account = user?.riotAccounts?.[0];
-  if (!account) {
-    return Response.json({ error: "연동된 계정 없음" });
-  }
+  if (!account) return Response.json({ error: "연동된 계정 없음" });
 
   const tokenState = await ensureTokenState(
-    account.puuid,
-    account.accessToken,
-    account.entitlementsToken,
-    account.ssid,
-    account.authCookie,
-    account.tokenExpiresAt
+    account.puuid, account.accessToken, account.entitlementsToken,
+    account.ssid, account.authCookie, account.tokenExpiresAt
   );
-
-  if (!tokenState.tokens) {
-    return Response.json({ error: "토큰 갱신 실패", reason: tokenState.reason, message: tokenState.message });
-  }
+  if (!tokenState.tokens) return Response.json({ error: "토큰 갱신 실패" });
 
   const { accessToken, entitlementsToken } = tokenState.tokens;
   const region = account.region.toLowerCase();
@@ -44,7 +35,6 @@ export async function GET() {
   } catch { /* fallback */ }
 
   const CLIENT_PLATFORM = "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9";
-
   const headers: Record<string, string> = {
     Authorization: "Bearer " + accessToken,
     "X-Riot-Entitlements-JWT": entitlementsToken,
@@ -53,60 +43,49 @@ export async function GET() {
     "User-Agent": "RiotClient/" + clientVersion + " rso-auth (Windows;10;;Professional, x64)",
     Accept: "application/json",
   };
-
   const postHeaders = { ...headers, "Content-Type": "application/json" };
-  const results: Record<string, unknown> = { puuid: account.puuid, region, clientVersion };
+  const results: Record<string, unknown> = { puuid: account.puuid, region };
 
-  // 1. store v3 POST
+  // 1. bundle ID vs DataAssetID - valorant-api.com 양쪽 테스트
   try {
     const r = await fetch(
       "https://pd." + region + ".a.pvp.net/store/v3/storefront/" + account.puuid,
       { method: "POST", headers: postHeaders, body: "{}", signal: AbortSignal.timeout(8000) }
     );
-    const body = await r.text().catch(() => "");
-    const parsed = JSON.parse(body) as Record<string, unknown>;
-    results.store_v3_POST = {
-      status: r.status,
-      topLevelKeys: Object.keys(parsed),
-      featuredBundle: JSON.stringify(parsed.FeaturedBundle ?? null).slice(0, 600),
-      featuredBundles: JSON.stringify(parsed.FeaturedBundles ?? null).slice(0, 300),
-      skinsPanelKeys: Object.keys((parsed.SkinsPanelLayout as Record<string, unknown>) ?? {}),
-    };
+    const parsed = await r.json() as Record<string, unknown>;
+    const bundle = (parsed.FeaturedBundle as Record<string, unknown>)?.Bundle as Record<string, unknown> | undefined;
+    const bundleID = bundle?.ID as string | undefined;
+    const bundleDataAssetID = bundle?.DataAssetID as string | undefined;
 
-    const bundlePayload = (parsed.FeaturedBundle as Record<string, unknown>)?.Bundle as Record<string, unknown> | undefined;
-    const bundleId = bundlePayload?.DataAssetID as string | undefined;
-    if (bundleId) {
-      const br = await fetch("https://valorant-api.com/v1/bundles/" + bundleId + "?language=ko-KR").catch(() => null);
+    results.bundle_ids = { ID: bundleID, DataAssetID: bundleDataAssetID };
+
+    for (const [label, uuid] of [["by_ID", bundleID], ["by_DataAssetID", bundleDataAssetID]] as [string, string | undefined][]) {
+      if (!uuid) continue;
+      const br = await fetch("https://valorant-api.com/v1/bundles/" + uuid + "?language=ko-KR").catch(() => null);
       const bBody = (await br?.text().catch(() => "")) ?? "";
-      results.bundle_resolve = {
-        bundleId,
-        status: br?.status ?? "fetch failed",
-        ok: br?.ok ?? false,
-        bodyPreview: bBody.slice(0, 200),
-      };
+      results["bundle_" + label] = { status: br?.status, ok: br?.ok, preview: bBody.slice(0, 150) };
     }
   } catch (e) {
-    results.store_v3_POST = { error: String(e) };
+    results.bundle_test = { error: String(e) };
   }
 
-  // 2. contracts (배틀패스)
+  // 2. contracts - BTEMilestone 구조 확인
   try {
     const r = await fetch(
       "https://pd." + region + ".a.pvp.net/contracts/v1/contracts/" + account.puuid,
       { headers, signal: AbortSignal.timeout(8000) }
     );
-    const body = await r.text().catch(() => "");
     if (r.ok) {
-      const parsed = JSON.parse(body) as Record<string, unknown>;
+      const parsed = await r.json() as Record<string, unknown>;
       results.contracts = {
-        status: r.status,
-        topLevelKeys: Object.keys(parsed),
         activeSpecialContract: parsed.ActiveSpecialContract ?? null,
         contractCount: Array.isArray(parsed.Contracts) ? (parsed.Contracts as unknown[]).length : 0,
-        firstContract: JSON.stringify((parsed.Contracts as unknown[])?.[0]).slice(0, 300),
+        bteMilestone: JSON.stringify(parsed.BTEMilestone ?? null).slice(0, 500),
+        missions: JSON.stringify(parsed.Missions ?? null).slice(0, 300),
+        first3Contracts: (parsed.Contracts as unknown[] ?? []).slice(0, 3).map((c) => JSON.stringify(c).slice(0, 200)),
       };
     } else {
-      results.contracts = { status: r.status, bodyPreview: body.slice(0, 200) };
+      results.contracts = { status: r.status };
     }
   } catch (e) {
     results.contracts = { error: String(e) };

@@ -46,23 +46,64 @@ function normalizeRegion(raw: string): "KR" | "AP" {
   return "KR";
 }
 
+function parseTokensFromUrl(input: string): { accessToken: string; idToken: string } | null {
+  try {
+    const hashIdx = input.indexOf("#");
+    if (hashIdx !== -1) {
+      const params = new URLSearchParams(input.slice(hashIdx + 1));
+      const accessToken = params.get("access_token");
+      const idToken = params.get("id_token");
+      if (accessToken && idToken) return { accessToken, idToken };
+    }
+
+    if (input.includes("access_token=")) {
+      const params = new URLSearchParams(input);
+      const accessToken = params.get("access_token");
+      const idToken = params.get("id_token");
+      if (accessToken && idToken) return { accessToken, idToken };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function getTokensFromCookie(raw: string) {
+  const ssidCookie = raw.includes("=") ? raw : `ssid=${raw}`;
+  if (!ssidCookie.includes("ssid=")) {
+    throw new Error("ssid 쿠키가 포함되어 있지 않습니다. 주소창 URL 전체 또는 Network 탭의 Cookie 헤더 전체를 복사해 주세요.");
+  }
+
+  const authResult = await refreshTokens(ssidCookie);
+  if (authResult.status !== "success") {
+    const detail = authResult.status === "error" ? authResult.message : "알 수 없는 오류";
+    console.error("[ssid route] refreshTokens 실패:", detail);
+    throw new Error(`ssid 쿠키가 유효하지 않습니다. (${detail})`);
+  }
+
+  return getAuthTokens(authResult.accessToken, authResult.idToken, authResult.cookies);
+}
+
+async function getTokensFromInput(raw: string) {
+  const urlTokens = parseTokensFromUrl(raw);
+  if (urlTokens) {
+    return getAuthTokens(urlTokens.accessToken, urlTokens.idToken, "");
+  }
+
+  return getTokensFromCookie(raw);
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
-  const body = await req.json() as { ssid?: string };
-  const raw = (body.ssid ?? "").trim();
+  const body = await req.json() as { ssid?: string; value?: string };
+  const raw = (body.value ?? body.ssid ?? "").trim();
   if (!raw) {
-    return Response.json({ error: "쿠키 값을 입력해 주세요." }, { status: 400 });
-  }
-
-  // ssid가 포함된 전체 쿠키 문자열, 또는 ssid 값만 입력한 경우 모두 허용
-  const ssidCookie = raw.includes("ssid=") ? raw : `ssid=${raw}`;
-
-  if (!ssidCookie.includes("ssid=")) {
-    return Response.json({ error: "ssid 쿠키가 포함되어 있지 않습니다. Network 탭의 Cookie 헤더 전체를 복사해 주세요." }, { status: 400 });
+    return Response.json({ error: "URL 또는 쿠키 값을 입력해 주세요." }, { status: 400 });
   }
 
   const user = await findUser(session.user.id, session.user.email);
@@ -71,30 +112,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const authResult = await refreshTokens(ssidCookie);
-
-    if (authResult.status !== "success") {
-      const detail = authResult.status === "error" ? authResult.message : "알 수 없는 오류";
-      console.error("[ssid route] refreshTokens 실패:", detail);
-      return Response.json(
-        { error: `ssid 쿠키가 유효하지 않습니다. (${detail})` },
-        { status: 401 }
-      );
-    }
-
-    const tokens = await getAuthTokens(
-      authResult.accessToken,
-      authResult.idToken,
-      authResult.cookies
-    );
-
+    const tokens = await getTokensFromInput(raw);
     const region = normalizeRegion(tokens.region);
     const tokenExpiresAt = new Date(Date.now() + 55 * 60 * 1000);
 
     const otherPuuid = await prisma.riotAccount.findUnique({ where: { puuid: tokens.puuid } });
     if (otherPuuid && otherPuuid.userId !== user.id) {
       return Response.json(
-        { error: "이미 다른 계정에 연결된 라이엇 계정입니다." },
+        { error: "이미 다른 계정에 연결된 Riot 계정입니다." },
         { status: 400 }
       );
     }

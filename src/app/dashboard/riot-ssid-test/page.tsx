@@ -25,7 +25,7 @@ function LoadingLabel() {
 }
 
 export default function RiotSsidTestPage() {
-  const [ssid, setSsid] = useState("");
+  const [authInput, setAuthInput] = useState("");
   const [state, setState] = useState<FormState>("idle");
   const [message, setMessage] = useState("");
   const [riotId, setRiotId] = useState("");
@@ -42,7 +42,7 @@ export default function RiotSsidTestPage() {
       const response = await fetch("/api/riot/auth/ssid", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ssid: ssid.trim() }),
+        body: JSON.stringify({ value: authInput.trim() }),
       });
       const data = (await response.json()) as {
         error?: string;
@@ -72,8 +72,8 @@ export default function RiotSsidTestPage() {
         <div className="mb-1 text-xs font-black uppercase tracking-[0.24em] text-[#7fffe6]">Riot SSID Test</div>
         <h1 className="text-2xl font-black text-white">Riot 장기 연동 테스트</h1>
         <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-          기존 Riot 연동은 그대로 두고, 여기서만 SSID 방식의 자동 갱신 가능 여부를 테스트합니다.
-          성공하면 서버에 SSID가 저장되어 토큰 만료 후에도 재연동 없이 갱신을 시도할 수 있습니다.
+          기존 Riot 연동은 그대로 두고, 여기서만 Riot 로그인 URL 또는 쿠키 기반 연동을 테스트합니다.
+          주소창에 access_token이 보이면 URL 전체를 붙여넣고, 장기 갱신 테스트는 auth.riotgames.com의 Cookie 문자열 전체를 붙여넣습니다.
         </p>
       </section>
 
@@ -95,17 +95,17 @@ export default function RiotSsidTestPage() {
             </li>
             <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
               <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 2</div>
-              <div className="mt-1 font-bold text-white">브라우저 쿠키에서 ssid 값을 복사합니다.</div>
+              <div className="mt-1 font-bold text-white">URL 또는 쿠키 값을 복사합니다.</div>
               <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-                Chrome 기준으로 Riot 로그인 탭에서 F12를 누른 뒤 Application, Cookies, auth.riotgames.com 순서로 들어가
-                이름이 ssid인 값을 복사합니다.
+                주소창에 access_token이 붙어 있으면 URL 전체를 복사합니다. SSID 갱신 테스트는 Network 요청의 Cookie 헤더 전체나
+                auth.riotgames.com 쿠키들을 name=value; 형식으로 이어 붙인 값을 사용합니다.
               </p>
             </li>
             <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
               <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 3</div>
               <div className="mt-1 font-bold text-white">오른쪽 입력칸에 붙여넣고 테스트합니다.</div>
               <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-                ssid 값만 붙여넣어도 되고, ssid=로 시작하는 전체 쿠키 문자열을 붙여넣어도 됩니다.
+                ssid 값 하나만으로는 Riot이 거부할 수 있습니다. 실패하면 주소창 URL 전체 또는 Cookie 헤더 전체로 다시 테스트하세요.
               </p>
             </li>
           </ol>
@@ -114,21 +114,21 @@ export default function RiotSsidTestPage() {
         <section className="val-card p-5">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-black text-white">SSID 또는 Cookie 값</label>
+              <label className="mb-2 block text-sm font-black text-white">Riot URL 또는 Cookie 값</label>
               <textarea
-                value={ssid}
+                value={authInput}
                 onChange={(event) => {
-                  setSsid(event.target.value);
+                  setAuthInput(event.target.value);
                   if (state === "error") setState("idle");
                 }}
                 rows={8}
                 required
                 disabled={state === "loading"}
-                placeholder="ssid=..."
+                placeholder="https://playvalorant.com/ko-kr/opt_in/#access_token=... 또는 ssid=...; clid=...; csid=..."
                 className="w-full resize-none rounded border border-[#2a3540] bg-[#0f1923] px-4 py-3 font-mono text-sm text-white placeholder:text-[#465766] focus:border-[#7fffe6] focus:outline-none"
               />
               <p className="mt-2 break-keep text-xs leading-relaxed text-[#7b8a96]">
-                이 값은 Riot 로그인 세션 쿠키입니다. 테스트 목적 외에 다른 곳에 공유하지 마세요.
+                URL에는 임시 토큰이, Cookie에는 로그인 세션이 들어 있습니다. 테스트 목적 외에 다른 곳에 공유하지 마세요.
               </p>
             </div>
 
@@ -152,7 +152,7 @@ export default function RiotSsidTestPage() {
 
             <button
               type="submit"
-              disabled={state === "loading" || !ssid.trim()}
+              disabled={state === "loading" || !authInput.trim()}
               className="val-btn w-full bg-[#ff4655] py-3 text-sm font-black text-white hover:bg-[#cc3644] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {state === "loading" ? <LoadingLabel /> : "SSID 연동 테스트"}
@@ -166,11 +166,11 @@ export default function RiotSsidTestPage() {
         <div className="mt-3 grid gap-3 md:grid-cols-3">
           <div className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
             <div className="text-xs font-black text-[#7fffe6]">성공</div>
-            <p className="mt-2 text-sm leading-relaxed text-[#9aa8b3]">SSID로 Riot 토큰 재발급, 계정 조회, DB 저장까지 완료된 상태입니다.</p>
+            <p className="mt-2 text-sm leading-relaxed text-[#9aa8b3]">Riot 토큰 발급, 계정 조회, DB 저장까지 완료된 상태입니다.</p>
           </div>
           <div className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
             <div className="text-xs font-black text-[#f6c945]">실패</div>
-            <p className="mt-2 text-sm leading-relaxed text-[#9aa8b3]">SSID가 만료됐거나 Riot 보안 정책상 재발급이 막힌 상태입니다.</p>
+            <p className="mt-2 text-sm leading-relaxed text-[#9aa8b3]">SSID가 만료됐거나 쿠키 일부가 빠졌거나 Riot 보안 정책상 재발급이 막힌 상태입니다.</p>
           </div>
           <div className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
             <div className="text-xs font-black text-[#ff8b95]">주의</div>

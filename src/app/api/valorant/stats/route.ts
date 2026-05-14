@@ -1,10 +1,15 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getRankByPuuid, getRecentMatches, getRankIconByTier, type MatchStats, type RankData } from "@/lib/valorant";
-import { ensureTokenState, fetchRank } from "@/lib/rankFetcher";
+import { getRankByPuuid, getRecentMatches, getRankIconByTier, getRiotOfficialRecentMatches, type MatchStats, type RankData } from "@/lib/valorant";
+import { ensureTokenState, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 import { getPrivateRankData, getPrivateRecentMatches, getPrivateCompetitiveUpdates, getPrivateProfile, type CompetitiveUpdate } from "@/lib/riotPrivateApi";
 import { apiCache, TTL } from "@/lib/apiCache";
+
+function extractCardId(cardUrl: string | null | undefined): string | null {
+  if (!cardUrl) return null;
+  return cardUrl.match(/playercards\/([0-9a-f-]{36})/i)?.[1] ?? null;
+}
 
 type RiotRegion = "KR" | "AP";
 type PuuidRankEntry = {
@@ -17,7 +22,7 @@ const rankLastGood = new Map<string, RankData>();
 // Henrik 429 쿨다운: key → 재시도 가능한 시각 (ms)
 const henrik429Until = new Map<string, number>();
 
-type RecentMatchSource = "cache" | "private" | "henrik" | "stale" | "empty";
+type RecentMatchSource = "cache" | "private" | "riot-official" | "henrik" | "stale" | "empty";
 type RecentMatchResult = {
   matches: MatchStats[];
   source: RecentMatchSource;
@@ -145,6 +150,20 @@ async function getRecentMatchesCached(
         }))
       : [];
 
+    // 2. Riot 공식 API (RIOT_API_KEY 있을 때, Private 실패 시)
+    if (privateMatches.length === 0 && process.env.RIOT_API_KEY) {
+      try {
+        const riotMatches = cleanMatches(await getRiotOfficialRecentMatches(puuid, region, 10));
+        if (riotMatches.length > 0) {
+          apiCache.set(cacheKey, riotMatches);
+          recentMatchesLastGood.set(cacheKey, riotMatches);
+          return { matches: riotMatches, source: "riot-official" };
+        }
+      } catch (err) {
+        console.warn("[stats] Riot official match API failed:", err);
+      }
+    }
+
     let henrikMatches: MatchStats[] = [];
     if (privateMatches.length === 0) {
       const cooldownUntil = henrik429Until.get(cacheKey) ?? 0;
@@ -271,7 +290,7 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      const [rank, recentMatchResult, rrHistory, privateProfile] = await Promise.all([
+      const [rank, recentMatchResult, rrHistory, privateProfile, fallbackProfile] = await Promise.all([
         getRankCached(account.puuid, region, account.gameName, account.tagLine, tokens),
         getRecentMatchesCached(account.puuid, qRegion, puuidRankMapRaw, forceRegion === region, tokens),
         tokens
@@ -279,6 +298,10 @@ export async function GET(req: NextRequest) {
           : Promise.resolve([] as CompetitiveUpdate[]),
         tokens
           ? getPrivateProfile(account.puuid, qRegion, tokens.accessToken, tokens.entitlementsToken).catch(() => null)
+          : Promise.resolve(null),
+        // 토큰 없을 때 카드/레벨 폴백: Henrik → Op.gg
+        !tokens
+          ? fetchProfile(account.puuid, region, account.gameName, account.tagLine, null).catch(() => null)
           : Promise.resolve(null),
       ]);
 
@@ -294,8 +317,8 @@ export async function GET(req: NextRequest) {
           playedAt: m.playedAt.toISOString(),
         })),
         rrHistory,
-        playerCardId: privateProfile?.cardId ?? null,
-        accountLevel: privateProfile?.level ?? null,
+        playerCardId: privateProfile?.cardId ?? extractCardId(fallbackProfile?.card) ?? null,
+        accountLevel: privateProfile?.level ?? fallbackProfile?.level ?? null,
       };
     })
   )).flatMap((r) => {

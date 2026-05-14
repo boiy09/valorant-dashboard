@@ -46,26 +46,21 @@ export async function GET() {
   const CLIENT_PLATFORM = "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9";
 
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${accessToken}`,
+    Authorization: "Bearer " + accessToken,
     "X-Riot-Entitlements-JWT": entitlementsToken,
     "X-Riot-ClientPlatform": CLIENT_PLATFORM,
     "X-Riot-ClientVersion": clientVersion,
-    "User-Agent": `RiotClient/${clientVersion} rso-auth (Windows;10;;Professional, x64)`,
+    "User-Agent": "RiotClient/" + clientVersion + " rso-auth (Windows;10;;Professional, x64)",
     Accept: "application/json",
   };
 
-  const results: Record<string, unknown> = {
-    puuid: account.puuid,
-    region,
-    clientVersion,
-  };
-
   const postHeaders = { ...headers, "Content-Type": "application/json" };
+  const results: Record<string, unknown> = { puuid: account.puuid, region, clientVersion };
 
-  // 1. store v3 POST - 전체 응답 키 확인
+  // 1. store v3 POST
   try {
     const r = await fetch(
-      `https://pd.${region}.a.pvp.net/store/v3/storefront/${account.puuid}`,
+      "https://pd." + region + ".a.pvp.net/store/v3/storefront/" + account.puuid,
       { method: "POST", headers: postHeaders, body: "{}", signal: AbortSignal.timeout(8000) }
     );
     const body = await r.text().catch(() => "");
@@ -78,16 +73,16 @@ export async function GET() {
       skinsPanelKeys: Object.keys((parsed.SkinsPanelLayout as Record<string, unknown>) ?? {}),
     };
 
-    // bundle DataAssetID 추출해서 valorant-api.com 테스트
     const bundlePayload = (parsed.FeaturedBundle as Record<string, unknown>)?.Bundle as Record<string, unknown> | undefined;
     const bundleId = bundlePayload?.DataAssetID as string | undefined;
     if (bundleId) {
-      const br = await fetch(`https://valorant-api.com/v1/bundles/${bundleId}?language=ko-KR`).catch(() => null);
+      const br = await fetch("https://valorant-api.com/v1/bundles/" + bundleId + "?language=ko-KR").catch(() => null);
+      const bBody = (await br?.text().catch(() => "")) ?? "";
       results.bundle_resolve = {
         bundleId,
         status: br?.status ?? "fetch failed",
         ok: br?.ok ?? false,
-        bodyPreview: (await br?.text().catch(() => ""))?.slice(0, 200) ?? "",
+        bodyPreview: bBody.slice(0, 200),
       };
     }
   } catch (e) {
@@ -97,7 +92,7 @@ export async function GET() {
   // 2. contracts (배틀패스)
   try {
     const r = await fetch(
-      `https://pd.${region}.a.pvp.net/contracts/v1/contracts/${account.puuid}`,
+      "https://pd." + region + ".a.pvp.net/contracts/v1/contracts/" + account.puuid,
       { headers, signal: AbortSignal.timeout(8000) }
     );
     const body = await r.text().catch(() => "");

@@ -356,30 +356,36 @@ export async function getStore(
   const headers = await pvpHeaders(accessToken, entitlementsToken);
 
   let response = await fetch(
-    `https://pd.${shard}.a.pvp.net/store/v3/storefront/${puuid}`,
+    `https://pd.${shard}.a.pvp.net/store/v2/storefront/${puuid}`,
     { headers }
   );
 
-  // v3가 실패하면 v2 시도
+  // v2가 실패하면 v3 시도
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    console.error(`[store] v3 실패 ${response.status}:`, body.slice(0, 200));
+    console.error(`[store] v2 실패 ${response.status} shard=${shard}:`, body.slice(0, 300));
     response = await fetch(
-      `https://pd.${shard}.a.pvp.net/store/v2/storefront/${puuid}`,
+      `https://pd.${shard}.a.pvp.net/store/v3/storefront/${puuid}`,
       { headers }
     );
   }
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    console.error(`[store] v2 실패 ${response.status}:`, body.slice(0, 200));
-    throw new Error(`상점 조회 실패: ${response.status}`);
+    console.error(`[store] v3 실패 ${response.status} shard=${shard}:`, body.slice(0, 300));
+    throw new Error(`상점 조회 실패 (${response.status}) shard=${shard} body=${body.slice(0, 100)}`);
   }
+
+  const VP_CURRENCY = "85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741";
 
   const data = await response.json() as {
     SkinsPanelLayout?: {
       SingleItemOffers?: string[];
       SingleItemOffersRemainingDurationInSeconds?: number;
+      SingleItemStoreOffers?: Array<{
+        OfferID?: string;
+        Cost?: Record<string, number>;
+      }>;
     };
     FeaturedBundle?: {
       Bundle?: {
@@ -393,6 +399,13 @@ export async function getStore(
   // 개인 스킨 오퍼 resolve
   const skinUuids = data.SkinsPanelLayout?.SingleItemOffers ?? [];
   const remainingSec = data.SkinsPanelLayout?.SingleItemOffersRemainingDurationInSeconds ?? 0;
+  const storeOffers = data.SkinsPanelLayout?.SingleItemStoreOffers ?? [];
+  const costMap = new Map<string, number>();
+  for (const offer of storeOffers) {
+    if (offer.OfferID && offer.Cost?.[VP_CURRENCY]) {
+      costMap.set(offer.OfferID.toLowerCase(), offer.Cost[VP_CURRENCY]);
+    }
+  }
 
   const offers: StoreOffer[] = await Promise.all(
     skinUuids.map(async (uuid) => {
@@ -401,7 +414,7 @@ export async function getStore(
         uuid,
         name: skin.name,
         displayIcon: skin.displayIcon,
-        cost: 0, // 개별 VP 가격은 별도 API 필요, 기본값 0
+        cost: costMap.get(uuid.toLowerCase()) ?? 0,
         remainingSeconds: remainingSec,
       };
     })
@@ -413,8 +426,6 @@ export async function getStore(
   if (bundleData?.DataAssetID) {
     const bundleInfo = await resolveBundle(bundleData.DataAssetID);
     if (bundleInfo) {
-      // TotalDiscountedCost에서 VP 화폐 UUID로 가격 추출
-      const VP_CURRENCY = "85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741";
       const cost =
         bundleData.TotalDiscountedCost?.[VP_CURRENCY] ?? bundleInfo.price;
       bundle = {

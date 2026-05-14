@@ -14,6 +14,8 @@ type PuuidRankEntry = {
 };
 const recentMatchesLastGood = new Map<string, MatchStats[]>();
 const rankLastGood = new Map<string, RankData>();
+// Henrik 429 쿨다운: key → 재시도 가능한 시각 (ms)
+const henrik429Until = new Map<string, number>();
 
 type RecentMatchSource = "cache" | "private" | "henrik" | "stale" | "empty";
 type RecentMatchResult = {
@@ -143,12 +145,33 @@ async function getRecentMatchesCached(
         }))
       : [];
 
-    const henrikMatches = privateMatches.length > 0
-      ? []
-      : cleanMatches(await getRecentMatches(puuid, 10, region, "pc", {
+    let henrikMatches: MatchStats[] = [];
+    if (privateMatches.length === 0) {
+      const cooldownUntil = henrik429Until.get(cacheKey) ?? 0;
+      if (Date.now() < cooldownUntil) {
+        // 쿨다운 중 — stale 캐시 사용
+        const remainSec = Math.ceil((cooldownUntil - Date.now()) / 1000);
+        const stale = cleanMatches(recentMatchesLastGood.get(cacheKey) ?? apiCache.getStale<MatchStats[]>(cacheKey)?.data);
+        if (stale.length > 0) return { matches: stale, source: "stale", message: `요청 횟수 초과로 ${remainSec}초 후 재시도됩니다. 이전 데이터를 표시합니다.` };
+        return { matches: [], source: "empty", message: `요청 횟수가 너무 많습니다. ${remainSec}초 후 다시 시도해 주세요.` };
+      }
+      try {
+        henrikMatches = cleanMatches(await getRecentMatches(puuid, 10, region, "pc", {
           puuidRankMap,
           skipAccountFallback: true,
         }));
+      } catch (err) {
+        const status = (err as { response?: { status?: number; headers?: Record<string, string> } }).response?.status;
+        if (status === 429) {
+          const retryAfter = parseInt((err as { response?: { headers?: Record<string, string> } }).response?.headers?.["retry-after"] ?? "60", 10);
+          henrik429Until.set(cacheKey, Date.now() + retryAfter * 1000);
+          const stale = cleanMatches(recentMatchesLastGood.get(cacheKey) ?? apiCache.getStale<MatchStats[]>(cacheKey)?.data);
+          if (stale.length > 0) return { matches: stale, source: "stale", message: `요청 횟수가 너무 많습니다. ${retryAfter}초 후 자동 재시도됩니다. 이전 데이터를 표시합니다.` };
+          return { matches: [], source: "empty", message: `요청 횟수가 너무 많습니다. ${retryAfter}초 후 다시 시도해 주세요. (429)` };
+        }
+        console.warn("[stats] henrik matches failed:", err);
+      }
+    }
 
     const matches = privateMatches.length > 0 ? privateMatches : henrikMatches;
     if (matches.length > 0) {

@@ -46,29 +46,6 @@ function normalizeRegion(raw: string): "KR" | "AP" {
   return "KR";
 }
 
-function parseTokensFromUrl(input: string): { accessToken: string; idToken: string } | null {
-  try {
-    const hashIdx = input.indexOf("#");
-    if (hashIdx !== -1) {
-      const params = new URLSearchParams(input.slice(hashIdx + 1));
-      const accessToken = params.get("access_token");
-      const idToken = params.get("id_token");
-      if (accessToken) return { accessToken, idToken: idToken ?? "" };
-    }
-
-    if (input.includes("access_token=")) {
-      const params = new URLSearchParams(input);
-      const accessToken = params.get("access_token");
-      const idToken = params.get("id_token");
-      if (accessToken) return { accessToken, idToken: idToken ?? "" };
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeCookieInput(input: string): string {
   let raw = input.trim();
   const cookieHeader = raw.match(/(?:^|\n)\s*cookie\s*:\s*(.+)$/im);
@@ -86,7 +63,7 @@ function normalizeCookieInput(input: string): string {
 async function getTokensFromCookie(raw: string) {
   const ssidCookie = normalizeCookieInput(raw);
   if (!ssidCookie.includes("ssid=")) {
-    throw new Error("ssid 쿠키가 포함되어 있지 않습니다. 주소창 URL 전체 또는 Network 탭의 Cookie 헤더 전체를 복사해 주세요.");
+    throw new Error("ssid 쿠키가 포함되어 있지 않습니다. Network 탭의 Cookie 헤더 전체를 복사해 주세요.");
   }
 
   const authResult = await refreshTokens(ssidCookie);
@@ -103,12 +80,8 @@ async function getTokensFromCookie(raw: string) {
 }
 
 async function getTokensFromInput(raw: string) {
-  const urlTokens = parseTokensFromUrl(raw);
-  if (urlTokens) {
-    return {
-      tokens: await getAuthTokens(urlTokens.accessToken, urlTokens.idToken, ""),
-      authCookie: null,
-    };
+  if (/access_token=|#access_token=|playvalorant\.com/i.test(raw)) {
+    throw new Error("URL 방식은 장기 유지가 불가능합니다. auth.riotgames.com 요청의 Cookie 헤더 전체를 입력해 주세요.");
   }
 
   return getTokensFromCookie(raw);
@@ -123,7 +96,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json() as { ssid?: string; value?: string };
   const raw = (body.value ?? body.ssid ?? "").trim();
   if (!raw) {
-    return Response.json({ error: "URL 또는 쿠키 값을 입력해 주세요." }, { status: 400 });
+    return Response.json({ error: "Cookie 값을 입력해 주세요." }, { status: 400 });
   }
 
   const user = await findUser(session.user.id, session.user.email);
@@ -185,7 +158,7 @@ export async function POST(req: NextRequest) {
 
     return Response.json({
       success: true,
-      authMode: authCookie ? "cookie" : "url",
+      authMode: "cookie",
       account: {
         id: account.id,
         region: account.region,

@@ -46,7 +46,7 @@ export default function RiotSsidTestPage() {
       });
       const data = (await response.json()) as {
         error?: string;
-        authMode?: "cookie" | "url";
+        authMode?: "cookie";
         account?: { riotId?: string; region?: string; isVerified?: boolean };
       };
 
@@ -59,11 +59,7 @@ export default function RiotSsidTestPage() {
       setState("success");
       setRiotId(data.account?.riotId ?? "");
       setRegion(data.account?.region ?? "");
-      setMessage(
-        data.authMode === "cookie"
-          ? "Cookie 저장과 토큰 자동 갱신 테스트가 완료되었습니다."
-          : "URL 토큰 연동이 완료되었습니다. 장기 갱신 테스트는 Cookie 헤더 전체로 다시 확인해야 합니다."
-      );
+      setMessage("Cookie 저장과 토큰 자동 갱신 테스트가 완료되었습니다.");
       window.dispatchEvent(new Event("riot-accounts-updated"));
     } catch {
       setState("error");
@@ -77,8 +73,8 @@ export default function RiotSsidTestPage() {
         <div className="mb-1 text-xs font-black uppercase tracking-[0.24em] text-[#7fffe6]">Riot SSID Test</div>
         <h1 className="text-2xl font-black text-white">Riot 장기 연동 테스트</h1>
         <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-          기존 Riot 연동은 그대로 두고, 여기서만 Riot 로그인 URL 또는 쿠키 기반 연동을 테스트합니다.
-          주소창에 access_token이 보이면 URL 전체를 붙여넣고, 장기 갱신 테스트는 auth.riotgames.com의 Cookie 문자열 전체를 붙여넣습니다.
+          기존 Riot 연동은 그대로 두고, 여기서만 Riot Cookie 기반 장기 연동과 자동 갱신을 테스트합니다.
+          URL 방식은 단기 토큰이라 여기서는 사용하지 않습니다.
         </p>
       </section>
 
@@ -100,17 +96,16 @@ export default function RiotSsidTestPage() {
             </li>
             <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
               <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 2</div>
-              <div className="mt-1 font-bold text-white">URL 또는 쿠키 값을 복사합니다.</div>
+              <div className="mt-1 font-bold text-white">Cookie 값을 복사합니다.</div>
               <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-                주소창에 access_token이 붙어 있으면 URL 전체를 복사합니다. SSID 갱신 테스트는 Network 요청의 Cookie 헤더 전체나
-                auth.riotgames.com 쿠키들을 name=value; 형식으로 이어 붙인 값을 사용합니다.
+                Network 요청의 Cookie 헤더 전체나 auth.riotgames.com 쿠키들을 name=value; 형식으로 이어 붙인 값을 사용합니다.
               </p>
             </li>
             <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
               <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 3</div>
               <div className="mt-1 font-bold text-white">오른쪽 입력칸에 붙여넣고 테스트합니다.</div>
               <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">
-                ssid 값 하나만으로는 Riot이 거부할 수 있습니다. 실패하면 주소창 URL 전체 또는 Cookie 헤더 전체로 다시 테스트하세요.
+                ssid 값 하나만으로는 Riot이 거부할 수 있습니다. 실패하면 Cookie 헤더 전체로 다시 테스트하세요.
               </p>
             </li>
           </ol>
@@ -119,7 +114,7 @@ export default function RiotSsidTestPage() {
         <section className="val-card p-5">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-black text-white">Riot URL 또는 Cookie 값</label>
+              <label className="mb-2 block text-sm font-black text-white">Riot Cookie 값</label>
               <textarea
                 value={authInput}
                 onChange={(event) => {
@@ -129,11 +124,11 @@ export default function RiotSsidTestPage() {
                 rows={8}
                 required
                 disabled={state === "loading"}
-                placeholder="https://playvalorant.com/ko-kr/opt_in/#access_token=... 또는 ssid=...; clid=...; csid=..."
+                placeholder="ssid=...; clid=...; csid=... 또는 Cookie: ssid=...; clid=...; csid=..."
                 className="w-full resize-none rounded border border-[#2a3540] bg-[#0f1923] px-4 py-3 font-mono text-sm text-white placeholder:text-[#465766] focus:border-[#7fffe6] focus:outline-none"
               />
               <p className="mt-2 break-keep text-xs leading-relaxed text-[#7b8a96]">
-                URL에는 임시 토큰이, Cookie에는 로그인 세션이 들어 있습니다. 테스트 목적 외에 다른 곳에 공유하지 마세요.
+                Cookie에는 로그인 세션이 들어 있습니다. 테스트 목적 외에 다른 곳에 공유하지 마세요.
               </p>
             </div>
 

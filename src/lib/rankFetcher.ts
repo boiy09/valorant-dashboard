@@ -35,6 +35,10 @@ export interface TokenState {
   message: string | null;
 }
 
+function extractSsid(cookies: string) {
+  return cookies.match(/(?:^|;\s*)(ssid=[^;]+)/)?.[1] ?? null;
+}
+
 export interface FetchedRank {
   tierId: number;
   tierName: string;
@@ -121,6 +125,8 @@ export async function ensureTokenState(
         accessToken: newAccess,
         entitlementsToken: newEnt,
         tokenExpiresAt: new Date(now + 55 * 60 * 1000),
+        authCookie: result.cookies || refreshCookie,
+        ssid: extractSsid(result.cookies || refreshCookie) ?? ssid,
       },
     }).catch((e) => console.error("[rankFetcher] token cache update failed:", puuid, e));
 

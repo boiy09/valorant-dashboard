@@ -67,8 +67,6 @@ export async function GET() {
   );
 
   return Response.json({
-    accounts: results
-      .filter((r): r is PromiseFulfilledResult<unknown> => r.status === "fulfilled")
-      .map((r) => r.value),
+    accounts: results.flatMap((r) => r.status === "fulfilled" ? [r.value] : []),
   });
 }

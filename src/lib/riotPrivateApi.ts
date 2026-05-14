@@ -631,17 +631,6 @@ export interface PrivateRecentMatchesOptions {
   count?: number;
 }
 
-function privateQueueLabel(queueId: string) {
-  const normalized = queueId.trim().toLowerCase();
-  if (!normalized) return "Unknown";
-  if (normalized === "competitive") return "Competitive";
-  if (normalized === "unrated") return "Unrated";
-  if (normalized === "swiftplay") return "Swiftplay";
-  if (normalized === "spikerush") return "Spike Rush";
-  if (normalized === "deathmatch") return "Deathmatch";
-  return queueId;
-}
-
 export async function getPrivateRecentMatches(
   puuid: string,
   region: string,
@@ -746,27 +735,10 @@ export async function getPrivateRecentMatches(
 
   if (detailed.length > 0) return detailed;
 
-  console.warn("[private-match] all match details failed, using history summaries:", { region, count: historyItems.length });
-  return historyItems.flatMap((item) => {
-    if (!item.MatchID) return [];
-    return [{
-      matchId: item.MatchID,
-      map: "Unknown",
-      mode: privateQueueLabel((item as { QueueID?: string }).QueueID ?? ""),
-      agent: "Unknown",
-      agentIcon: "",
-      result: "무효" as MatchStats["result"],
-      kills: 0,
-      deaths: 0,
-      assists: 0,
-      score: 0,
-      teamScore: null,
-      enemyScore: null,
-      headshots: 0,
-      bodyshots: 0,
-      legshots: 0,
-      playedAt: new Date(toNumber((item as { GameStartTime?: number }).GameStartTime, Date.now())),
-      scoreboard: null,
-    }];
-  });
+  if (historyItems.length > 0) {
+    throw new Error("PVP match-history는 받았지만 match-details 상세 조회가 모두 실패했습니다.");
+  }
+
+  return [];
+
 }

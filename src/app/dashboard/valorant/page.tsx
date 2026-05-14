@@ -62,6 +62,17 @@ function buildTrackerUrl(riotId: string) {
   return `https://tracker.gg/valorant/profile/riot/${encodeURIComponent(riotId)}/overview?platform=pc&playlist=competitive`;
 }
 
+function isDetailedMatch(match: RegionStats["recentMatches"][number]) {
+  const hasKnownMeta = match.map !== "Unknown" || match.agent !== "Unknown" || Boolean(match.agentIcon);
+  const hasStats = match.kills > 0 || match.deaths > 0 || match.assists > 0 || match.score > 0;
+  const hasScore = match.teamScore !== null || match.enemyScore !== null;
+  return hasKnownMeta || hasStats || hasScore || Boolean(match.scoreboard);
+}
+
+function cleanRegionStats(data: RegionStats): RegionStats {
+  return { ...data, recentMatches: data.recentMatches.filter(isDetailedMatch) };
+}
+
 function tierColor(tierId: number) {
   if (tierId >= 24) return "text-[#ff4655]";
   if (tierId >= 21) return "text-[#f0b429]";
@@ -252,11 +263,23 @@ function EmptyRegionCard({ region }: { region: RiotRegion }) {
   );
 }
 
-function RegionMatchList({ matches, trackerUrl, puuid }: {
-  matches: RegionStats["recentMatches"]; trackerUrl: string; puuid: string;
+function RegionMatchList({ matches, trackerUrl, puuid, message, source }: {
+  matches: RegionStats["recentMatches"]; trackerUrl: string; puuid: string; message?: string; source?: RegionStats["matchSource"];
 }) {
   if (matches.length === 0) {
-    return <div className="val-card p-4 text-[#7b8a96] text-sm">최근 매치 데이터가 아직 없습니다.</div>;
+    return (
+      <div className="val-card border-[#ff4655]/35 bg-[#140b10] p-4">
+        <div className="text-sm font-black text-white">최근 매치 상세 정보를 불러오지 못했습니다.</div>
+        <div className="mt-2 break-keep text-sm leading-relaxed text-[#c8d3db]">
+          {message ?? "Riot PVP 상세 조회와 대체 조회가 모두 빈 결과를 반환했습니다."}
+        </div>
+        {source ? (
+          <div className="mt-3 inline-flex rounded border border-[#2a3540] bg-[#0f1923] px-2 py-1 text-[11px] font-bold text-[#8da0ad]">
+            source: {source}
+          </div>
+        ) : null}
+      </div>
+    );
   }
   return (
     <div className="flex flex-col gap-2">
@@ -382,7 +405,8 @@ function RegionSkeleton() {
 }
 
 function RegionSection({ data, onRefresh, refreshing }: { data: RegionStats; onRefresh?: () => void; refreshing?: boolean }) {
-  const summary = buildSummary(data.recentMatches);
+  const visibleMatches = data.recentMatches.filter(isDetailedMatch);
+  const summary = buildSummary(visibleMatches);
   const trackerUrl = buildTrackerUrl(data.riotId);
   const rank = data.rank;
 
@@ -426,13 +450,13 @@ function RegionSection({ data, onRefresh, refreshing }: { data: RegionStats; onR
 
       <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="val-card p-5">
-          <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-2">최근 {data.recentMatches.length}경기 승률</div>
+          <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-2">최근 {visibleMatches.length}경기 승률</div>
           <div className={`text-3xl font-black mb-2 ${summary.winRate !== null ? summary.winRate >= 50 ? "text-green-400" : "text-[#ff4655]" : "text-white"}`}>
             {summary.winRate !== null ? `${summary.winRate}%` : "--"}
           </div>
-          {data.recentMatches.length > 0 && (
+          {visibleMatches.length > 0 && (
             <div className="flex gap-0.5">
-              {data.recentMatches.map((m, i) => (
+              {visibleMatches.map((m, i) => (
                 <div key={`${m.matchId}-bar-${i}`} className={`h-1 flex-1 rounded-sm ${m.result === "승리" ? "bg-green-400" : m.result === "패배" ? "bg-[#ff4655]" : "bg-zinc-600"}`} />
               ))}
             </div>
@@ -454,7 +478,7 @@ function RegionSection({ data, onRefresh, refreshing }: { data: RegionStats; onR
 
       <div className="mb-2">
         <div className="text-[#7b8a96] text-xs tracking-widest uppercase mb-3">최근 매치</div>
-        <RegionMatchList matches={data.recentMatches} trackerUrl={trackerUrl} puuid={data.puuid} />
+        <RegionMatchList matches={visibleMatches} trackerUrl={trackerUrl} puuid={data.puuid} message={data.matchMessage} source={data.matchSource} />
       </div>
     </section>
   );
@@ -464,11 +488,11 @@ function readStatsCache() {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = window.sessionStorage.getItem("valorant-dashboard:valorant-stats:v4");
+    const raw = window.sessionStorage.getItem("valorant-dashboard:valorant-stats:v5");
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { savedAt?: number; data?: { accounts: RegionStats[] } };
     if (!parsed.savedAt || Date.now() - parsed.savedAt > 10 * 60 * 1000) return null;
-    return parsed.data ?? null;
+    return parsed.data ? { accounts: parsed.data.accounts.map(cleanRegionStats) } : null;
   } catch {
     return null;
   }
@@ -478,7 +502,7 @@ function writeStatsCache(data: { accounts: RegionStats[] }) {
   if (typeof window === "undefined") return;
 
   try {
-    window.sessionStorage.setItem("valorant-dashboard:valorant-stats:v4", JSON.stringify({ savedAt: Date.now(), data }));
+    window.sessionStorage.setItem("valorant-dashboard:valorant-stats:v5", JSON.stringify({ savedAt: Date.now(), data }));
   } catch {}
 }
 
@@ -503,14 +527,15 @@ export default function ValorantPage() {
       const d = await res.json() as ValorantStatsResponse;
       handleAuthState(d);
       if (d.accounts) {
+        const nextAccounts = d.accounts.map(cleanRegionStats);
         setData((prev) => {
           if (!prev) {
-            const next = { accounts: d.accounts! };
+            const next = { accounts: nextAccounts };
             writeStatsCache(next);
             return next;
           }
           const merged = prev.accounts.map((a) => {
-            const updated = d.accounts!.find((x) => x.region === a.region);
+            const updated = nextAccounts.find((x) => x.region === a.region);
             if (!updated) return a;
             const rank = mergeRank(a.rank, updated.rank);
             if (a.recentMatches.length > 0 && updated.recentMatches.length === 0) {
@@ -518,7 +543,7 @@ export default function ValorantPage() {
             }
             return { ...updated, rank };
           });
-          d.accounts!.forEach((a) => {
+          nextAccounts.forEach((a) => {
             if (!merged.find((x) => x.region === a.region)) merged.push(a);
           });
           const next = { accounts: merged };
@@ -549,7 +574,7 @@ export default function ValorantPage() {
         }
         setError(null);
         if (d.accounts) {
-          const next = { accounts: d.accounts };
+          const next = { accounts: d.accounts.map(cleanRegionStats) };
           setData(next);
           writeStatsCache(next);
         }

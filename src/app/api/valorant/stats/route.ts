@@ -22,6 +22,17 @@ type RecentMatchResult = {
   message?: string;
 };
 
+function isDetailedMatch(match: MatchStats) {
+  const hasKnownMeta = match.map !== "Unknown" || match.agent !== "Unknown" || Boolean(match.agentIcon);
+  const hasStats = match.kills > 0 || match.deaths > 0 || match.assists > 0 || match.score > 0;
+  const hasScore = match.teamScore !== null || match.enemyScore !== null;
+  return hasKnownMeta || hasStats || hasScore || Boolean(match.scoreboard);
+}
+
+function cleanMatches(matches: MatchStats[] | null | undefined) {
+  return (matches ?? []).filter(isDetailedMatch);
+}
+
 function mergeCurrentRank(full: RankData | null, current: { tierId: number; tierName: string; rankIcon: string | null }): RankData | null {
   if (current.tierId <= 0) return full;
 
@@ -119,44 +130,52 @@ async function getRecentMatchesCached(
   tokens?: { accessToken: string; entitlementsToken: string } | null
 ): Promise<RecentMatchResult> {
   const cacheKey = `valorant:recent-matches:${region}:${puuid}:10`;
-  const cached = apiCache.get<MatchStats[]>(cacheKey, TTL.MEDIUM);
+  const cached = cleanMatches(apiCache.get<MatchStats[]>(cacheKey, TTL.MEDIUM));
   const cacheAge = apiCache.cacheAge(cacheKey);
-  if (cached && (!force || cacheAge < 30 * 1000)) return { matches: cached, source: "cache" };
+  if (cached.length > 0 && (!force || cacheAge < 30 * 1000)) return { matches: cached, source: "cache" };
 
   try {
+    let privateError: string | undefined;
     const privateMatches = tokens
-      ? await getPrivateRecentMatches(puuid, region, tokens.accessToken, tokens.entitlementsToken, { count: 10 }).catch(() => [])
+      ? cleanMatches(await getPrivateRecentMatches(puuid, region, tokens.accessToken, tokens.entitlementsToken, { count: 10 }).catch((error) => {
+          privateError = error instanceof Error ? error.message : "PVP 최근 매치 상세 조회에 실패했습니다.";
+          return [];
+        }))
       : [];
-    const matches = privateMatches.length > 0
-      ? privateMatches
-      : await getRecentMatches(puuid, 10, region, "pc", {
+
+    const henrikMatches = privateMatches.length > 0
+      ? []
+      : cleanMatches(await getRecentMatches(puuid, 10, region, "pc", {
           puuidRankMap,
           skipAccountFallback: true,
-        });
+        }));
+
+    const matches = privateMatches.length > 0 ? privateMatches : henrikMatches;
     if (matches.length > 0) {
       apiCache.set(cacheKey, matches);
       recentMatchesLastGood.set(cacheKey, matches);
     }
+
     return {
       matches,
       source: privateMatches.length > 0 ? "private" : matches.length > 0 ? "henrik" : "empty",
-      message: matches.length > 0 ? undefined : "PVP/Henrik 모두 최근 매치 데이터를 반환하지 않았습니다.",
+      message: matches.length > 0 ? undefined : privateError ?? "PVP/Henrik 모두 최근 매치 상세 데이터를 반환하지 않았습니다.",
     };
   } catch (error) {
-    const stale = recentMatchesLastGood.get(cacheKey);
-    if (stale) {
+    const stale = cleanMatches(recentMatchesLastGood.get(cacheKey));
+    if (stale.length > 0) {
       console.warn("[stats] recent matches failed, using cached data:", error);
       return { matches: stale, source: "stale", message: "최근 매치 조회 실패로 마지막 성공 데이터를 사용했습니다." };
     }
-    const staleCache = apiCache.getStale<MatchStats[]>(cacheKey);
-    if (staleCache?.data?.length) {
+    const staleCache = cleanMatches(apiCache.getStale<MatchStats[]>(cacheKey)?.data);
+    if (staleCache.length > 0) {
       console.warn("[stats] recent matches failed, using stale cache:", error);
-      return { matches: staleCache.data, source: "stale", message: "최근 매치 조회 실패로 만료 캐시를 사용했습니다." };
+      return { matches: staleCache, source: "stale", message: "최근 매치 조회 실패로 만료 캐시를 사용했습니다." };
     }
     return {
       matches: [],
       source: "empty",
-      message: error instanceof Error ? error.message : "최근 매치 조회에 실패했습니다.",
+      message: error instanceof Error ? error.message : "최근 매치 상세 조회에 실패했습니다.",
     };
   }
 }

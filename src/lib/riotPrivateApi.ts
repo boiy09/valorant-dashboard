@@ -414,8 +414,22 @@ async function getBundleList(): Promise<Array<{ uuid: string } & BundleInfo>> {
   }
 }
 
+async function checkCdnImage(uuid: string): Promise<string | null> {
+  // HEAD가 막혀있어도 405는 파일 존재를 의미하므로 200/405 모두 사용 가능으로 처리
+  for (const filename of ["displayicon.png", "displayicon2.png", "verticalpromoimage.png"]) {
+    const url = `https://media.valorant-api.com/bundles/${uuid}/${filename}`;
+    try {
+      const r = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(4000) });
+      if (r.status === 200 || r.status === 405) return url;
+    } catch {
+      // 다음 시도
+    }
+  }
+  return null;
+}
+
 async function resolveBundle(uuid: string): Promise<BundleInfo | null> {
-  // 1. 직접 UUID 조회
+  // 1. valorant-api.com 직접 UUID 조회
   try {
     const response = await fetch(`${VALORANT_API_BASE}/bundles/${uuid}?language=ko-KR`);
     if (response.ok) {
@@ -439,6 +453,14 @@ async function resolveBundle(uuid: string): Promise<BundleInfo | null> {
     const list = await getBundleList();
     const found = list.find((b) => b.uuid.toLowerCase() === uuid.toLowerCase());
     if (found) return found;
+  } catch {
+    // 폴백
+  }
+
+  // 3. CDN 직접 접근 (API에 없어도 CDN에 이미지 파일이 존재할 수 있음)
+  try {
+    const cdnIcon = await checkCdnImage(uuid);
+    if (cdnIcon) return { name: "", displayIcon: cdnIcon, price: 0 };
   } catch {
     // 폴백
   }
@@ -559,8 +581,26 @@ export async function getStore(
       bundleInfo?.price ??
       (bundleRaw.Items ?? []).reduce((sum, item) => sum + (item.DiscountedPrice ?? item.BasePrice ?? 0), 0);
 
+    // 번들명: CDN에서 이미지만 얻은 경우 name이 "" → 아이템 스킨명에서 유추
+    let bundleName = bundleInfo?.name || "";
+    if (!bundleName) {
+      const skinMap = await getSkinLevelMap();
+      const SKIN_LEVEL_TYPE = "e7c63390-eda7-46e0-bb7a-a6abdacd2433";
+      for (const item of bundleRaw.Items ?? []) {
+        if (item.Item?.ItemTypeID?.toLowerCase() !== SKIN_LEVEL_TYPE.toLowerCase()) continue;
+        const skin = skinMap.get((item.Item?.ItemID ?? "").toLowerCase());
+        if (skin?.name) {
+          // "레이버 반달" → "레이버 번들" 형태로 무기명 제거
+          const parts = skin.name.split(" ");
+          bundleName = parts.length > 1 ? parts.slice(0, -1).join(" ") + " 번들" : skin.name + " 번들";
+          break;
+        }
+      }
+    }
+    if (!bundleName) bundleName = "번들";
+
     bundle = {
-      name: bundleInfo?.name ?? "번들",
+      name: bundleName,
       displayIcon: bundleInfo?.displayIcon || fallbackIcon,
       cost: totalCost,
       remainingSeconds: bundleRaw.DurationRemainingInSeconds ?? 0,

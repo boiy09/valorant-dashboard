@@ -294,7 +294,7 @@ export interface StoreBundle {
 
 export interface StoreData {
   offers: StoreOffer[];
-  bundle?: StoreBundle;
+  bundles: StoreBundle[];
 }
 
 export interface WalletData {
@@ -548,12 +548,15 @@ export async function getStore(
     })
   );
 
-  // 번들: v3 FeaturedBundles 또는 v2 FeaturedBundle
-  const bundleRaw = data.FeaturedBundles?.Bundles?.[0] ?? data.FeaturedBundle?.Bundle;
-  let bundle: StoreBundle | undefined;
+  const ITEM_TYPE_ENDPOINTS: Record<string, string> = {
+    "e7c63390-eda7-46e0-bb7a-a6abdacd2433": "weapons/skinlevels",
+    "dd3bf334-87f3-40bd-b043-682a57a8dc3a": "sprays",
+    "3f296c07-64c3-494c-923b-fe692a4fa1bd": "playercards",
+    "77258665-71d1-4623-bc72-44db9bd5b3b3": "buddies/levels",
+    "d5f120f8-ff8c-4aac-92ea-f2b5acbe9475": "sprays",
+  };
 
-  if (bundleRaw) {
-    // valorant-api.com에서 이름/이미지 조회 (DataAssetID, ID 순으로 시도 → 전체 목록 검색)
+  async function processBundleRaw(bundleRaw: BundlePayload): Promise<StoreBundle | null> {
     const candidates = [bundleRaw.DataAssetID, bundleRaw.ID].filter(Boolean) as string[];
     let bundleInfo: BundleInfo | null = null;
     for (const uuid of candidates) {
@@ -561,22 +564,12 @@ export async function getStore(
       if (bundleInfo) break;
     }
 
-    // 번들 이미지가 없을 때: 모든 아이템을 순서대로 조회해 첫 번째 아이콘 사용
-    // 타입별 valorant-api.com 엔드포인트 매핑
-    const ITEM_TYPE_ENDPOINTS: Record<string, string> = {
-      "e7c63390-eda7-46e0-bb7a-a6abdacd2433": "weapons/skinlevels",
-      "dd3bf334-87f3-40bd-b043-682a57a8dc3a": "sprays",
-      "3f296c07-64c3-494c-923b-fe692a4fa1bd": "playercards",
-      "77258665-71d1-4623-bc72-44db9bd5b3b3": "buddies/levels",
-      "d5f120f8-ff8c-4aac-92ea-f2b5acbe9475": "sprays",
-    };
     let fallbackIcon = "";
     let fallbackName = "";
     if (!bundleInfo?.displayIcon) {
       const skinMap = await getSkinLevelMap();
       for (const item of bundleRaw.Items ?? []) {
         const itemId = item.Item?.ItemID ?? "";
-        // 먼저 skin map에서 조회
         const skin = skinMap.get(itemId.toLowerCase());
         if (skin?.displayIcon) {
           fallbackIcon = skin.displayIcon;
@@ -586,7 +579,6 @@ export async function getStore(
           }
           break;
         }
-        // valorant-api.com 직접 조회 (스프레이, 카드 등)
         const endpoint = ITEM_TYPE_ENDPOINTS[item.Item?.ItemTypeID?.toLowerCase() ?? ""];
         if (endpoint) {
           try {
@@ -611,18 +603,27 @@ export async function getStore(
       bundleInfo?.price ??
       (bundleRaw.Items ?? []).reduce((sum, item) => sum + (item.DiscountedPrice ?? item.BasePrice ?? 0), 0);
 
-    const bundleName = bundleInfo?.name || fallbackName || "번들";
-
-    bundle = {
-      name: bundleName,
+    return {
+      name: bundleInfo?.name || fallbackName || "번들",
       displayIcon: bundleInfo?.displayIcon || fallbackIcon,
       cost: totalCost,
       remainingSeconds: bundleRaw.DurationRemainingInSeconds ?? 0,
     };
   }
 
-  console.log(`[store] offers=${offers.length} bundle=${bundle?.name ?? "none"}`);
-  return { offers, bundle };
+  // 번들: v3 FeaturedBundles(복수) → v2 FeaturedBundle(단일) 순으로 모든 번들 처리
+  const allBundlesRaw: BundlePayload[] =
+    data.FeaturedBundles?.Bundles?.length
+      ? data.FeaturedBundles.Bundles
+      : data.FeaturedBundle?.Bundle
+        ? [data.FeaturedBundle.Bundle]
+        : [];
+
+  const bundles = (await Promise.all(allBundlesRaw.map(processBundleRaw)))
+    .filter((b): b is StoreBundle => b !== null);
+
+  console.log(`[store] offers=${offers.length} bundles=${bundles.map(b => b.name).join(", ") || "none"}`);
+  return { offers, bundles };
 }
 
 export async function getWallet(

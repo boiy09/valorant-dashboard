@@ -49,6 +49,49 @@ const guideSteps = [
   },
 ];
 
+const cookieGuideSteps = [
+  {
+    title: "Riot 로그인 페이지",
+    desc: "Riot 로그인 열기 버튼을 눌러 아이디와 비밀번호를 입력합니다.",
+    image: "/guides/riot-cookie/step-01-login.jpg",
+  },
+  {
+    title: "2단계 인증",
+    desc: "휴대전화 푸시 알림 또는 인증 코드로 보안 인증을 완료합니다.",
+    image: "/guides/riot-cookie/step-02-mfa.jpg",
+  },
+  {
+    title: "404 페이지 등장",
+    desc: "로그인 후 이 화면이 나오면 정상입니다. 여기서 F12를 누릅니다.",
+    image: "/guides/riot-cookie/step-03-404.jpg",
+  },
+  {
+    title: "F12 → Network 탭 열기",
+    desc: "개발자 도구가 열리면 상단에서 Network 탭을 클릭합니다.",
+    image: "/guides/riot-cookie/step-04-f12.jpg",
+  },
+  {
+    title: "F5 새로고침 후 목록 확인",
+    desc: "F5로 새로고침하면 요청 목록이 뜹니다. check-session-iframe 항목을 찾아 클릭합니다.",
+    image: "/guides/riot-cookie/step-05-refresh.jpg",
+  },
+  {
+    title: "Headers → Cookie 값 복사",
+    desc: "오른쪽 Headers 탭 → Request Headers → Cookie 값 전체를 복사합니다.",
+    image: "/guides/riot-cookie/step-06-headers.jpg",
+  },
+  {
+    title: "대시보드에 붙여넣기",
+    desc: "복사한 Cookie 값을 입력칸에 붙여넣고 Cookie로 연동하기 버튼을 누릅니다.",
+    image: "/guides/riot-cookie/step-07-paste.jpg",
+  },
+  {
+    title: "연동 완료",
+    desc: "연동이 완료됩니다. 이후 토큰은 만료될 때마다 자동으로 갱신됩니다.",
+    image: "/guides/riot-cookie/step-08-success.jpg",
+  },
+];
+
 function regionLabel(region: RiotRegion) {
   return region === "KR" ? "한국 서버" : "아시아 서버";
 }
@@ -426,7 +469,35 @@ export default function RiotConnectPage() {
         </div>
       )}
 
-      {/* 이미지 가이드 (URL 방식에서만 표시) */}
+      {/* 이미지 가이드 (Cookie 방식) */}
+      {method === "ssid" && (
+        <section className="val-card p-5">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.22em] text-[#7fffe6]">Image Guide</div>
+              <h2 className="mt-1 text-lg font-black text-white">이미지로 보는 연동 방법</h2>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {cookieGuideSteps.map((step, index) => (
+              <article key={step.image} className="overflow-hidden rounded border border-[#263746] bg-[#0f1923]">
+                <div className="relative aspect-[16/9] overflow-hidden border-b border-[#263746] bg-black/30">
+                  <img src={step.image} alt={step.title} className="h-full w-full object-cover" loading="lazy" />
+                  <div className="absolute left-3 top-3 rounded bg-[#7fffe6] px-2 py-1 text-xs font-black text-black">
+                    STEP {index + 1}
+                  </div>
+                </div>
+                <div className="p-4">
+                  <h3 className="break-keep text-base font-black text-white">{step.title}</h3>
+                  <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">{step.desc}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 이미지 가이드 (URL 방식) */}
       {method === "url" && (
         <section className="val-card p-5">
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">

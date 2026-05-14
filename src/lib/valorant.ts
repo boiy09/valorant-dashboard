@@ -126,6 +126,7 @@ export interface MatchStats {
   headshots: number;
   bodyshots: number;
   legshots: number;
+  adr: number | null;
   playedAt: Date;
   scoreboard: MatchScoreboardData | null;
 }

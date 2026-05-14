@@ -12,6 +12,7 @@ const BASE_TABS = [
   { href: "/dashboard", label: "대시보드", icon: "⌂" },
   { href: "/dashboard/riot-connect", label: "라이엇 연동", icon: "⛓" },
   { href: "/dashboard/valorant", label: "전적", icon: "◎" },
+  { href: "/dashboard/store", label: "상점", icon: "▣" },
   { href: "/dashboard/scrim", label: "내전", icon: "⚔" },
   { href: "/dashboard/schedule", label: "일정", icon: "▤" },
   { href: "/dashboard/announce", label: "공지", icon: "▰" },

@@ -44,9 +44,23 @@ function VpIcon() {
 }
 
 function SkinCard({ offer }: { offer: StoreOffer }) {
+  const bgColor = offer.tierColor ?? "#0a1520";
+  const bgStyle = offer.tierColor
+    ? { background: `linear-gradient(135deg, ${bgColor}33 0%, #0a1520 60%)` }
+    : { background: "#0a1520" };
+
   return (
     <div className="val-card overflow-hidden">
-      <div className="relative flex h-36 items-center justify-center bg-[#0a1520]">
+      {offer.tierColor && (
+        <div
+          className="h-0.5 w-full"
+          style={{ backgroundColor: offer.tierColor }}
+        />
+      )}
+      <div
+        className="relative flex h-36 items-center justify-center"
+        style={bgStyle}
+      >
         {offer.displayIcon ? (
           <img
             src={offer.displayIcon}

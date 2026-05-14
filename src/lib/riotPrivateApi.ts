@@ -281,6 +281,8 @@ export interface StoreOffer {
   displayIcon: string;
   cost: number;
   remainingSeconds: number;
+  tierUuid?: string;
+  tierColor?: string;
 }
 
 export interface StoreBundle {
@@ -311,25 +313,80 @@ export interface BattlepassData {
 // API 구현
 // ────────────────────────────────────────────────────────────
 
-async function resolveSkinLevel(uuid: string): Promise<{ name: string; displayIcon: string }> {
-  try {
-    const response = await fetch(`${VALORANT_API_BASE}/weapons/skinlevels/${uuid}`);
-    if (response.ok) {
-      const data = await response.json() as { data?: { displayName?: string; displayIcon?: string } };
-      return {
-        name: data.data?.displayName ?? uuid,
-        displayIcon: data.data?.displayIcon ?? "",
-      };
+type SkinLevelInfo = { name: string; displayIcon: string; tierUuid: string; tierColor: string };
+let skinLevelCache: { data: Map<string, SkinLevelInfo>; cachedAt: number } | null = null;
+let tierColorCache: { data: Map<string, string>; cachedAt: number } | null = null;
+
+async function getContentTierColors(): Promise<Map<string, string>> {
+  const now = Date.now();
+  if (tierColorCache && now - tierColorCache.cachedAt < CONTENT_TTL) return tierColorCache.data;
+
+  const response = await fetch(`${VALORANT_API_BASE}/contenttiers`, { cache: "force-cache" }).catch(() => null);
+  const colors = new Map<string, string>();
+  if (response?.ok) {
+    const payload = await response.json() as {
+      data?: Array<{ uuid?: string; highlightColor?: string }>;
+    };
+    for (const tier of payload.data ?? []) {
+      if (tier.uuid && tier.highlightColor) {
+        // highlightColor은 RRGGBBAA 8자리 hex
+        const hex = tier.highlightColor.slice(0, 6);
+        colors.set(tier.uuid.toLowerCase(), `#${hex}`);
+      }
     }
-  } catch {
-    // 폴백
   }
-  return { name: uuid, displayIcon: "" };
+  tierColorCache = { data: colors, cachedAt: now };
+  return colors;
+}
+
+async function getSkinLevelMap(): Promise<Map<string, SkinLevelInfo>> {
+  const now = Date.now();
+  if (skinLevelCache && now - skinLevelCache.cachedAt < CONTENT_TTL) return skinLevelCache.data;
+
+  const [weaponsRes, tierColors] = await Promise.all([
+    fetch(`${VALORANT_API_BASE}/weapons?language=ko-KR`, { cache: "force-cache" }).catch(() => null),
+    getContentTierColors(),
+  ]);
+
+  const map = new Map<string, SkinLevelInfo>();
+  if (weaponsRes?.ok) {
+    const payload = await weaponsRes.json() as {
+      data?: Array<{
+        skins?: Array<{
+          contentTierUuid?: string;
+          levels?: Array<{ uuid?: string; displayName?: string; displayIcon?: string }>;
+        }>;
+      }>;
+    };
+    for (const weapon of payload.data ?? []) {
+      for (const skin of weapon.skins ?? []) {
+        const tierUuid = skin.contentTierUuid?.toLowerCase() ?? "";
+        const tierColor = tierColors.get(tierUuid) ?? "";
+        for (const level of skin.levels ?? []) {
+          if (!level.uuid) continue;
+          map.set(level.uuid.toLowerCase(), {
+            name: level.displayName ?? "",
+            displayIcon: level.displayIcon ?? "",
+            tierUuid,
+            tierColor,
+          });
+        }
+      }
+    }
+  }
+
+  skinLevelCache = { data: map, cachedAt: now };
+  return map;
+}
+
+async function resolveSkinLevel(uuid: string): Promise<SkinLevelInfo> {
+  const map = await getSkinLevelMap();
+  return map.get(uuid.toLowerCase()) ?? { name: uuid, displayIcon: "", tierUuid: "", tierColor: "" };
 }
 
 async function resolveBundle(uuid: string): Promise<{ name: string; displayIcon: string; price: number } | null> {
   try {
-    const response = await fetch(`${VALORANT_API_BASE}/bundles/${uuid}`);
+    const response = await fetch(`${VALORANT_API_BASE}/bundles/${uuid}?language=ko-KR`);
     if (response.ok) {
       const data = await response.json() as {
         data?: { displayName?: string; displayIcon?: string; price?: number };
@@ -369,6 +426,12 @@ export async function getStore(
 
   const VP_CURRENCY = "85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741";
 
+  type BundlePayload = {
+    DataAssetID?: string;
+    TotalDiscountedCost?: Record<string, number>;
+    DurationRemainingInSeconds?: number;
+  };
+
   const data = await response.json() as {
     SkinsPanelLayout?: {
       SingleItemOffers?: string[];
@@ -378,16 +441,13 @@ export async function getStore(
         Cost?: Record<string, number>;
       }>;
     };
-    FeaturedBundle?: {
-      Bundle?: {
-        DataAssetID?: string;
-        TotalDiscountedCost?: Record<string, number>;
-        DurationRemainingInSeconds?: number;
-      };
-    };
+    // v2 단일 번들
+    FeaturedBundle?: { Bundle?: BundlePayload };
+    // v3 복수 번들 배열
+    FeaturedBundles?: { Bundles?: BundlePayload[] };
   };
 
-  // 개인 스킨 오퍼 resolve
+  // 스킨 오퍼
   const skinUuids = data.SkinsPanelLayout?.SingleItemOffers ?? [];
   const remainingSec = data.SkinsPanelLayout?.SingleItemOffersRemainingDurationInSeconds ?? 0;
   const storeOffers = data.SkinsPanelLayout?.SingleItemStoreOffers ?? [];
@@ -407,27 +467,30 @@ export async function getStore(
         displayIcon: skin.displayIcon,
         cost: costMap.get(uuid.toLowerCase()) ?? 0,
         remainingSeconds: remainingSec,
+        tierUuid: skin.tierUuid,
+        tierColor: skin.tierColor,
       };
     })
   );
 
-  // 번들
+  // 번들: v3는 FeaturedBundles.Bundles[0], v2는 FeaturedBundle.Bundle
+  const bundleRaw =
+    data.FeaturedBundles?.Bundles?.[0] ?? data.FeaturedBundle?.Bundle;
+
   let bundle: StoreBundle | undefined;
-  const bundleData = data.FeaturedBundle?.Bundle;
-  if (bundleData?.DataAssetID) {
-    const bundleInfo = await resolveBundle(bundleData.DataAssetID);
+  if (bundleRaw?.DataAssetID) {
+    const bundleInfo = await resolveBundle(bundleRaw.DataAssetID);
     if (bundleInfo) {
-      const cost =
-        bundleData.TotalDiscountedCost?.[VP_CURRENCY] ?? bundleInfo.price;
       bundle = {
         name: bundleInfo.name,
         displayIcon: bundleInfo.displayIcon,
-        cost,
-        remainingSeconds: bundleData.DurationRemainingInSeconds ?? 0,
+        cost: bundleRaw.TotalDiscountedCost?.[VP_CURRENCY] ?? bundleInfo.price,
+        remainingSeconds: bundleRaw.DurationRemainingInSeconds ?? 0,
       };
     }
   }
 
+  console.log(`[store] offers=${offers.length} bundle=${bundle?.name ?? "none"}`);
   return { offers, bundle };
 }
 

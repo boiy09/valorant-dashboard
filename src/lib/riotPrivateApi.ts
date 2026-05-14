@@ -631,6 +631,17 @@ export interface PrivateRecentMatchesOptions {
   count?: number;
 }
 
+function privateQueueLabel(queueId: string) {
+  const normalized = queueId.trim().toLowerCase();
+  if (!normalized) return "Unknown";
+  if (normalized === "competitive") return "Competitive";
+  if (normalized === "unrated") return "Unrated";
+  if (normalized === "swiftplay") return "Swiftplay";
+  if (normalized === "spikerush") return "Spike Rush";
+  if (normalized === "deathmatch") return "Deathmatch";
+  return queueId;
+}
+
 export async function getPrivateRecentMatches(
   puuid: string,
   region: string,
@@ -651,7 +662,8 @@ export async function getPrivateRecentMatches(
   }
 
   const history = await historyRes.json() as { History?: Array<{ MatchID?: string }> };
-  const matchIds = (history.History ?? [])
+  const historyItems = history.History ?? [];
+  const matchIds = historyItems
     .map((item) => item.MatchID)
     .filter((id): id is string => Boolean(id));
 
@@ -669,8 +681,11 @@ export async function getPrivateRecentMatches(
     })
   );
 
-  return detailResults.flatMap((result) => {
-    if (result.status !== "fulfilled") return [];
+  const detailed = detailResults.flatMap((result) => {
+    if (result.status !== "fulfilled") {
+      console.warn("[private-match] match detail failed:", result.reason);
+      return [];
+    }
 
     const detail = asRecord(result.value);
     const matchInfo = asRecord(detail.matchInfo);
@@ -725,6 +740,32 @@ export async function getPrivateRecentMatches(
       bodyshots,
       legshots,
       playedAt: new Date(toNumber(matchInfo.GameStartMillis, Date.now())),
+      scoreboard: null,
+    }];
+  });
+
+  if (detailed.length > 0) return detailed;
+
+  console.warn("[private-match] all match details failed, using history summaries:", { region, count: historyItems.length });
+  return historyItems.flatMap((item) => {
+    if (!item.MatchID) return [];
+    return [{
+      matchId: item.MatchID,
+      map: "Unknown",
+      mode: privateQueueLabel((item as { QueueID?: string }).QueueID ?? ""),
+      agent: "Unknown",
+      agentIcon: "",
+      result: "무효" as MatchStats["result"],
+      kills: 0,
+      deaths: 0,
+      assists: 0,
+      score: 0,
+      teamScore: null,
+      enemyScore: null,
+      headshots: 0,
+      bodyshots: 0,
+      legshots: 0,
+      playedAt: new Date(toNumber((item as { GameStartTime?: number }).GameStartTime, Date.now())),
       scoreboard: null,
     }];
   });

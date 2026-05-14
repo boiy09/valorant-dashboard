@@ -12,6 +12,8 @@ interface RegionStats {
   riotId: string;
   puuid: string;
   rank: (RankData & { tierId?: number }) | null;
+  matchSource?: "cache" | "private" | "henrik" | "stale" | "empty";
+  matchMessage?: string;
   recentMatches: (Omit<MatchStats, "playedAt"> & { playedAt: string; scrimSessionId?: string | null; scrimTitle?: string | null })[];
   fromCache?: boolean;
   cacheAge?: number | null;

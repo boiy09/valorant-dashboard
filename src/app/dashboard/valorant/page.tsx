@@ -292,7 +292,7 @@ function RegionMatchList({ matches, trackerUrl, puuid, message, source }: {
         const kd = match.deaths > 0 ? (match.kills / match.deaths).toFixed(2) : match.kills.toFixed(2);
         const playedDate = new Date(match.playedAt);
         return (
-          <details key={`${match.matchId}-${index}`} className="val-card group" style={{ borderLeftWidth: 3, borderLeftStyle: "solid", borderLeftColor: match.result === "승리" ? "#4ade80" : match.result === "패배" ? "#ff4655" : "#52525b", overflow: "visible" }}>
+          <details key={`${match.matchId}-${index}`} className="val-card group" style={{ "--card-accent": match.result === "승리" ? "#4ade80" : match.result === "패배" ? "#ff4655" : "#52525b", borderLeftWidth: 3, borderLeftStyle: "solid", borderLeftColor: match.result === "승리" ? "#4ade80" : match.result === "패배" ? "#ff4655" : "#52525b", overflow: "visible" } as React.CSSProperties}>
             <summary className="flex cursor-pointer list-none items-center gap-4 px-5 py-3">
               {match.agentIcon ? (
                 <img src={match.agentIcon} alt={match.agent} className="w-10 h-10 rounded object-cover flex-shrink-0" />
@@ -436,34 +436,43 @@ function RrHistoryGraph({ history }: { history: RegionStats["rrHistory"] }) {
           </span>
         </div>
       </div>
-      <div className="relative flex items-center gap-0.5" style={{ height: 68 }}>
+      <div className="relative flex items-center gap-0.5" style={{ height: 90 }}>
         <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-[#2a3540]" />
         {reversed.map((update, i) => {
           const ratio = Math.abs(update.rrEarned) / maxAbs;
-          const barH = Math.max(3, Math.round(ratio * 30));
+          const barH = Math.max(3, Math.round(ratio * 36));
           const isPos = update.rrEarned >= 0;
+          const label = `${isPos ? "+" : ""}${update.rrEarned}`;
+          const barColor = isPos ? "rgba(74,222,128,0.85)" : "rgba(255,70,85,0.85)";
+          const textCls = isPos ? "text-green-400" : "text-[#ff4655]";
           const date = update.startTime > 0
             ? new Date(update.startTime).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })
             : "";
           return (
-            <div key={`${update.matchId}-${i}`} className="group relative flex flex-1 flex-col items-center" style={{ height: 68 }}>
+            <div key={`${update.matchId}-${i}`} className="group relative flex flex-1 flex-col items-center" style={{ height: 90 }}>
               <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded border border-[#2a3540] bg-[#0a1520] px-2 py-1.5 text-xs shadow-xl group-hover:block">
-                <div className={`font-black ${isPos ? "text-green-400" : "text-[#ff4655]"}`}>{isPos ? "+" : ""}{update.rrEarned} RR</div>
+                <div className={`font-black ${textCls}`}>{label} RR</div>
                 <div className="text-white font-bold">{update.rrAfter} RR</div>
                 {update.mapName !== "Unknown" && <div className="text-[#7b8a96]">{update.mapName}</div>}
                 {date && <div className="text-[#7b8a96]">{date}</div>}
               </div>
-              <div className="flex h-full w-full flex-col" style={{ paddingTop: 0 }}>
-                <div className="flex flex-1 items-end justify-center">
-                  {isPos && (
-                    <div className="w-full rounded-t" style={{ height: barH, background: "rgba(74,222,128,0.75)" }} />
-                  )}
-                </div>
-                <div className="flex flex-1 items-start justify-center">
-                  {!isPos && (
-                    <div className="w-full rounded-b" style={{ height: barH, background: "rgba(255,70,85,0.75)" }} />
-                  )}
-                </div>
+              {/* 상단(양수) 구역 */}
+              <div className="flex items-end justify-center" style={{ height: 45, width: "100%" }}>
+                {isPos && (
+                  <div className="flex w-full flex-col items-center justify-end" style={{ height: 45 }}>
+                    <span className={`text-[7px] font-bold leading-none mb-0.5 ${textCls}`}>{label}</span>
+                    <div className="w-full rounded-t" style={{ height: barH, background: barColor }} />
+                  </div>
+                )}
+              </div>
+              {/* 하단(음수) 구역 */}
+              <div className="flex items-start justify-center" style={{ height: 45, width: "100%" }}>
+                {!isPos && (
+                  <div className="flex w-full flex-col items-center justify-start" style={{ height: 45 }}>
+                    <div className="w-full rounded-b" style={{ height: barH, background: barColor }} />
+                    <span className={`text-[7px] font-bold leading-none mt-0.5 ${textCls}`}>{label}</span>
+                  </div>
+                )}
               </div>
             </div>
           );

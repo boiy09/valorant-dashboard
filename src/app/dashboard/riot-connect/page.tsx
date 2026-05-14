@@ -191,36 +191,62 @@ export default function RiotConnectPage() {
         <button
           type="button"
           onClick={() => setMethod("url")}
-          className={`val-card p-4 text-left transition-all ${
+          className={`relative overflow-hidden rounded-lg border-2 p-5 text-left transition-all active:scale-[0.98] ${
             method === "url"
-              ? "border-[#ff4655] bg-[#ff4655]/5"
-              : "border-[#2a3540] hover:border-[#ff4655]/50"
+              ? "border-[#ff4655] bg-[#ff4655]/8 shadow-[0_0_20px_rgba(255,70,85,0.15)]"
+              : "border-[#2a3540] bg-[#0d1822] hover:border-[#ff4655]/60 hover:bg-[#ff4655]/4"
           }`}
         >
-          <div className={`text-xs font-black uppercase tracking-widest ${method === "url" ? "text-[#ff4655]" : "text-[#7b8a96]"}`}>
-            URL 방식
+          {/* 선택 표시 */}
+          {method === "url" && (
+            <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#ff4655] text-[10px] font-black text-white">✓</span>
+          )}
+          {/* 스티커 */}
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            <span className="rounded bg-[#ff4655] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">초보자용</span>
+            <span className="rounded bg-[#f6c945] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-black">강추</span>
           </div>
-          <div className="mt-1 font-black text-white">로그인 후 주소 복사</div>
-          <p className="mt-1 break-keep text-xs leading-relaxed text-[#7b8a96]">
-            간단하지만 토큰이 만료되면 재연동이 필요합니다.
-          </p>
+          <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">URL 방식</div>
+          <div className="mt-1 text-base font-black text-white">로그인 후 주소 복사</div>
+          <ul className="mt-3 space-y-1.5">
+            <li className="flex items-start gap-1.5 text-xs text-[#7fffe6]">
+              <span className="mt-px font-black">+</span>
+              <span>절차가 단순해서 누구나 쉽게 할 수 있음</span>
+            </li>
+            <li className="flex items-start gap-1.5 text-xs text-[#ff8b95]">
+              <span className="mt-px font-black">-</span>
+              <span>토큰 만료(약 1시간)마다 재연동 필요</span>
+            </li>
+          </ul>
         </button>
+
         <button
           type="button"
           onClick={() => setMethod("ssid")}
-          className={`val-card p-4 text-left transition-all ${
+          className={`relative overflow-hidden rounded-lg border-2 p-5 text-left transition-all active:scale-[0.98] ${
             method === "ssid"
-              ? "border-[#7fffe6] bg-[#7fffe6]/5"
-              : "border-[#2a3540] hover:border-[#7fffe6]/50"
+              ? "border-[#7fffe6] bg-[#7fffe6]/8 shadow-[0_0_20px_rgba(127,255,230,0.12)]"
+              : "border-[#2a3540] bg-[#0d1822] hover:border-[#7fffe6]/50 hover:bg-[#7fffe6]/4"
           }`}
         >
-          <div className={`text-xs font-black uppercase tracking-widest ${method === "ssid" ? "text-[#7fffe6]" : "text-[#7b8a96]"}`}>
-            Cookie 방식
+          {method === "ssid" && (
+            <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#7fffe6] text-[10px] font-black text-black">✓</span>
+          )}
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            <span className="rounded bg-[#1a3a33] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#7fffe6] ring-1 ring-[#7fffe6]/30">Cookie 방식</span>
           </div>
-          <div className="mt-1 font-black text-white">F12 Cookie 복사</div>
-          <p className="mt-1 break-keep text-xs leading-relaxed text-[#7b8a96]">
-            한 번 연동하면 토큰이 자동으로 갱신됩니다.
-          </p>
+          <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Cookie 방식</div>
+          <div className="mt-1 text-base font-black text-white">F12 Cookie 복사</div>
+          <ul className="mt-3 space-y-1.5">
+            <li className="flex items-start gap-1.5 text-xs text-[#7fffe6]">
+              <span className="mt-px font-black">+</span>
+              <span>한 번 연동하면 토큰 자동 갱신, 재연동 불필요</span>
+            </li>
+            <li className="flex items-start gap-1.5 text-xs text-[#ff8b95]">
+              <span className="mt-px font-black">-</span>
+              <span>F12 개발자 도구를 열어야 해서 절차가 조금 복잡함</span>
+            </li>
+          </ul>
         </button>
       </div>
 

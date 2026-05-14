@@ -163,7 +163,6 @@ async function getRecentMatchesCached(
         console.warn("[stats] Riot official match API failed:", err);
       }
     }
-
     let henrikMatches: MatchStats[] = [];
     if (privateMatches.length === 0) {
       const cooldownUntil = henrik429Until.get(cacheKey) ?? 0;

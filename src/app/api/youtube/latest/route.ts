@@ -5,6 +5,12 @@ const CHANNELS = {
   global: "UC8CX0LD98EDXl4UYX1MDCXg",
 } as const;
 
+// Public Piped API instances (fallback when no API key)
+const PIPED_INSTANCES = [
+  "https://pipedapi.kavin.rocks",
+  "https://pipedapi.adminforge.de",
+];
+
 type Channel = keyof typeof CHANNELS;
 
 interface VideoItem {
@@ -13,46 +19,6 @@ interface VideoItem {
   url: string;
   thumbnail: string;
   publishedAt: string;
-}
-
-function decodeXml(value: string) {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
-}
-
-function firstMatch(value: string, pattern: RegExp) {
-  return decodeXml(value.match(pattern)?.[1]?.trim() ?? "");
-}
-
-async function fetchViaRss(channelId: string): Promise<VideoItem[]> {
-  const response = await fetch(
-    `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`,
-    {
-      next: { revalidate: 60 * 20 },
-      headers: {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "accept": "application/rss+xml, application/xml, text/xml, */*",
-      },
-    }
-  );
-  if (!response.ok) throw new Error(`RSS ${response.status}`);
-  const xml = await response.text();
-  return [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].slice(0, 4).map((match) => {
-    const entry = match[1];
-    const videoId = firstMatch(entry, /<yt:videoId>(.*?)<\/yt:videoId>/);
-    const url = firstMatch(entry, /<link rel="alternate" href="(.*?)"\//);
-    return {
-      id: videoId,
-      title: firstMatch(entry, /<title>([\s\S]*?)<\/title>/),
-      url: url || `https://www.youtube.com/watch?v=${videoId}`,
-      thumbnail: firstMatch(entry, /<media:thumbnail url="(.*?)"/),
-      publishedAt: firstMatch(entry, /<published>(.*?)<\/published>/),
-    };
-  });
 }
 
 interface YoutubeApiSnippet {
@@ -66,7 +32,15 @@ interface YoutubeApiItem {
   snippet?: YoutubeApiSnippet;
 }
 
-async function fetchViaApi(channelId: string, apiKey: string): Promise<VideoItem[]> {
+interface PipedVideo {
+  url?: string;
+  title?: string;
+  thumbnail?: string;
+  uploaded?: number;
+  uploaderName?: string;
+}
+
+async function fetchViaYoutubeApi(channelId: string, apiKey: string): Promise<VideoItem[]> {
   const url = new URL("https://www.googleapis.com/youtube/v3/search");
   url.searchParams.set("key", apiKey);
   url.searchParams.set("channelId", channelId);
@@ -77,8 +51,9 @@ async function fetchViaApi(channelId: string, apiKey: string): Promise<VideoItem
 
   const response = await fetch(url.toString(), {
     next: { revalidate: 60 * 20 },
+    signal: AbortSignal.timeout(8000),
   });
-  if (!response.ok) throw new Error(`API ${response.status}`);
+  if (!response.ok) throw new Error(`YouTube API ${response.status}`);
   const data = await response.json() as { items?: YoutubeApiItem[] };
   return (data.items ?? []).map((item) => {
     const videoId = item.id?.videoId ?? "";
@@ -94,31 +69,56 @@ async function fetchViaApi(channelId: string, apiKey: string): Promise<VideoItem
   });
 }
 
+async function fetchViaPiped(channelId: string): Promise<VideoItem[]> {
+  for (const base of PIPED_INSTANCES) {
+    try {
+      const response = await fetch(`${base}/channel/${channelId}`, {
+        next: { revalidate: 60 * 20 },
+        headers: { "user-agent": "valorant-dashboard/1.0" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) continue;
+      const data = await response.json() as { relatedStreams?: PipedVideo[] };
+      const videos = (data.relatedStreams ?? []).slice(0, 4).map((v) => {
+        const videoId = v.url?.replace("/watch?v=", "") ?? "";
+        return {
+          id: videoId,
+          title: v.title ?? "",
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          thumbnail: v.thumbnail ?? "",
+          publishedAt: v.uploaded ? new Date(v.uploaded).toISOString() : "",
+        };
+      });
+      if (videos.length > 0) return videos;
+    } catch {
+      // try next instance
+    }
+  }
+  throw new Error("Piped API 실패");
+}
+
 export async function GET(req: NextRequest) {
   const channel: Channel = req.nextUrl.searchParams.get("channel") === "global" ? "global" : "kr";
   const channelId = CHANNELS[channel];
   const apiKey = process.env.YOUTUBE_API_KEY;
 
-  try {
-    let videos: VideoItem[];
-    if (apiKey) {
-      videos = await fetchViaApi(channelId, apiKey);
-    } else {
-      videos = await fetchViaRss(channelId);
+  // 1. YouTube Data API v3 (API 키 있을 때 우선)
+  if (apiKey) {
+    try {
+      const videos = await fetchViaYoutubeApi(channelId, apiKey);
+      return NextResponse.json({ videos });
+    } catch (e) {
+      console.error(`[youtube/latest] YouTube API 실패 (${channel}):`, e);
     }
+  }
+
+  // 2. Piped API (무료, 키 불필요)
+  try {
+    const videos = await fetchViaPiped(channelId);
     return NextResponse.json({ videos });
   } catch (e) {
-    console.error(`[youtube/latest] ${channel} 피드 실패 (${apiKey ? "API" : "RSS"}):`, e);
-
-    if (apiKey) {
-      try {
-        const videos = await fetchViaRss(channelId);
-        return NextResponse.json({ videos });
-      } catch (e2) {
-        console.error(`[youtube/latest] ${channel} RSS 폴백도 실패:`, e2);
-      }
-    }
-
-    return NextResponse.json({ videos: [] });
+    console.error(`[youtube/latest] Piped API 실패 (${channel}):`, e);
   }
+
+  return NextResponse.json({ videos: [] });
 }

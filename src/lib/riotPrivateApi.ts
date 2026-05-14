@@ -281,6 +281,8 @@ export interface StoreOffer {
   displayIcon: string;
   cost: number;
   remainingSeconds: number;
+  tierUuid?: string;
+  tierColor?: string;
 }
 
 export interface StoreBundle {
@@ -311,25 +313,80 @@ export interface BattlepassData {
 // API 구현
 // ────────────────────────────────────────────────────────────
 
-async function resolveSkinLevel(uuid: string): Promise<{ name: string; displayIcon: string }> {
-  try {
-    const response = await fetch(`${VALORANT_API_BASE}/weapons/skinlevels/${uuid}`);
-    if (response.ok) {
-      const data = await response.json() as { data?: { displayName?: string; displayIcon?: string } };
-      return {
-        name: data.data?.displayName ?? uuid,
-        displayIcon: data.data?.displayIcon ?? "",
-      };
+type SkinLevelInfo = { name: string; displayIcon: string; tierUuid: string; tierColor: string };
+let skinLevelCache: { data: Map<string, SkinLevelInfo>; cachedAt: number } | null = null;
+let tierColorCache: { data: Map<string, string>; cachedAt: number } | null = null;
+
+async function getContentTierColors(): Promise<Map<string, string>> {
+  const now = Date.now();
+  if (tierColorCache && now - tierColorCache.cachedAt < CONTENT_TTL) return tierColorCache.data;
+
+  const response = await fetch(`${VALORANT_API_BASE}/contenttiers`, { cache: "force-cache" }).catch(() => null);
+  const colors = new Map<string, string>();
+  if (response?.ok) {
+    const payload = await response.json() as {
+      data?: Array<{ uuid?: string; highlightColor?: string }>;
+    };
+    for (const tier of payload.data ?? []) {
+      if (tier.uuid && tier.highlightColor) {
+        // highlightColor은 RRGGBBAA 8자리 hex
+        const hex = tier.highlightColor.slice(0, 6);
+        colors.set(tier.uuid.toLowerCase(), `#${hex}`);
+      }
     }
-  } catch {
-    // 폴백
   }
-  return { name: uuid, displayIcon: "" };
+  tierColorCache = { data: colors, cachedAt: now };
+  return colors;
+}
+
+async function getSkinLevelMap(): Promise<Map<string, SkinLevelInfo>> {
+  const now = Date.now();
+  if (skinLevelCache && now - skinLevelCache.cachedAt < CONTENT_TTL) return skinLevelCache.data;
+
+  const [weaponsRes, tierColors] = await Promise.all([
+    fetch(`${VALORANT_API_BASE}/weapons?language=ko-KR`, { cache: "force-cache" }).catch(() => null),
+    getContentTierColors(),
+  ]);
+
+  const map = new Map<string, SkinLevelInfo>();
+  if (weaponsRes?.ok) {
+    const payload = await weaponsRes.json() as {
+      data?: Array<{
+        skins?: Array<{
+          contentTierUuid?: string;
+          levels?: Array<{ uuid?: string; displayName?: string; displayIcon?: string }>;
+        }>;
+      }>;
+    };
+    for (const weapon of payload.data ?? []) {
+      for (const skin of weapon.skins ?? []) {
+        const tierUuid = skin.contentTierUuid?.toLowerCase() ?? "";
+        const tierColor = tierColors.get(tierUuid) ?? "";
+        for (const level of skin.levels ?? []) {
+          if (!level.uuid) continue;
+          map.set(level.uuid.toLowerCase(), {
+            name: level.displayName ?? "",
+            displayIcon: level.displayIcon ?? "",
+            tierUuid,
+            tierColor,
+          });
+        }
+      }
+    }
+  }
+
+  skinLevelCache = { data: map, cachedAt: now };
+  return map;
+}
+
+async function resolveSkinLevel(uuid: string): Promise<SkinLevelInfo> {
+  const map = await getSkinLevelMap();
+  return map.get(uuid.toLowerCase()) ?? { name: uuid, displayIcon: "", tierUuid: "", tierColor: "" };
 }
 
 async function resolveBundle(uuid: string): Promise<{ name: string; displayIcon: string; price: number } | null> {
   try {
-    const response = await fetch(`${VALORANT_API_BASE}/bundles/${uuid}`);
+    const response = await fetch(`${VALORANT_API_BASE}/bundles/${uuid}?language=ko-KR`);
     if (response.ok) {
       const data = await response.json() as {
         data?: { displayName?: string; displayIcon?: string; price?: number };
@@ -355,7 +412,7 @@ export async function getStore(
   const shard = regionToShard(region);
   const headers = await pvpHeaders(accessToken, entitlementsToken);
 
-  // v3 POST 시도 (최신 방식)
+  // v3 POST (최신 방식)
   let response = await fetch(
     `https://pd.${shard}.a.pvp.net/store/v3/storefront/${puuid}`,
     { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: "{}" }
@@ -369,6 +426,21 @@ export async function getStore(
 
   const VP_CURRENCY = "85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741";
 
+  type BundleItem = {
+    Item?: { ItemTypeID?: string; ItemID?: string };
+    BasePrice?: number;
+    DiscountedPrice?: number;
+    CurrencyID?: string;
+  };
+
+  type BundlePayload = {
+    ID?: string;
+    DataAssetID?: string;
+    TotalDiscountedCost?: Record<string, number>;
+    DurationRemainingInSeconds?: number;
+    Items?: BundleItem[];
+  };
+
   const data = await response.json() as {
     SkinsPanelLayout?: {
       SingleItemOffers?: string[];
@@ -378,16 +450,11 @@ export async function getStore(
         Cost?: Record<string, number>;
       }>;
     };
-    FeaturedBundle?: {
-      Bundle?: {
-        DataAssetID?: string;
-        TotalDiscountedCost?: Record<string, number>;
-        DurationRemainingInSeconds?: number;
-      };
-    };
+    FeaturedBundle?: { Bundle?: BundlePayload };
+    FeaturedBundles?: { Bundles?: BundlePayload[] };
   };
 
-  // 개인 스킨 오퍼 resolve
+  // 스킨 오퍼
   const skinUuids = data.SkinsPanelLayout?.SingleItemOffers ?? [];
   const remainingSec = data.SkinsPanelLayout?.SingleItemOffersRemainingDurationInSeconds ?? 0;
   const storeOffers = data.SkinsPanelLayout?.SingleItemStoreOffers ?? [];
@@ -407,27 +474,40 @@ export async function getStore(
         displayIcon: skin.displayIcon,
         cost: costMap.get(uuid.toLowerCase()) ?? 0,
         remainingSeconds: remainingSec,
+        tierUuid: skin.tierUuid,
+        tierColor: skin.tierColor,
       };
     })
   );
 
-  // 번들
+  // 번들: v3 FeaturedBundles 또는 v2 FeaturedBundle
+  const bundleRaw = data.FeaturedBundles?.Bundles?.[0] ?? data.FeaturedBundle?.Bundle;
   let bundle: StoreBundle | undefined;
-  const bundleData = data.FeaturedBundle?.Bundle;
-  if (bundleData?.DataAssetID) {
-    const bundleInfo = await resolveBundle(bundleData.DataAssetID);
-    if (bundleInfo) {
-      const cost =
-        bundleData.TotalDiscountedCost?.[VP_CURRENCY] ?? bundleInfo.price;
-      bundle = {
-        name: bundleInfo.name,
-        displayIcon: bundleInfo.displayIcon,
-        cost,
-        remainingSeconds: bundleData.DurationRemainingInSeconds ?? 0,
-      };
+
+  if (bundleRaw) {
+    // valorant-api.com에서 이름/이미지 조회 (DataAssetID, ID 순으로 시도)
+    const candidates = [bundleRaw.DataAssetID, bundleRaw.ID].filter(Boolean) as string[];
+    let bundleInfo: { name: string; displayIcon: string; price: number } | null = null;
+    for (const uuid of candidates) {
+      bundleInfo = await resolveBundle(uuid);
+      if (bundleInfo) break;
     }
+
+    // valorant-api.com 실패 시 번들 아이템 합산 비용으로 구성
+    const totalCost =
+      bundleRaw.TotalDiscountedCost?.[VP_CURRENCY] ??
+      bundleInfo?.price ??
+      (bundleRaw.Items ?? []).reduce((sum, item) => sum + (item.DiscountedPrice ?? item.BasePrice ?? 0), 0);
+
+    bundle = {
+      name: bundleInfo?.name ?? "번들",
+      displayIcon: bundleInfo?.displayIcon ?? "",
+      cost: totalCost,
+      remainingSeconds: bundleRaw.DurationRemainingInSeconds ?? 0,
+    };
   }
 
+  console.log(`[store] offers=${offers.length} bundle=${bundle?.name ?? "none"}`);
   return { offers, bundle };
 }
 
@@ -480,32 +560,75 @@ export async function getBattlepass(
     throw new Error(`배틀패스 조회 실패: ${response.status}`);
   }
 
+  type ContractEntry = {
+    ContractDefinitionID: string;
+    ContractProgression?: { TotalProgressionEarned?: number };
+    ProgressionLevelReached?: number;
+    ProgressionTowardsNextLevel?: number;
+  };
+
   const data = await response.json() as {
     ActiveSpecialContract?: string;
-    Contracts?: Array<{
-      ContractDefinitionID: string;
-      ContractProgression?: {
-        TotalProgressionEarned?: number;
-        TotalProgressionEarnedVersion?: number;
-        HighestRewardedLevel?: Record<string, unknown>;
-      };
-      ProgressionLevelReached?: number;
+    Contracts?: ContractEntry[];
+    BTEMilestone?: {
+      TotalMilestonesCompleted?: number;
+      ProgressionTowardsNextMilestone?: number;
+      TotalProgressionEarned?: number;
+      // 다른 가능한 필드명
+      CurrentMilestoneLevel?: number;
       ProgressionTowardsNextLevel?: number;
-    }>;
+    };
   };
 
+  // 1. 기존 방식 (ActiveSpecialContract)
   const activeId = data.ActiveSpecialContract;
-  if (!activeId || !data.Contracts) return null;
+  if (activeId && data.Contracts) {
+    const contract = data.Contracts.find((c) => c.ContractDefinitionID === activeId);
+    if (contract) {
+      return {
+        contractId: activeId,
+        progressionTowardsObjective: contract.ProgressionTowardsNextLevel ?? 0,
+        progressionEarnedThisAct: contract.ContractProgression?.TotalProgressionEarned ?? 0,
+        totalLevelsCompleted: contract.ProgressionLevelReached ?? 0,
+      };
+    }
+  }
 
-  const contract = data.Contracts.find((c) => c.ContractDefinitionID === activeId);
-  if (!contract) return null;
+  // 2. BTEMilestone (V시즌 신규 배틀패스 시스템)
+  const bte = data.BTEMilestone;
+  if (bte) {
+    const level = bte.TotalMilestonesCompleted ?? bte.CurrentMilestoneLevel ?? 0;
+    const towards = bte.ProgressionTowardsNextMilestone ?? bte.ProgressionTowardsNextLevel ?? 0;
+    const total = bte.TotalProgressionEarned ?? 0;
+    if (level > 0 || towards > 0 || total > 0) {
+      return {
+        contractId: "bte",
+        progressionTowardsObjective: towards,
+        progressionEarnedThisAct: total,
+        totalLevelsCompleted: level,
+      };
+    }
+  }
 
-  return {
-    contractId: activeId,
-    progressionTowardsObjective: contract.ProgressionTowardsNextLevel ?? 0,
-    progressionEarnedThisAct: contract.ContractProgression?.TotalProgressionEarned ?? 0,
-    totalLevelsCompleted: contract.ProgressionLevelReached ?? 0,
-  };
+  // 3. 폴백: 가장 진행도가 높은 계약
+  if (data.Contracts?.length) {
+    const best = [...data.Contracts]
+      .filter((c) => (c.ContractProgression?.TotalProgressionEarned ?? 0) > 0)
+      .sort((a, b) =>
+        (b.ContractProgression?.TotalProgressionEarned ?? 0) -
+        (a.ContractProgression?.TotalProgressionEarned ?? 0)
+      )[0];
+    if (best) {
+      return {
+        contractId: best.ContractDefinitionID,
+        progressionTowardsObjective: best.ProgressionTowardsNextLevel ?? 0,
+        progressionEarnedThisAct: best.ContractProgression?.TotalProgressionEarned ?? 0,
+        totalLevelsCompleted: best.ProgressionLevelReached ?? 0,
+      };
+    }
+  }
+
+  return null;
 }
 
 // ────────────────────────────────────────────────────────────

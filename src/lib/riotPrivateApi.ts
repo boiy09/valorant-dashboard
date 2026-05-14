@@ -128,10 +128,13 @@ async function getPrivateSeasons(): Promise<PrivateSeason[]> {
 
   const all = payload.data ?? [];
 
-  // parentUuid가 없는 항목 = 에피소드 (type 필드는 null일 수 있어 신뢰 불가)
+  // 실제 액트의 부모로 참조된 항목만 에피소드로 취급 (클베 등 비에피소드 루트 항목 제외)
+  const referencedParents = new Set(
+    all.filter((s) => s.uuid && s.parentUuid).map((s) => s.parentUuid!.toLowerCase())
+  );
   const episodeNumberMap = new Map<string, number>();
   all
-    .filter((s) => s.uuid && !s.parentUuid)
+    .filter((s) => s.uuid && !s.parentUuid && referencedParents.has(s.uuid.toLowerCase()))
     .sort((a, b) => new Date(a.startTime ?? 0).getTime() - new Date(b.startTime ?? 0).getTime())
     .forEach((ep, idx) => episodeNumberMap.set(ep.uuid!.toLowerCase(), idx + 1));
 

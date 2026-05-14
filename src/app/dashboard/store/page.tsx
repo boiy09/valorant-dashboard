@@ -9,6 +9,8 @@ interface AccountStore {
   region: RiotRegion;
   riotId: string;
   error: string | null;
+  walletError?: string | null;
+  battlepassError?: string | null;
   store: StoreData | null;
   wallet: WalletData | null;
   battlepass: BattlepassData | null;
@@ -197,11 +199,26 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
         </div>
       </div>
 
-      {data.error ? (
-        <div className="rounded-lg border border-[#ff4655]/30 bg-[#140b10] p-4 text-sm text-[#c8d3db]">
-          {data.error}
+      {(data.error || data.walletError || data.battlepassError) && (
+        <div className="mb-4 space-y-2">
+          {data.error && (
+            <div className="rounded-lg border border-[#ff4655]/30 bg-[#140b10] p-4 text-sm text-[#c8d3db]">
+              {data.error}
+            </div>
+          )}
+          {data.walletError && (
+            <div className="rounded-lg border border-[#ff4655]/20 bg-[#140b10] p-3 text-xs text-[#9aa8b3]">
+              지갑: {data.walletError}
+            </div>
+          )}
+          {data.battlepassError && (
+            <div className="rounded-lg border border-[#ff4655]/20 bg-[#140b10] p-3 text-xs text-[#9aa8b3]">
+              배틀패스: {data.battlepassError}
+            </div>
+          )}
         </div>
-      ) : (
+      )}
+      {!data.error ? (
         <>
           {/* 오늘의 스킨 */}
           <div className="mb-5">

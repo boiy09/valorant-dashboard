@@ -53,12 +53,24 @@ export async function GET() {
         getBattlepass(account.puuid, accessToken, entitlementsToken, qRegion),
       ]);
 
+      const storeError = storeResult.status === "rejected"
+        ? (storeResult.reason instanceof Error ? storeResult.reason.message : "상점 조회 실패")
+        : null;
+      const walletError = walletResult.status === "rejected"
+        ? (walletResult.reason instanceof Error ? walletResult.reason.message : "지갑 조회 실패")
+        : null;
+      const battlepassError = battlepassResult.status === "rejected"
+        ? (battlepassResult.reason instanceof Error ? battlepassResult.reason.message : "배틀패스 조회 실패")
+        : null;
+
+      console.log(`[store route] ${account.gameName}#${account.tagLine} store=${storeError ?? "ok"} wallet=${walletError ?? "ok"} bp=${battlepassError ?? "ok"}`);
+
       return {
         region,
         riotId: `${account.gameName}#${account.tagLine}`,
-        error: storeResult.status === "rejected"
-          ? (storeResult.reason instanceof Error ? storeResult.reason.message : "상점 조회 실패")
-          : null,
+        error: storeError,
+        walletError,
+        battlepassError,
         store: storeResult.status === "fulfilled" ? storeResult.value : null,
         wallet: walletResult.status === "fulfilled" ? walletResult.value : null,
         battlepass: battlepassResult.status === "fulfilled" ? battlepassResult.value : null,

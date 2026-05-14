@@ -355,24 +355,15 @@ export async function getStore(
   const shard = regionToShard(region);
   const headers = await pvpHeaders(accessToken, entitlementsToken);
 
+  // v3 POST (최신 방식)
   let response = await fetch(
-    `https://pd.${shard}.a.pvp.net/store/v2/storefront/${puuid}`,
-    { headers }
+    `https://pd.${shard}.a.pvp.net/store/v3/storefront/${puuid}`,
+    { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: "{}" }
   );
 
-  // v2가 실패하면 v3 시도
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    console.error(`[store] v2 실패 ${response.status} shard=${shard}:`, body.slice(0, 300));
-    response = await fetch(
-      `https://pd.${shard}.a.pvp.net/store/v3/storefront/${puuid}`,
-      { headers }
-    );
-  }
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    console.error(`[store] v3 실패 ${response.status} shard=${shard}:`, body.slice(0, 300));
+    console.error(`[store] v3 POST 실패 ${response.status} shard=${shard}:`, body.slice(0, 300));
     throw new Error(`상점 조회 실패 (${response.status}) shard=${shard} body=${body.slice(0, 100)}`);
   }
 

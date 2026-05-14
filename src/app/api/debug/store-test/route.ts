@@ -64,20 +64,26 @@ export async function GET() {
     hasAuthCookie: Boolean(account.authCookie),
   };
 
-  const endpoints = [
-    { key: "wallet_v1", url: `https://pd.${region}.a.pvp.net/store/v1/wallet/${account.puuid}` },
-    { key: "store_v2", url: `https://pd.${region}.a.pvp.net/store/v2/storefront/${account.puuid}` },
-    { key: "store_v3", url: `https://pd.${region}.a.pvp.net/store/v3/storefront/${account.puuid}` },
+  const postHeaders = { ...headers, "Content-Type": "application/json" };
+
+  const endpoints: Array<{ key: string; url: string; method?: string }> = [
+    { key: "wallet_v1_GET", url: `https://pd.${region}.a.pvp.net/store/v1/wallet/${account.puuid}` },
+    { key: "store_v2_GET", url: `https://pd.${region}.a.pvp.net/store/v2/storefront/${account.puuid}` },
+    { key: "store_v3_GET", url: `https://pd.${region}.a.pvp.net/store/v3/storefront/${account.puuid}` },
+    { key: "store_v3_POST", url: `https://pd.${region}.a.pvp.net/store/v3/storefront/${account.puuid}`, method: "POST" },
   ];
 
   for (const ep of endpoints) {
     try {
-      const r = await fetch(ep.url, { headers, signal: AbortSignal.timeout(8000) });
+      const init: RequestInit = ep.method === "POST"
+        ? { method: "POST", headers: postHeaders, body: "{}", signal: AbortSignal.timeout(8000) }
+        : { headers, signal: AbortSignal.timeout(8000) };
+      const r = await fetch(ep.url, init);
       const body = await r.text().catch(() => "");
       results[ep.key] = {
         status: r.status,
         ok: r.ok,
-        bodyPreview: body.slice(0, 300),
+        bodyPreview: body.slice(0, 400),
       };
     } catch (e) {
       results[ep.key] = { error: String(e) };

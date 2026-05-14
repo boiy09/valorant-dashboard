@@ -218,7 +218,7 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
           )}
         </div>
       )}
-      {!data.error ? (
+      {!data.error && (
         <>
           {/* 오늘의 스킨 */}
           <div className="mb-5">

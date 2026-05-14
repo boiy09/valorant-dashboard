@@ -59,12 +59,32 @@ export async function GET() {
 
     results.bundle_ids = { ID: bundleID, DataAssetID: bundleDataAssetID };
 
+    // valorant-api.com API 엔드포인트 테스트
     for (const [label, uuid] of [["by_ID", bundleID], ["by_DataAssetID", bundleDataAssetID]] as [string, string | undefined][]) {
       if (!uuid) continue;
       const br = await fetch("https://valorant-api.com/v1/bundles/" + uuid + "?language=ko-KR").catch(() => null);
       const bBody = (await br?.text().catch(() => "")) ?? "";
-      results["bundle_" + label] = { status: br?.status, ok: br?.ok, preview: bBody.slice(0, 150) };
+      results["bundle_api_" + label] = { status: br?.status, ok: br?.ok, preview: bBody.slice(0, 150) };
     }
+
+    // CDN 직접 접근 테스트 (API 404여도 CDN에 이미지 있을 수 있음)
+    for (const [label, uuid] of [["ID", bundleID], ["DataAssetID", bundleDataAssetID]] as [string, string | undefined][]) {
+      if (!uuid) continue;
+      for (const filename of ["displayicon.png", "displayicon2.png", "verticalpromoimage.png"]) {
+        const cdnUrl = `https://media.valorant-api.com/bundles/${uuid}/${filename}`;
+        const cr = await fetch(cdnUrl, { method: "HEAD", signal: AbortSignal.timeout(5000) }).catch(() => null);
+        results[`bundle_cdn_${label}_${filename.replace(".png", "")}`] = {
+          url: cdnUrl,
+          status: cr?.status,
+          ok: cr?.ok,
+        };
+      }
+    }
+
+    // FeaturedBundles 구조도 확인
+    const featuredBundles = (parsed.FeaturedBundles as Record<string, unknown>)?.Bundles as unknown[] | undefined;
+    results.bundle_raw_keys = bundle ? Object.keys(bundle) : [];
+    results.featured_bundles_count = featuredBundles?.length ?? 0;
   } catch (e) {
     results.bundle_test = { error: String(e) };
   }

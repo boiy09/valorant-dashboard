@@ -98,6 +98,15 @@ async function getPrivateContent(): Promise<PrivateContent> {
   return data;
 }
 
+const ROMAN_TO_NUM: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
+
+function buildSeasonLabel(episodeNum: number, actNum: number): string {
+  const romans = ["I", "II", "III", "IV", "V", "VI"];
+  const actRoman = romans[actNum - 1] ?? String(actNum);
+  if (episodeNum >= 10) return `V${episodeNum + 15} // 액트 ${actRoman}`;
+  return `에피소드 ${episodeNum} // 액트 ${actRoman}`;
+}
+
 async function getPrivateSeasons(): Promise<PrivateSeason[]> {
   const now = Date.now();
   if (seasonsCache && now - seasonsCache.cachedAt < CONTENT_TTL) return seasonsCache.data;
@@ -106,21 +115,58 @@ async function getPrivateSeasons(): Promise<PrivateSeason[]> {
   if (!response?.ok) return [];
 
   const payload = await response.json() as {
-    data?: Array<{ uuid?: string; displayName?: string; type?: string | null; isActive?: boolean; startTime?: string; endTime?: string }>;
+    data?: Array<{
+      uuid?: string;
+      displayName?: string;
+      type?: string | null;
+      parentUuid?: string | null;
+      isActive?: boolean;
+      startTime?: string;
+      endTime?: string;
+    }>;
   };
-  const seasons = (payload.data ?? [])
+
+  const all = payload.data ?? [];
+
+  // 에피소드 → 번호 매핑 (startTime 순 정렬)
+  const episodeNumberMap = new Map<string, number>();
+  all
+    .filter((s) => s.uuid && s.type?.toLowerCase().includes("episode"))
+    .sort((a, b) => new Date(a.startTime ?? 0).getTime() - new Date(b.startTime ?? 0).getTime())
+    .forEach((ep, idx) => episodeNumberMap.set(ep.uuid!.toLowerCase(), idx + 1));
+
+  const seasons = all
     .filter((season) => season.uuid && season.type?.toLowerCase().includes("act"))
-    .map((season) => ({
-      id: season.uuid!.toLowerCase(),
-      label: season.displayName || formatValorantSeasonLabel(season.uuid!),
-      isActive: Boolean(season.isActive) || (
-        Boolean(season.startTime && season.endTime) &&
-        new Date(season.startTime!).getTime() <= now &&
-        now < new Date(season.endTime!).getTime()
-      ),
-      startTime: season.startTime ? new Date(season.startTime).getTime() : 0,
-      endTime: season.endTime ? new Date(season.endTime).getTime() : 0,
-    }))
+    .map((season) => {
+      const startTime = season.startTime ? new Date(season.startTime).getTime() : 0;
+      const endTime = season.endTime ? new Date(season.endTime).getTime() : 0;
+
+      // parentUuid로 에피소드 번호 확인
+      const episodeNum = season.parentUuid ? episodeNumberMap.get(season.parentUuid.toLowerCase()) : undefined;
+
+      let label: string;
+      if (episodeNum) {
+        // displayName에서 액트 번호 추출 (예: "에피소드 10 // 액트 III" → III → 3)
+        const actMatch = (season.displayName ?? "").match(/(?:act|액트|엑트)\s+([IVX]+|\d+)/i);
+        const actRaw = actMatch?.[1] ?? "";
+        const actNum = ROMAN_TO_NUM[actRaw.toUpperCase()] ?? Number(actRaw) || undefined;
+        label = actNum ? buildSeasonLabel(episodeNum, actNum) : buildSeasonLabel(episodeNum, 1);
+      } else {
+        label = season.displayName || formatValorantSeasonLabel(season.uuid!);
+      }
+
+      return {
+        id: season.uuid!.toLowerCase(),
+        label,
+        isActive: Boolean(season.isActive) || (
+          Boolean(season.startTime && season.endTime) &&
+          new Date(season.startTime!).getTime() <= now &&
+          now < new Date(season.endTime!).getTime()
+        ),
+        startTime,
+        endTime,
+      };
+    })
     .sort((a, b) => b.startTime - a.startTime);
 
   seasonsCache = { data: seasons, cachedAt: now };

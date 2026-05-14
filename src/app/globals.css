@@ -68,7 +68,7 @@ body {
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, var(--val-red) 0%, transparent 60%);
+  background: linear-gradient(90deg, var(--card-accent, var(--val-red)) 0%, transparent 60%);
 }
 
 .val-btn {

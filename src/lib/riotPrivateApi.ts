@@ -384,22 +384,65 @@ async function resolveSkinLevel(uuid: string): Promise<SkinLevelInfo> {
   return map.get(uuid.toLowerCase()) ?? { name: uuid, displayIcon: "", tierUuid: "", tierColor: "" };
 }
 
-async function resolveBundle(uuid: string): Promise<{ name: string; displayIcon: string; price: number } | null> {
+type BundleInfo = { name: string; displayIcon: string; price: number };
+
+let bundleListCache: BundleInfo[] | null = null;
+let bundleListCachedAt = 0;
+const BUNDLE_LIST_TTL = 30 * 60 * 1000;
+
+async function getBundleList(): Promise<Array<{ uuid: string } & BundleInfo>> {
+  if (bundleListCache && Date.now() - bundleListCachedAt < BUNDLE_LIST_TTL) {
+    return bundleListCache as Array<{ uuid: string } & BundleInfo>;
+  }
+  try {
+    const response = await fetch(`${VALORANT_API_BASE}/bundles?language=ko-KR`);
+    if (!response.ok) return [];
+    const data = await response.json() as {
+      data?: Array<{ uuid: string; displayName?: string; displayIcon?: string; price?: number }>;
+    };
+    const list = (data.data ?? []).map((b) => ({
+      uuid: b.uuid,
+      name: b.displayName ?? "",
+      displayIcon: b.displayIcon ?? "",
+      price: b.price ?? 0,
+    }));
+    bundleListCache = list;
+    bundleListCachedAt = Date.now();
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+async function resolveBundle(uuid: string): Promise<BundleInfo | null> {
+  // 1. 직접 UUID 조회
   try {
     const response = await fetch(`${VALORANT_API_BASE}/bundles/${uuid}?language=ko-KR`);
     if (response.ok) {
       const data = await response.json() as {
         data?: { displayName?: string; displayIcon?: string; price?: number };
       };
-      return {
-        name: data.data?.displayName ?? uuid,
-        displayIcon: data.data?.displayIcon ?? "",
-        price: data.data?.price ?? 0,
-      };
+      if (data.data?.displayName) {
+        return {
+          name: data.data.displayName,
+          displayIcon: data.data.displayIcon ?? "",
+          price: data.data.price ?? 0,
+        };
+      }
     }
   } catch {
     // 폴백
   }
+
+  // 2. 전체 번들 목록에서 UUID 검색
+  try {
+    const list = await getBundleList();
+    const found = list.find((b) => b.uuid.toLowerCase() === uuid.toLowerCase());
+    if (found) return found;
+  } catch {
+    // 폴백
+  }
+
   return null;
 }
 
@@ -485,15 +528,32 @@ export async function getStore(
   let bundle: StoreBundle | undefined;
 
   if (bundleRaw) {
-    // valorant-api.com에서 이름/이미지 조회 (DataAssetID, ID 순으로 시도)
+    // valorant-api.com에서 이름/이미지 조회 (DataAssetID, ID 순으로 시도 → 전체 목록 검색)
     const candidates = [bundleRaw.DataAssetID, bundleRaw.ID].filter(Boolean) as string[];
-    let bundleInfo: { name: string; displayIcon: string; price: number } | null = null;
+    let bundleInfo: BundleInfo | null = null;
     for (const uuid of candidates) {
       bundleInfo = await resolveBundle(uuid);
       if (bundleInfo) break;
     }
 
-    // valorant-api.com 실패 시 번들 아이템 합산 비용으로 구성
+    // 번들 이미지가 없을 때: 번들 아이템 중 첫 번째 스킨의 아이콘을 사용
+    let fallbackIcon = "";
+    if (!bundleInfo?.displayIcon) {
+      const SKIN_LEVEL_TYPE = "e7c63390-eda7-46e0-bb7a-a6abdacd2433";
+      const skinItems = (bundleRaw.Items ?? []).filter(
+        (item) => item.Item?.ItemTypeID?.toLowerCase() === SKIN_LEVEL_TYPE.toLowerCase()
+      );
+      const skinMap = await getSkinLevelMap();
+      for (const item of skinItems) {
+        const skinId = item.Item?.ItemID ?? "";
+        const skin = skinMap.get(skinId.toLowerCase());
+        if (skin?.displayIcon) {
+          fallbackIcon = skin.displayIcon;
+          break;
+        }
+      }
+    }
+
     const totalCost =
       bundleRaw.TotalDiscountedCost?.[VP_CURRENCY] ??
       bundleInfo?.price ??
@@ -501,7 +561,7 @@ export async function getStore(
 
     bundle = {
       name: bundleInfo?.name ?? "번들",
-      displayIcon: bundleInfo?.displayIcon ?? "",
+      displayIcon: bundleInfo?.displayIcon || fallbackIcon,
       cost: totalCost,
       remainingSeconds: bundleRaw.DurationRemainingInSeconds ?? 0,
     };

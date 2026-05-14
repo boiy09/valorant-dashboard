@@ -67,21 +67,31 @@ export async function GET() {
       results["bundle_api_" + label] = { status: br?.status, ok: br?.ok, preview: bBody.slice(0, 150) };
     }
 
-    // CDN 직접 접근 테스트 (API 404여도 CDN에 이미지 있을 수 있음)
-    for (const [label, uuid] of [["ID", bundleID], ["DataAssetID", bundleDataAssetID]] as [string, string | undefined][]) {
+    // CDN GET 테스트 (HEAD는 405를 반환 — GET으로 실제 존재 확인)
+    for (const [label, uuid] of [["DataAssetID", bundleDataAssetID], ["ID", bundleID]] as [string, string | undefined][]) {
       if (!uuid) continue;
       for (const filename of ["displayicon.png", "displayicon2.png", "verticalpromoimage.png"]) {
         const cdnUrl = `https://media.valorant-api.com/bundles/${uuid}/${filename}`;
-        const cr = await fetch(cdnUrl, { method: "HEAD", signal: AbortSignal.timeout(5000) }).catch(() => null);
-        results[`bundle_cdn_${label}_${filename.replace(".png", "")}`] = {
+        const cr = await fetch(cdnUrl, {
+          headers: { "Range": "bytes=0-0" },
+          signal: AbortSignal.timeout(5000),
+        }).catch(() => null);
+        results[`bundle_cdn_GET_${label}_${filename.replace(".png", "")}`] = {
           url: cdnUrl,
           status: cr?.status,
           ok: cr?.ok,
+          contentType: cr?.headers.get("Content-Type"),
         };
       }
     }
 
-    // FeaturedBundles 구조도 확인
+    // Items 실제 구조 확인 (스킨 아이콘 폴백이 작동하는지 진단)
+    const items = bundle?.Items as unknown[] | undefined;
+    results.bundle_items_count = items?.length ?? 0;
+    results.bundle_items_first3 = (items ?? []).slice(0, 3).map((i) => JSON.stringify(i).slice(0, 200));
+    results.bundle_item_offers_first = JSON.stringify((bundle?.ItemOffers as unknown[])?.[0] ?? null).slice(0, 300);
+
+    // FeaturedBundles 구조 확인
     const featuredBundles = (parsed.FeaturedBundles as Record<string, unknown>)?.Bundles as unknown[] | undefined;
     results.bundle_raw_keys = bundle ? Object.keys(bundle) : [];
     results.featured_bundles_count = featuredBundles?.length ?? 0;

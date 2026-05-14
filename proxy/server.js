@@ -67,6 +67,26 @@ function parseCookies(response) {
     .join('; ');
 }
 
+// "name=value; name2=value2" → Playwright cookie 객체 배열
+function parseCookieStringToObjects(cookieStr, domain) {
+  return cookieStr.split(';')
+    .map(part => {
+      const trimmed = part.trim();
+      const idx = trimmed.indexOf('=');
+      if (idx === -1) return null;
+      const name = trimmed.slice(0, idx).trim();
+      const value = trimmed.slice(idx + 1).trim();
+      if (!name || !value) return null;
+      return { name, value, domain, path: '/', sameSite: 'None', secure: true };
+    })
+    .filter(Boolean);
+}
+
+// Playwright context 쿠키 → "name=value; ..." 문자열
+function serializeCookies(playwrightCookies) {
+  return playwrightCookies.map(c => `${c.name}=${c.value}`).join('; ');
+}
+
 function parseTokensFromUri(uri) {
   try {
     const hashIndex = uri.indexOf('#');
@@ -563,12 +583,11 @@ app.post('/auth/browser', async (req, res) => {
     }
 
     if (capturedTokens) {
-      const cookies = await context.cookies('https://auth.riotgames.com');
-      const ssidCookie = cookies.find(c => c.name === 'ssid');
-      const ssid = ssidCookie ? `ssid=${ssidCookie.value}` : '';
+      const allCookies = await context.cookies('https://auth.riotgames.com');
+      const cookieString = serializeCookies(allCookies);
       await browser.close();
       console.log('[browser] 로그인 성공!');
-      return res.json({ status: 'success', ...capturedTokens, cookies: ssid });
+      return res.json({ status: 'success', ...capturedTokens, cookies: cookieString });
     }
 
     // 실패 - 오류 메시지 수집
@@ -658,12 +677,11 @@ app.post('/auth/browser/mfa', async (req, res) => {
     }
 
     if (capturedTokens) {
-      const cookies = await context.cookies('https://auth.riotgames.com');
-      const ssidCookie = cookies.find(c => c.name === 'ssid');
-      const ssid = ssidCookie ? `ssid=${ssidCookie.value}` : '';
+      const allCookies = await context.cookies('https://auth.riotgames.com');
+      const cookieString = serializeCookies(allCookies);
       await browser.close();
       console.log('[browser] MFA 로그인 성공!');
-      return res.json({ status: 'success', ...capturedTokens, cookies: ssid });
+      return res.json({ status: 'success', ...capturedTokens, cookies: cookieString });
     }
 
     await browser.close();
@@ -673,6 +691,82 @@ app.post('/auth/browser/mfa', async (req, res) => {
     await browser?.close().catch(() => {});
     console.error('[browser] /auth/browser/mfa 오류:', err.message);
     return res.status(500).json({ status: 'error', message: err.message || 'MFA 처리 오류' });
+  }
+});
+
+// POST /auth/refresh - 저장된 쿠키로 Playwright 브라우저에서 토큰 갱신
+app.post('/auth/refresh', async (req, res) => {
+  if (!checkSecret(req, res)) return;
+
+  const { cookies } = req.body || {};
+  if (!cookies) {
+    return res.status(400).json({ status: 'error', message: 'cookies가 필요합니다.' });
+  }
+
+  let browser;
+  try {
+    browser = await launchBrowser();
+    const context = await createContext(browser);
+
+    // 저장된 쿠키를 .riotgames.com 도메인으로 주입
+    const cookieObjects = parseCookieStringToObjects(cookies, '.riotgames.com');
+    if (cookieObjects.length === 0) {
+      await browser.close();
+      return res.status(400).json({ status: 'error', message: '유효한 쿠키가 없습니다.' });
+    }
+    await context.addCookies(cookieObjects);
+    console.log(`[browser] refresh: ${cookieObjects.length}개 쿠키 주입`);
+
+    const page = await context.newPage();
+
+    let capturedTokens = null;
+    const tokenPromise = new Promise((resolve) => {
+      page.on('framenavigated', (frame) => {
+        if (frame !== page.mainFrame()) return;
+        const url = frame.url();
+        console.log('[browser] refresh 네비게이션:', url.substring(0, 120));
+        if (url.includes('playvalorant.com')) {
+          const hashIdx = url.indexOf('#');
+          if (hashIdx !== -1) {
+            const tokens = parseHashTokens(url.slice(hashIdx));
+            if (tokens) {
+              capturedTokens = tokens;
+              resolve(tokens);
+            }
+          }
+        }
+      });
+      setTimeout(() => resolve(null), 15000);
+    });
+
+    await page.goto(RIOT_AUTH_URL, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => null);
+
+    capturedTokens = await tokenPromise;
+
+    // JS에서 hash 한 번 더 시도
+    if (!capturedTokens && page.url().includes('playvalorant.com')) {
+      const hash = await page.evaluate(() => window.location.hash).catch(() => '');
+      if (hash) capturedTokens = parseHashTokens(hash);
+    }
+
+    if (capturedTokens) {
+      const newCookies = await context.cookies('https://auth.riotgames.com');
+      const cookieString = serializeCookies(newCookies);
+      await browser.close();
+      console.log('[browser] refresh 성공!');
+      return res.json({ status: 'success', ...capturedTokens, cookies: cookieString });
+    }
+
+    // 로그인 페이지로 떨어진 경우 = ssid 만료
+    const currentUrl = page.url();
+    console.error('[browser] refresh 실패, 현재 URL:', currentUrl.substring(0, 150));
+    await browser.close();
+    return res.json({ status: 'error', message: 'ssid가 만료되었거나 유효하지 않습니다. 다시 로그인 후 쿠키를 복사해 주세요.' });
+
+  } catch (err) {
+    await browser?.close().catch(() => {});
+    console.error('[browser] /auth/refresh 오류:', err.message);
+    return res.status(500).json({ status: 'error', message: err.message || '브라우저 갱신 오류' });
   }
 });
 

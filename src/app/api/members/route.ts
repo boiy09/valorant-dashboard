@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { getRankIconByTier } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 
+export const maxDuration = 60;
+
 type MemberAccount = {
   puuid: string;
   gameName: string;

@@ -120,7 +120,7 @@ export async function ensureTokenState(
     const newAccess = result.accessToken;
     const newEnt = entData.entitlements_token;
 
-    prisma.riotAccount.update({
+    await prisma.riotAccount.update({
       where: { puuid },
       data: {
         accessToken: newAccess,

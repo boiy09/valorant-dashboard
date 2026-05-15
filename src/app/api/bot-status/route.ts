@@ -1,28 +1,40 @@
 import { prisma } from "@/lib/prisma";
 
+export const maxDuration = 30;
+
+interface BotStatusCache {
+  data: object;
+  cachedAt: number;
+}
+
+let statusCache: BotStatusCache | null = null;
+const CACHE_TTL_MS = 30_000;
+
 export async function GET() {
-  const startTime = Date.now();
+  const now = Date.now();
+
+  if (statusCache && now - statusCache.cachedAt < CACHE_TTL_MS) {
+    return Response.json(statusCache.data);
+  }
+
+  const startTime = now;
 
   try {
-    // DB 연결 확인
     await prisma.$queryRaw`SELECT 1`;
-    const dbOk = true;
     const dbLatency = Date.now() - startTime;
 
-    // 통계
     const [userCount, scrimCount, announcementCount] = await Promise.all([
       prisma.user.count(),
       prisma.scrimSession.count(),
       prisma.announcement.count(),
     ]);
 
-    // 오늘 출석
     const today = new Date().toISOString().slice(0, 10);
     const todayAttendance = await prisma.dailyAttendance.count({ where: { date: today } });
 
-    return Response.json({
+    const data = {
       status: "정상",
-      db: { status: dbOk ? "정상" : "오류", latency: dbLatency },
+      db: { status: "정상", latency: dbLatency },
       stats: {
         users: userCount,
         scrims: scrimCount,
@@ -31,7 +43,10 @@ export async function GET() {
       },
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    statusCache = { data, cachedAt: Date.now() };
+    return Response.json(data);
   } catch (e) {
     return Response.json({
       status: "오류",

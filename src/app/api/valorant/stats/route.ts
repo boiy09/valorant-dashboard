@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+
+export const maxDuration = 60;
 import { getRankByPuuid, getRecentMatches, getRankIconByTier, getRiotOfficialRecentMatches, getTrackerRecentMatchIds, getHenrikMatchById, type MatchStats, type RankData } from "@/lib/valorant";
 import { ensureTokenState, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 import { getPrivateRankData, getPrivateRecentMatches, getPrivateCompetitiveUpdates, getPrivateProfile, type CompetitiveUpdate } from "@/lib/riotPrivateApi";

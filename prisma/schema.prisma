@@ -327,7 +327,9 @@ model Warning {
   issuedBy  String
   active    Boolean  @default(true)
   note      String?
+  type      String   @default("warning")
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   @@index([userId, guildId])
 }
 

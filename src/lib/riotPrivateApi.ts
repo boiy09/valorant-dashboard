@@ -481,7 +481,7 @@ export async function getStore(
   const headers = await pvpHeaders(accessToken, entitlementsToken);
 
   // v3 POST (최신 방식)
-  let response = await fetch(
+  const response = await fetch(
     `https://pd.${shard}.a.pvp.net/store/v3/storefront/${puuid}`,
     { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: "{}" }
   );

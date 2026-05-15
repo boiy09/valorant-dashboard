@@ -9,16 +9,17 @@ async function ensureTable() {
       "guildId" TEXT NOT NULL,
       "targetDiscordId" TEXT NOT NULL,
       "content" TEXT NOT NULL,
-      "issuedBy" TEXT NOT NULL DEFAULT '관리자 (웹)',
+      "issuedBy" TEXT NOT NULL DEFAULT '관리자',
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW()
     )
   `);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "AdminNote_targetDiscordId_idx" ON "AdminNote"("targetDiscordId")`);
 }
 
 export async function GET(req: NextRequest) {
   const { isAdmin } = await getAdminSession();
-  if (!isAdmin) return Response.json({ error: "관리자 또는 발로네끼 권한이 필요합니다." }, { status: 403 });
+  if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
 
   await ensureTable();
 
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { isAdmin, guild: sessionGuild } = await getAdminSession();
-  if (!isAdmin) return Response.json({ error: "관리자 또는 발로네끼 권한이 필요합니다." }, { status: 403 });
+  if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
 
   await ensureTable();
 
@@ -59,12 +60,12 @@ export async function POST(req: NextRequest) {
   };
 
   if (!discordId || !content?.trim()) {
-    return Response.json({ error: "discordId와 내용을 입력해주세요." }, { status: 400 });
+    return Response.json({ error: "멤버와 메모 내용을 입력해 주세요." }, { status: 400 });
   }
 
   const id = `note_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const now = new Date();
-  const resolvedIssuedBy = issuedBy?.trim() || "관리자 (웹)";
+  const resolvedIssuedBy = issuedBy?.trim() || "관리자";
 
   await prisma.$executeRawUnsafe(
     `INSERT INTO "AdminNote" (id, "guildId", "targetDiscordId", content, "issuedBy", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $6)`,
@@ -76,15 +77,15 @@ export async function POST(req: NextRequest) {
     now
   );
 
-  const note = {
-    id,
-    guildId: guild.id,
-    targetDiscordId: discordId,
-    content: content.trim(),
-    issuedBy: resolvedIssuedBy,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  return Response.json({ note });
+  return Response.json({
+    note: {
+      id,
+      guildId: guild.id,
+      targetDiscordId: discordId,
+      content: content.trim(),
+      issuedBy: resolvedIssuedBy,
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
 }

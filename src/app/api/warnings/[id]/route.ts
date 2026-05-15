@@ -2,9 +2,13 @@ import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
+function resolveType(type?: string) {
+  return type === "complaint" ? "complaint" : "warning";
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { isAdmin } = await getAdminSession();
-  if (!isAdmin) return Response.json({ error: "관리자 또는 발로네끼 권한이 필요합니다." }, { status: 403 });
+  if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
@@ -16,7 +20,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     type?: string;
   };
 
-  // Build dynamic update fields
   const setClauses: string[] = [];
   const values: unknown[] = [];
   let idx = 1;
@@ -26,12 +29,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     values.push(note.trim() || null);
   }
   if (typeof reason === "string") {
+    if (!reason.trim()) return Response.json({ error: "내용을 입력해 주세요." }, { status: 400 });
     setClauses.push(`reason = $${idx++}`);
     values.push(reason.trim());
   }
   if (typeof issuedBy === "string") {
     setClauses.push(`"issuedBy" = $${idx++}`);
-    values.push(issuedBy.trim() || "관리자 (웹)");
+    values.push(issuedBy.trim() || "관리자");
   }
   if (typeof active === "boolean") {
     setClauses.push(`active = $${idx++}`);
@@ -39,11 +43,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (typeof type === "string") {
     setClauses.push(`type = $${idx++}`);
-    values.push(type === "complaint" ? "complaint" : "warning");
+    values.push(resolveType(type));
   }
 
   if (setClauses.length === 0) {
-    return Response.json({ error: "수정할 필드가 없습니다." }, { status: 400 });
+    return Response.json({ error: "수정할 값이 없습니다." }, { status: 400 });
   }
 
   setClauses.push(`"updatedAt" = $${idx++}`);
@@ -65,10 +69,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { isAdmin } = await getAdminSession();
-  if (!isAdmin) return Response.json({ error: "관리자 또는 발로네끼 권한이 필요합니다." }, { status: 403 });
+  if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
 
   const { id } = await params;
-
   await prisma.$executeRawUnsafe(`DELETE FROM "Warning" WHERE id = $1`, id);
 
   return Response.json({ ok: true });

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 import { normalizeTierName } from "@/lib/tierName";
 
 interface RiotAccountSummary {
@@ -53,7 +54,7 @@ export default function MembersPage() {
   const [selectedRole, setSelectedRole] = useState("all");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchMembers = useCallback(() => {
     fetch("/api/members")
       .then((response) => response.json())
       .then((data) => {
@@ -62,6 +63,10 @@ export default function MembersPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { fetchMembers(); }, [fetchMembers]);
+
+  useRealtime("members", () => fetchMembers());
 
   const roleOptions = useMemo(() => {
     const counts = new Map<string, number>();

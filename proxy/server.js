@@ -910,7 +910,63 @@ process.on('uncaughtException', (err) => {
   console.error('[proxy] uncaughtException (무시됨):', err.message);
 });
 
+// ──────────────────────────────────────────────
+// WebSocket 실시간 브로드캐스트
+// ──────────────────────────────────────────────
+const { WebSocketServer, WebSocket: WS } = require('ws');
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`[proxy] Riot 인증 프록시 서버 실행 중 - 포트 ${PORT}`);
+});
+
+const wss = new WebSocketServer({ server: httpServer });
+const wsClients = new Set();
+
+wss.on('connection', (ws, req) => {
+  wsClients.add(ws);
+  console.log(`[ws] 클라이언트 연결 (총 ${wsClients.size}명)`);
+
+  ws.on('close', () => {
+    wsClients.delete(ws);
+    console.log(`[ws] 클라이언트 연결 해제 (총 ${wsClients.size}명)`);
+  });
+
+  ws.on('error', () => wsClients.delete(ws));
+
+  // 연결 확인용 ping
+  ws.send(JSON.stringify({ type: 'connected' }));
+});
+
+// 연결 유지용 heartbeat (30초마다)
+setInterval(() => {
+  for (const ws of wsClients) {
+    if (ws.readyState === WS.OPEN) {
+      ws.ping();
+    } else {
+      wsClients.delete(ws);
+    }
+  }
+}, 30000);
+
+function broadcast(type, data) {
+  const msg = JSON.stringify({ type, data, ts: Date.now() });
+  for (const ws of wsClients) {
+    if (ws.readyState === WS.OPEN) {
+      ws.send(msg, (err) => { if (err) wsClients.delete(ws); });
+    }
+  }
+}
+
+// POST /broadcast - Next.js API에서 이벤트 전송
+app.post('/broadcast', (req, res) => {
+  const secret = process.env.PROXY_SECRET;
+  if (secret && req.headers['x-proxy-secret'] !== secret) {
+    return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+  }
+  const { type, data } = req.body || {};
+  if (!type) return res.status(400).json({ status: 'error', message: 'type이 필요합니다.' });
+  broadcast(type, data ?? {});
+  console.log(`[ws] broadcast: ${type} (${wsClients.size}명)`);
+  return res.json({ status: 'ok', clients: wsClients.size });
 });

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/broadcast";
 
 export async function GET(req: NextRequest) {
   const { isAdmin } = await getAdminSession();
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  broadcast("admin", { action: "warning_added" }).catch(() => {});
   return Response.json({
     warning: {
       ...warning,

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/broadcast";
 
 export const dynamic = "force-dynamic";
 
@@ -171,6 +172,7 @@ export async function POST(req: NextRequest) {
     data: { userId: user.id, guildId: guild.id, title, description, url, type: type ?? "clip" },
   });
 
+  broadcast("highlight", { action: "created" }).catch(() => {});
   return Response.json({ success: true, highlight });
 }
 
@@ -187,5 +189,6 @@ export async function PATCH(req: NextRequest) {
     data: { likes: { increment: 1 } },
   });
 
+  broadcast("highlight", { action: "liked" }).catch(() => {});
   return Response.json({ success: true });
 }

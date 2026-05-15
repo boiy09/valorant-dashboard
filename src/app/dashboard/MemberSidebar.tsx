@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 import BotStatus from "./BotStatus";
 import ProfileModal, { type ProfileAccount } from "./ProfileModal";
 
@@ -149,6 +150,10 @@ export default function MemberSidebar() {
       window.clearInterval(interval);
     };
   }, []);
+
+  useRealtime("members", () => {
+    fetchMembers().then((data) => setMembers(data.members ?? [])).catch(() => {});
+  });
 
   const admins = members.filter((member) => getRoleGroup(member.roles) === "admin");
   const valonekkis = members.filter((member) => getRoleGroup(member.roles) === "valonekki");

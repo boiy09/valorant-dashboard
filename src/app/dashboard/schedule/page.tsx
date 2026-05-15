@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 
 interface ScrimEvent {
   id: string;
@@ -17,7 +18,7 @@ export default function SchedulePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchSchedule = useCallback(() => {
     Promise.all([
       fetch("/api/schedule").then((response) => response.json()),
       fetch("/api/me/roles").then((response) => response.json()).catch(() => ({ isAdmin: false })),
@@ -28,6 +29,10 @@ export default function SchedulePage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { fetchSchedule(); }, [fetchSchedule]);
+
+  useRealtime("schedule", () => fetchSchedule());
 
   const now = new Date();
   const upcoming = events.filter((event) => new Date(event.scheduledAt) >= now);

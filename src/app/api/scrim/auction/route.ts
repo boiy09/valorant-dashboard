@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/broadcast";
 
 // ─── 런타임 테이블 보장 ────────────────────────────────────────────────────────
 let tablePromise: Promise<void> | null = null;
@@ -244,6 +245,7 @@ export async function POST(req: NextRequest) {
     failedQueue: "[]",
   });
 
+  broadcast(`scrim:${sessionId}`, { action: "auction_started" }).catch(() => {});
   return Response.json({ success: true, auction });
 }
 
@@ -300,6 +302,7 @@ export async function PATCH(req: NextRequest) {
     currentBids: JSON.stringify(currentBids),
   });
 
+  broadcast(`scrim:${sessionId}`, { action: "auction_bid" }).catch(() => {});
   return Response.json({ success: true, auction: updated });
 }
 
@@ -321,5 +324,6 @@ export async function DELETE(req: NextRequest) {
     data: { team: "participant", role: "participant" },
   });
 
+  broadcast(`scrim:${sessionId}`, { action: "auction_reset" }).catch(() => {});
   return Response.json({ success: true });
 }

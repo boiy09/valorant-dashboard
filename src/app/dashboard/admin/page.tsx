@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 
 interface Warning {
   id: string;
@@ -102,6 +103,14 @@ export default function AdminPage() {
       .then((d) => setAllMembers(d.members ?? []))
       .catch(() => setAllMembers([]));
   }, [view, isAdmin]);
+
+  useRealtime("admin", () => {
+    if (!isAdmin || view === "server-records") return;
+    fetch("/api/warnings", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setWarnings(d.warnings ?? []))
+      .catch(() => {});
+  });
 
   const roleMembers = useMemo(() => allMembers.filter(isRoleHolder), [allMembers]);
 

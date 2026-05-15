@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/broadcast";
 
 export async function GET(req: NextRequest) {
   const guildDiscordId = req.nextUrl.searchParams.get("guildId");
@@ -82,6 +83,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  broadcast("scrim", { action: "created", scrimId: scrim.id }).catch(() => {});
+
   return Response.json({
     scrim: {
       ...scrim,
@@ -105,6 +108,8 @@ export async function DELETE(req: NextRequest) {
   if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
 
   await prisma.scrimSession.delete({ where: { id } });
+
+  broadcast("scrim", { action: "deleted", scrimId: id }).catch(() => {});
 
   return Response.json({ success: true });
 }

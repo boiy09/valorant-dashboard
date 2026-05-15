@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/broadcast";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { isAdmin } = await getAdminSession();
@@ -19,5 +20,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data: { note: note.trim() || null },
   });
 
+  broadcast("admin", { action: "warning_updated" }).catch(() => {});
   return Response.json({ warning: updated });
 }

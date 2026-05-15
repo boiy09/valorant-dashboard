@@ -473,10 +473,13 @@ export async function PATCH(req: NextRequest) {
       if (auction.phase !== "auction" && auction.phase !== "reauction") {
         return Response.json({ error: "진행 중인 경매만 일시정지할 수 있습니다." }, { status: 400 });
       }
+      const elapsed = auction.auctionStartAt ? (Date.now() - new Date(auction.auctionStartAt).getTime()) / 1000 : 0;
+      const remaining = auction.auctionDuration > 0 ? Math.max(1, Math.ceil(auction.auctionDuration - elapsed)) : 0;
       const updated = await upsertAuction(sessionId, {
         phase: "paused",
         pausedPhase: auction.phase,
         auctionStartAt: null,
+        auctionDuration: remaining,
         auditLog: appendLog(auction.auditLog, {
           actorId: session.user.id,
           action: "pause",

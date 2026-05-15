@@ -1968,6 +1968,9 @@ function AuctionScrimPage({
   const currentLotBidHistory = auction.currentUserId
     ? auctionBidHistory.filter((bid) => bid.lotUserId === auction.currentUserId).slice(-8).reverse()
     : [];
+  const boardTimeLeft = auction.phase === "paused" ? auction.auctionDuration : timeLeft;
+  const boardTimerPct = auction.auctionDuration ? (boardTimeLeft / auction.auctionDuration) * 100 : 0;
+  const boardTimerColor = auction.phase === "paused" ? "#7b8a96" : boardTimerPct > 50 ? "#00e7c2" : boardTimerPct > 25 ? "#f6c945" : "#ff4655";
   const showLegacyAuctionPanel = false;
 
   return (
@@ -2008,7 +2011,128 @@ function AuctionScrimPage({
       )}
 
       {/* 현재 경매 중인 참가자 */}
-      {(auction.phase === "auction" || auction.phase === "reauction") && (
+      {(auction.phase === "auction" || auction.phase === "reauction" || auction.phase === "paused") && (
+        <div className="val-card mb-5 p-4">
+          {auction.auctionDuration > 0 && (
+            <div className="mb-4 overflow-hidden rounded-full bg-[#1d2732]" style={{ height: 8 }}>
+              <div className="h-full rounded-full transition-all duration-200" style={{ width: `${boardTimerPct}%`, backgroundColor: boardTimerColor }} />
+            </div>
+          )}
+          <div className="grid gap-4 xl:grid-cols-[390px_minmax(0,1fr)_330px]">
+            <section className="space-y-3">
+              {captainIds.map((cId, i) => {
+                const tId = `team_${String.fromCharCode(97 + i)}`;
+                const captain = playerMap.get(cId);
+                const color = TEAM_COLORS[i % TEAM_COLORS.length];
+                const teamMembers = playersForAuctionTeam(tId, cId).slice(0, 5);
+                const slots = Array.from({ length: 5 }, (_, slotIndex) => teamMembers[slotIndex] ?? null);
+                return (
+                  <div key={cId} className="rounded border border-[#2a3540] bg-[#111c24]">
+                    <div className="flex items-center justify-between gap-3 border-b border-[#2a3540] bg-[#162232] px-3 py-2">
+                      <div className="min-w-0 truncate text-sm font-black" style={{ color }}>{getDefaultTeamName(i)}</div>
+                      <div className="rounded bg-[#00e7c2]/12 px-3 py-1 text-sm font-black text-[#7fffe6]">포인트 {(captainPoints[cId] ?? 0).toLocaleString()}</div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2 p-3">
+                      {slots.map((member, slotIndex) => {
+                        const pick = member ? auctionPicks.find((row) => row.userId === member.user.id) : null;
+                        const isCaptain = member?.user.id === cId;
+                        const displayName = member ? resolveServerNick(member.user.id, guildMembers, member.user.name) : "";
+                        return (
+                          <div key={`${cId}-${slotIndex}`} className="min-h-[90px] rounded bg-[#0b141c] p-1.5 text-center">
+                            {member ? (
+                              <>
+                                {member.user.image ? <img src={member.user.image} alt="" className="mx-auto h-12 w-12 rounded object-cover" /> : <div className="mx-auto flex h-12 w-12 items-center justify-center rounded bg-[#24313c] text-lg font-black">{displayName.slice(0, 1)}</div>}
+                                <div className="mt-1 min-w-0 truncate whitespace-nowrap text-[11px] font-black text-white" title={displayName}>{displayName}</div>
+                                <div className="truncate whitespace-nowrap text-[10px] font-black" style={{ color }}>{isCaptain ? "팀장" : pick ? `${pick.amount}P` : "멤버"}</div>
+                              </>
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-3xl font-black text-[#56636f]">{slotIndex === 0 ? "C" : slotIndex === 1 ? "M" : "-"}</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="truncate border-t border-[#2a3540] px-3 py-2 text-[11px] font-bold text-[#9aa8b3]">
+                      팀장 {captain ? resolveServerNick(captain.user.id, guildMembers, captain.user.name) : "-"} · 현재 입찰 {(currentBids[cId] ?? 0).toLocaleString()}P
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+
+            <section className="grid content-start gap-3">
+              <div className="rounded border border-[#2a3540] bg-[#111c24] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="text-sm font-black text-white">{auction.phase === "paused" ? "경매 일시정지" : "현재 경매 매물"}</div>
+                  <div className="rounded bg-[#162232] px-3 py-1 text-sm font-black" style={{ color: boardTimerColor }}>{auction.auctionDuration > 0 ? `${boardTimeLeft}s` : "수동"}</div>
+                </div>
+                <div className="rounded border border-[#2a3540] bg-[#0b141c] p-4">
+                  {currentPlayer ? (
+                    <div className="grid gap-4 sm:grid-cols-[132px_minmax(0,1fr)]">
+                      {currentPlayer.user.image ? <img src={currentPlayer.user.image} alt="" className="h-[132px] w-[132px] rounded object-cover" /> : <div className="flex h-[132px] w-[132px] items-center justify-center rounded bg-[#24313c] text-5xl font-black">?</div>}
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">CURRENT PLAYER</div>
+                        <div className="mt-2 truncate whitespace-nowrap text-3xl font-black text-white" title={resolveServerNick(currentPlayer.user.id, guildMembers, currentPlayer.user.name)}>{resolveServerNick(currentPlayer.user.id, guildMembers, currentPlayer.user.name)}</div>
+                        {currentPlayer.user.riotAccounts.map((a) => (
+                          <div key={a.gameName} className="mt-1 truncate whitespace-nowrap text-sm font-bold text-[#9aa8b3]">
+                            {a.region.toUpperCase()} · {a.gameName}#{a.tagLine}
+                            {a.cachedTierName && <span className="ml-2 text-[#7fffe6]">{a.cachedTierName}</span>}
+                          </div>
+                        ))}
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                          <div className="rounded bg-[#162232] p-3">
+                            <div className="whitespace-nowrap text-[11px] font-black text-[#9aa8b3]">최고 입찰</div>
+                            <div className="truncate text-3xl font-black text-[#f6c945]">{highestBid.toLocaleString()}P</div>
+                          </div>
+                          <div className="rounded bg-[#162232] p-3">
+                            <div className="whitespace-nowrap text-[11px] font-black text-[#9aa8b3]">입찰 팀</div>
+                            <div className="truncate whitespace-nowrap text-xl font-black text-white">{highestCaptainId ? resolveServerNick(highestCaptainId, guildMembers, playerMap.get(highestCaptainId)?.user.name) : "없음"}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-12 text-center text-sm font-bold text-[#7b8a96]">현재 경매 매물이 없습니다.</div>
+                  )}
+                </div>
+              </div>
+              {isAdmin && (
+                <div className="grid grid-cols-2 gap-2">
+                  {auction.phase === "paused" ? (
+                    <button type="button" onClick={() => void auctionAdminAction("resume")} disabled={bidding} className="rounded bg-[#00e7c2] px-4 py-3 text-sm font-black text-black disabled:opacity-50">타이머 재개</button>
+                  ) : (
+                    <button type="button" onClick={() => void auctionAdminAction("pause")} disabled={bidding} className="rounded border border-[#7b8a96]/45 bg-[#7b8a96]/10 px-4 py-3 text-sm font-black text-[#c8d3db] disabled:opacity-50">타이머 일시정지</button>
+                  )}
+                  <button type="button" onClick={() => void manualResolve()} disabled={bidding || auction.phase === "paused"} className="rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black disabled:opacity-50">낙찰 처리</button>
+                </div>
+              )}
+            </section>
+
+            <aside className="space-y-3">
+              <div className="rounded border border-[#2a3540] bg-[#111c24]">
+                <div className="flex items-center justify-between border-b border-[#2a3540] bg-[#162232] px-3 py-2 text-sm font-black text-white">
+                  <span>경매순서</span>
+                  <span>{queue.length + (auction.currentUserId ? 1 : 0)}명</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 p-3">
+                  {[auction.currentUserId, ...queue].filter(Boolean).slice(0, 18).map((uid, index) => {
+                    const player = playerMap.get(uid as string);
+                    const displayName = player ? resolveServerNick(player.user.id, guildMembers, player.user.name) : String(uid);
+                    return (
+                      <div key={`${uid}-${index}`} className={`rounded p-2 text-center ${index === 0 ? "bg-[#f6c945]/12 ring-1 ring-[#f6c945]/45" : "bg-[#0b141c]"}`}>
+                        {player?.user.image ? <img src={player.user.image} alt="" className="mx-auto h-12 w-12 rounded object-cover" /> : <div className="mx-auto h-12 w-12 rounded bg-[#24313c]" />}
+                        <div className="mt-1 truncate whitespace-nowrap text-[11px] font-black text-white" title={displayName}>{displayName}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      )}
+
+      {showLegacyAuctionPanel && (auction.phase === "auction" || auction.phase === "reauction") && (
         <div className="mb-5 rounded-none border border-[#2a4b5d] bg-[#0b3346] p-3 text-white shadow-2xl shadow-black/30">
           {auction.auctionDuration > 0 && (
             <div className="mb-3 overflow-hidden bg-[#123f54]" style={{ height: 8 }}>
@@ -2418,9 +2542,9 @@ function AuctionLogPanel({
       {logs.length === 0 ? (
         <div className="rounded border border-dashed border-[#2a3540] py-6 text-center text-xs font-bold text-[#7b8a96]">{emptyText}</div>
       ) : (
-        <div className="max-h-60 space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+        <div className="max-h-72 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
           {logs.slice().reverse().map((log) => (
-            <div key={log.id} className="rounded border border-[#2a3540] bg-[#0b141c]/70 px-3 py-2">
+            <div key={log.id} className="rounded-lg border border-[#2a3540] bg-[#0b141c]/70 px-3 py-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-black text-white">{log.message}</span>
                 <span className="text-[10px] font-bold text-[#56636f]">{new Date(log.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>

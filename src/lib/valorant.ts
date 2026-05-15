@@ -1363,7 +1363,7 @@ export async function getVctSchedule(
   });
   const matches = asArray<any>(raw);
 
-  return matches.slice(0, limit).map((item) => {
+  return matches.map((item) => {
     const teams = asArray<any>(item?.match?.teams);
     const teamOne = teams[0]?.name ?? "TBD";
     const teamTwo = teams[1]?.name ?? "TBD";
@@ -1381,7 +1381,7 @@ export async function getVctSchedule(
       score: `${winsOne}-${winsTwo}`,
       vodUrl: item?.vod ?? null,
     };
-  });
+  }).slice(0, limit);
 }
 
 const TRACKER_HEADERS = {

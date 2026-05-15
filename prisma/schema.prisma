@@ -473,3 +473,13 @@ model Highlight {
   createdAt   DateTime @default(now())
   @@index([guildId, createdAt])
 }
+
+model HighlightLike {
+  id          String   @id @default(cuid())
+  highlightId String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  @@unique([highlightId, userId])
+  @@index([userId])
+}

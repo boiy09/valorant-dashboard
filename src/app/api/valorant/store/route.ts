@@ -5,6 +5,13 @@ import { getStore, getWallet, getBattlepass } from "@/lib/riotPrivateApi";
 
 type RiotRegion = "KR" | "AP";
 
+function regionPriority(region: string) {
+  const normalized = region.toUpperCase();
+  if (normalized === "KR") return 0;
+  if (normalized === "AP") return 1;
+  return 2;
+}
+
 export async function GET() {
   const session = await auth();
   if (!session?.user) {
@@ -13,7 +20,7 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { discordId: session.user.id! },
-    include: { riotAccounts: { orderBy: [{ region: "asc" }, { createdAt: "asc" }] } },
+    include: { riotAccounts: { orderBy: [{ createdAt: "asc" }] } },
   });
 
   if (!user?.riotAccounts?.length) {
@@ -21,7 +28,7 @@ export async function GET() {
   }
 
   const results = await Promise.allSettled(
-    user.riotAccounts.map(async (account) => {
+    [...user.riotAccounts].sort((a, b) => regionPriority(a.region) - regionPriority(b.region)).map(async (account) => {
       const region = account.region as RiotRegion;
       const qRegion = region === "AP" ? "ap" : "kr";
 

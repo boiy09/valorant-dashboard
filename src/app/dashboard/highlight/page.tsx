@@ -10,6 +10,7 @@ interface Highlight {
   url: string;
   likes: number;
   createdAt: string;
+  likedByMe?: boolean;
   user: { name: string | null; image: string | null } | null;
 }
 
@@ -27,7 +28,9 @@ export default function HighlightPage() {
       fetch("/api/me/roles").then((response) => response.json()).catch(() => ({ isAdmin: false })),
     ])
       .then(([highlightData, roleData]) => {
-        setHighlights(highlightData.highlights ?? []);
+        const nextHighlights = highlightData.highlights ?? [];
+        setHighlights(nextHighlights);
+        setLiked(new Set(nextHighlights.filter((highlight: Highlight) => highlight.likedByMe).map((highlight: Highlight) => highlight.id)));
         setIsAdmin(Boolean(roleData.isAdmin));
       })
       .finally(() => setLoading(false));
@@ -38,8 +41,6 @@ export default function HighlightPage() {
   useRealtime("highlight", () => fetchHighlights());
 
   async function toggleLike(id: string) {
-    if (liked.has(id)) return;
-
     const response = await fetch("/api/highlight", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -47,10 +48,18 @@ export default function HighlightPage() {
     });
 
     if (response.ok) {
-      setLiked((previous) => new Set(previous).add(id));
+      const data = await response.json().catch(() => ({}));
+      setLiked((previous) => {
+        const next = new Set(previous);
+        if (data.liked) next.add(id);
+        else next.delete(id);
+        return next;
+      });
       setHighlights((previous) =>
         previous.map((highlight) =>
-          highlight.id === id ? { ...highlight, likes: highlight.likes + 1 } : highlight
+          highlight.id === id
+            ? { ...highlight, likes: typeof data.likes === "number" ? data.likes : Math.max(0, highlight.likes + (data.liked ? 1 : -1)), likedByMe: Boolean(data.liked) }
+            : highlight
         )
       );
     }

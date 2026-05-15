@@ -281,6 +281,10 @@ export default function RiotConnectPage() {
           <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Cookie 방식</div>
           <div className="mt-1 text-base font-black text-white">F12 Cookie 복사</div>
           <ul className="mt-3 space-y-1.5">
+            <li className="flex items-start gap-1.5 text-xs text-[#c8d3db]">
+              <span className="mt-px font-black">준비물</span>
+              <span>Chrome 또는 Chromium 기반 브라우저(Edge, Whale 등)</span>
+            </li>
             <li className="flex items-start gap-1.5 text-xs text-[#7fffe6]">
               <span className="mt-px font-black">+</span>
               <span>한 번 연동하면 토큰 자동 갱신, 재연동 불필요</span>

@@ -15,7 +15,7 @@ export async function GET() {
 
   const results = await Promise.allSettled(
     LEAGUES.map(async (league) => {
-      const matches = await getVctSchedule(league.id, 5);
+      const matches = await getVctSchedule(league.id, 20);
       return { league: league.name, leagueId: league.id, matches };
     })
   );
@@ -27,7 +27,15 @@ export async function GET() {
 
   const allMatches = leagues
     .flatMap((l) => l.matches.map((m) => ({ ...m, leagueName: l.league })))
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+    .sort((a, b) => {
+      const now = Date.now();
+      const aTime = new Date(a.startsAt).getTime();
+      const bTime = new Date(b.startsAt).getTime();
+      const aFuture = aTime >= now;
+      const bFuture = bTime >= now;
+      if (aFuture !== bFuture) return aFuture ? -1 : 1;
+      return aFuture ? aTime - bTime : bTime - aTime;
+    });
 
   return Response.json({ matches: allMatches });
 }

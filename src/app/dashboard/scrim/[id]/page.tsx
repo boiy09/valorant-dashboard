@@ -421,6 +421,8 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const [dummyOpen, setDummyOpen] = useState(false);
   const [dummyAdding, setDummyAdding] = useState(false);
   const DUMMY_ROLES = ["감시자", "타격대", "척후대", "전략가"];
+  const DUMMY_NAMES = ["루나", "제로", "하루", "민트", "레이", "노바", "유키", "카이", "아린", "시온", "로이", "하온"];
+  const DUMMY_AGENTS = ["제트", "오멘", "소바", "킬조이", "레이나", "바이퍼", "페이드", "사이퍼", "클로브", "아이소"];
   const TIER_OPTIONS = [
     { label: "언랭크", id: 0 }, { label: "아이언 1", id: 1 }, { label: "아이언 2", id: 2 }, { label: "아이언 3", id: 3 },
     { label: "브론즈 1", id: 4 }, { label: "브론즈 2", id: 5 }, { label: "브론즈 3", id: 6 },
@@ -438,6 +440,21 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
 
   function setDummyRow(index: number, patch: Partial<DummyRow>) {
     setDummyRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  function fillRandomDummyRows() {
+    setDummyRows(Array.from({ length: 10 }, (_, index) => {
+      const name = DUMMY_NAMES[index % DUMMY_NAMES.length];
+      const tier = TIER_OPTIONS[Math.floor(Math.random() * Math.max(1, TIER_OPTIONS.length - 1)) + 1] ?? TIER_OPTIONS[0];
+      const agents = [...DUMMY_AGENTS].sort(() => Math.random() - 0.5).slice(0, 3);
+      return {
+        discordName: `${name}${Math.floor(10 + Math.random() * 90)}`,
+        riotId: `${name}${Math.floor(100 + Math.random() * 900)}#KR1`,
+        tierId: tier.id,
+        valorantRole: DUMMY_ROLES[Math.floor(Math.random() * DUMMY_ROLES.length)] ?? "",
+        favoriteAgents: agents.join(","),
+      };
+    }));
   }
 
   async function submitDummy() {
@@ -1343,11 +1360,17 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
               ))}
             </div>
 
-            <button type="button" onClick={() => setDummyRows((prev) => [...prev, emptyRow()])}
-              disabled={dummyRows.length >= 20}
-              className="mt-3 w-full rounded border border-dashed border-[#2a3540] py-2 text-xs font-black text-[#7b8a96] hover:border-[#f6c945]/50 hover:text-[#f6c945] disabled:opacity-40">
-              + 참가자 추가
-            </button>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button type="button" onClick={fillRandomDummyRows}
+                className="rounded border border-[#f6c945]/40 bg-[#f6c945]/10 py-2 text-xs font-black text-[#f6c945] hover:bg-[#f6c945]/15">
+                랜덤 채우기
+              </button>
+              <button type="button" onClick={() => setDummyRows((prev) => [...prev, emptyRow()])}
+                disabled={dummyRows.length >= 20}
+                className="rounded border border-dashed border-[#2a3540] py-2 text-xs font-black text-[#7b8a96] hover:border-[#f6c945]/50 hover:text-[#f6c945] disabled:opacity-40">
+                + 참가자 추가
+              </button>
+            </div>
 
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => setDummyOpen(false)}
@@ -1429,6 +1452,8 @@ function AuctionScrimPage({
   const [dummyOpen, setDummyOpen] = useState(false);
   const [dummyAdding, setDummyAdding] = useState(false);
   const AUCTION_DUMMY_ROLES = ["감시자", "타격대", "척후대", "전략가"];
+  const AUCTION_DUMMY_NAMES = ["루나", "제로", "하루", "민트", "레이", "노바", "유키", "카이", "아린", "시온", "로이", "하온"];
+  const AUCTION_DUMMY_AGENTS = ["제트", "오멘", "소바", "킬조이", "레이나", "바이퍼", "페이드", "사이퍼", "클로브", "아이소"];
   const AUCTION_TIER_OPTIONS = [
     { label: "언랭크", id: 0 }, { label: "아이언 1", id: 1 }, { label: "아이언 2", id: 2 }, { label: "아이언 3", id: 3 },
     { label: "브론즈 1", id: 4 }, { label: "브론즈 2", id: 5 }, { label: "브론즈 3", id: 6 },
@@ -1446,6 +1471,21 @@ function AuctionScrimPage({
 
   function setDummyRow(index: number, patch: Partial<AuctionDummyRow>) {
     setDummyRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  function fillRandomDummyRows() {
+    setDummyRows(Array.from({ length: 10 }, (_, index) => {
+      const name = AUCTION_DUMMY_NAMES[index % AUCTION_DUMMY_NAMES.length];
+      const tier = AUCTION_TIER_OPTIONS[Math.floor(Math.random() * Math.max(1, AUCTION_TIER_OPTIONS.length - 1)) + 1] ?? AUCTION_TIER_OPTIONS[0];
+      const agents = [...AUCTION_DUMMY_AGENTS].sort(() => Math.random() - 0.5).slice(0, 3);
+      return {
+        discordName: `${name}${Math.floor(10 + Math.random() * 90)}`,
+        riotId: `${name}${Math.floor(100 + Math.random() * 900)}#KR1`,
+        tierId: tier.id,
+        valorantRole: AUCTION_DUMMY_ROLES[Math.floor(Math.random() * AUCTION_DUMMY_ROLES.length)] ?? "",
+        favoriteAgents: agents.join(","),
+      };
+    }));
   }
 
   async function submitDummy() {
@@ -1927,11 +1967,17 @@ function AuctionScrimPage({
                   </div>
                 ))}
               </div>
-              <button type="button" onClick={() => setDummyRows((prev) => [...prev, auctionEmptyRow()])}
-                disabled={dummyRows.length >= 20}
-                className="mt-3 w-full rounded border border-dashed border-[#2a3540] py-2 text-xs font-black text-[#7b8a96] hover:border-[#f6c945]/50 hover:text-[#f6c945] disabled:opacity-40">
-                + 참가자 추가
-              </button>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button type="button" onClick={fillRandomDummyRows}
+                  className="rounded border border-[#f6c945]/40 bg-[#f6c945]/10 py-2 text-xs font-black text-[#f6c945] hover:bg-[#f6c945]/15">
+                  랜덤 채우기
+                </button>
+                <button type="button" onClick={() => setDummyRows((prev) => [...prev, auctionEmptyRow()])}
+                  disabled={dummyRows.length >= 20}
+                  className="rounded border border-dashed border-[#2a3540] py-2 text-xs font-black text-[#7b8a96] hover:border-[#f6c945]/50 hover:text-[#f6c945] disabled:opacity-40">
+                  + 참가자 추가
+                </button>
+              </div>
               <div className="mt-4 flex justify-end gap-2">
                 <button type="button" onClick={() => setDummyOpen(false)}
                   className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-5 py-2 text-sm font-black text-[#9aa8b3] hover:border-[#ff4655]/50 hover:text-white">

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { randomUUID } from "crypto";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { broadcast } from "@/lib/broadcast";
@@ -110,7 +111,7 @@ async function getHighlights(type: string, limit: number) {
   });
 }
 
-function serializeHighlight(highlight: HighlightWithUser) {
+function serializeHighlight(highlight: HighlightWithUser, likedByMe = false) {
   const serverNickname =
     highlight.user?.guilds.find((member) => member.guildId === highlight.guildId)?.nickname ?? null;
 
@@ -123,6 +124,7 @@ function serializeHighlight(highlight: HighlightWithUser) {
           discordId: highlight.user.discordId,
         }
       : null,
+    likedByMe,
   };
 }
 
@@ -135,13 +137,27 @@ async function getUser(session: any) {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await auth();
   const type = req.nextUrl.searchParams.get("type") ?? "clip";
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "20", 10);
 
   const highlights = await Promise.all((await getHighlights(type, limit)).map(refreshHighlightUrl));
+  const user = session?.user?.id ? await getUser(session) : null;
+  const likedIds = new Set<string>();
+  if (user && highlights.length > 0) {
+    const rows = await prisma.$queryRaw<Array<{ highlightId: string }>>`
+      SELECT "highlightId"
+      FROM "HighlightLike"
+      WHERE "userId" = ${user.id}
+    `.catch(() => []);
+    const highlightIds = new Set(highlights.map((highlight) => highlight.id));
+    for (const row of rows) {
+      if (highlightIds.has(row.highlightId)) likedIds.add(row.highlightId);
+    }
+  }
 
   return Response.json(
-    { highlights: highlights.map(serializeHighlight) },
+    { highlights: highlights.map((highlight) => serializeHighlight(highlight, likedIds.has(highlight.id))) },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
@@ -184,11 +200,45 @@ export async function PATCH(req: NextRequest) {
   const targetId = highlightId ?? id;
   if (!targetId) return Response.json({ error: "하이라이트 ID가 필요합니다." }, { status: 400 });
 
-  await prisma.highlight.update({
-    where: { id: targetId },
-    data: { likes: { increment: 1 } },
+  const user = await getUser(session);
+  if (!user) return Response.json({ error: "?좎?瑜?李얠쓣 ???놁뒿?덈떎." }, { status: 404 });
+
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "HighlightLike"
+      WHERE "highlightId" = ${targetId}
+      AND "userId" = ${user.id}
+      LIMIT 1
+    `;
+
+    if (existing[0]) {
+      await tx.$executeRaw`
+        DELETE FROM "HighlightLike"
+        WHERE "highlightId" = ${targetId}
+        AND "userId" = ${user.id}
+      `;
+      const rows = await tx.$queryRaw<Array<{ likes: number }>>`
+        UPDATE "Highlight"
+        SET "likes" = GREATEST("likes" - 1, 0)
+        WHERE "id" = ${targetId}
+        RETURNING "likes"
+      `;
+      return { liked: false, likes: rows[0]?.likes ?? 0 };
+    }
+
+    await tx.$executeRaw`
+      INSERT INTO "HighlightLike" ("id", "highlightId", "userId")
+      VALUES (${randomUUID()}, ${targetId}, ${user.id})
+    `;
+    const highlight = await tx.highlight.update({
+      where: { id: targetId },
+      data: { likes: { increment: 1 } },
+      select: { likes: true },
+    });
+    return { liked: true, likes: highlight.likes };
   });
 
   broadcast("highlight", { action: "liked" }).catch(() => {});
-  return Response.json({ success: true });
+  return Response.json({ success: true, ...result });
 }

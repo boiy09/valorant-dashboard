@@ -431,6 +431,11 @@ async function checkCdnImage(uuid: string): Promise<string | null> {
   return null;
 }
 
+function proxyBundleImage(url: string) {
+  if (!url || url.startsWith("/api/bundle-image")) return url;
+  return `/api/bundle-image?u=${encodeURIComponent(url)}`;
+}
+
 async function resolveBundle(uuid: string): Promise<BundleInfo | null> {
   // 1. valorant-api.com 직접 UUID 조회
   try {
@@ -442,7 +447,7 @@ async function resolveBundle(uuid: string): Promise<BundleInfo | null> {
       if (data.data?.displayName) {
         return {
           name: data.data.displayName,
-          displayIcon: data.data.displayIcon ?? "",
+          displayIcon: proxyBundleImage(data.data.displayIcon ?? ""),
           price: data.data.price ?? 0,
         };
       }
@@ -605,19 +610,23 @@ export async function getStore(
 
     return {
       name: bundleInfo?.name || fallbackName || "번들",
-      displayIcon: bundleInfo?.displayIcon || fallbackIcon,
+      displayIcon: proxyBundleImage(bundleInfo?.displayIcon || fallbackIcon),
       cost: totalCost,
       remainingSeconds: bundleRaw.DurationRemainingInSeconds ?? 0,
     };
   }
 
   // 번들: v3 FeaturedBundles(복수) → v2 FeaturedBundle(단일) 순으로 모든 번들 처리
-  const allBundlesRaw: BundlePayload[] =
-    data.FeaturedBundles?.Bundles?.length
-      ? data.FeaturedBundles.Bundles
-      : data.FeaturedBundle?.Bundle
-        ? [data.FeaturedBundle.Bundle]
-        : [];
+  const seenBundleIds = new Set<string>();
+  const allBundlesRaw: BundlePayload[] = [
+    ...(data.FeaturedBundles?.Bundles ?? []),
+    ...(data.FeaturedBundle?.Bundle ? [data.FeaturedBundle.Bundle] : []),
+  ].filter((bundle) => {
+    const id = (bundle.DataAssetID || bundle.ID || JSON.stringify(bundle)).toLowerCase();
+    if (seenBundleIds.has(id)) return false;
+    seenBundleIds.add(id);
+    return true;
+  });
 
   const bundles = (await Promise.all(allBundlesRaw.map(processBundleRaw)))
     .filter((b): b is StoreBundle => b !== null);

@@ -23,6 +23,13 @@ interface StoreResponse {
 
 const REGION_LABELS: Record<RiotRegion, string> = { KR: "한섭", AP: "아섭" };
 
+function regionPriority(region: string) {
+  const normalized = region.toUpperCase();
+  if (normalized === "KR") return 0;
+  if (normalized === "AP") return 1;
+  return 2;
+}
+
 function formatCountdown(seconds: number) {
   if (seconds <= 0) return "갱신됨";
   const h = Math.floor(seconds / 3600);
@@ -372,7 +379,7 @@ export default function StorePage() {
           연동된 라이엇 계정이 없습니다. 라이엇 연동 탭에서 계정을 연결해 주세요.
         </div>
       ) : (
-        data?.accounts?.map((account) => (
+        [...(data?.accounts ?? [])].sort((a, b) => regionPriority(a.region) - regionPriority(b.region)).map((account) => (
           <AccountStoreSection key={`${account.region}-${account.riotId}`} data={account} />
         ))
       )}

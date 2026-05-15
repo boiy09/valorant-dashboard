@@ -144,6 +144,14 @@ export default function SchedulePage() {
   }, [visibleItems]);
   const selectedItems = byDay.get(dayKey(selectedDate)) ?? [];
   const days = useMemo(() => buildMonthDays(cursor), [cursor]);
+  const groupedVctMatches = useMemo(() => {
+    const map = new Map<string, VctMatch[]>();
+    for (const match of vctMatches) {
+      const key = match.leagueName || match.leagueCode || "VCT";
+      map.set(key, [...(map.get(key) ?? []), match]);
+    }
+    return Array.from(map.entries()).map(([leagueName, matches]) => ({ leagueName, matches }));
+  }, [vctMatches]);
 
   function moveMonth(amount: number) {
     setCursor((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
@@ -232,8 +240,18 @@ export default function SchedulePage() {
             <div className="text-xs text-[#7b8a96]">{vctMatches.length}경기</div>
           </div>
           <div className="divide-y divide-[#1a2830]">
-            {vctMatches.slice(0, 10).map((match, i) => (
-              <VctMatchRow key={i} match={match} />
+            {groupedVctMatches.map((group) => (
+              <section key={group.leagueName}>
+                <div className="flex items-center justify-between bg-[#0b141c] px-4 py-2">
+                  <div className="text-xs font-black text-white">{group.leagueName}</div>
+                  <div className="text-[10px] font-bold text-[#7b8a96]">{group.matches.length}경기</div>
+                </div>
+                <div className="divide-y divide-[#1a2830]">
+                  {group.matches.slice(0, 6).map((match, i) => (
+                    <VctMatchRow key={`${group.leagueName}-${match.startsAt}-${i}`} match={match} />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         </div>
@@ -343,11 +361,12 @@ function VctMatchRow({ match }: { match: VctMatch }) {
         <span className="truncate text-xs font-bold text-white">{match.teamTwo}</span>
       </div>
       <div className="flex flex-shrink-0 items-center gap-2">
+        <span className="whitespace-nowrap text-[10px] text-[#9aa8b3]">{dateStr} {timeStr}</span>
         {isLive && <span className="rounded bg-[#ff4655] px-1.5 py-0.5 text-[10px] font-black text-white">LIVE</span>}
         {isDone && match.vodUrl && (
           <a href={match.vodUrl} target="_blank" rel="noopener noreferrer" className="rounded border border-[#2a3540] px-1.5 py-0.5 text-[10px] text-[#7b8a96] hover:text-white">VOD</a>
         )}
-        {isUpcoming && <span className="text-[10px] text-[#7b8a96]">{dateStr} {timeStr}</span>}
+        {isUpcoming && <span className="rounded border border-[#2a3540] px-1.5 py-0.5 text-[10px] font-black text-[#7fffe6]">예정</span>}
         {isDone && !match.vodUrl && <span className="text-[10px] text-[#4a5a68]">종료</span>}
       </div>
     </div>

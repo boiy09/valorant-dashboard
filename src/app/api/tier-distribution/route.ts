@@ -40,6 +40,18 @@ type RankAccountRow = {
   tokenExpiresAt: Date | null;
   cachedTierId: number | null;
   rankCachedAt: Date | null;
+  user: {
+    name: string | null;
+    image: string | null;
+    discordId: string | null;
+  };
+};
+
+type TierDistributionMember = {
+  name: string;
+  riotId: string;
+  image: string | null;
+  discordId: string | null;
 };
 
 const TIER_IDS: Record<DetailTier, number> = {
@@ -134,6 +146,13 @@ export async function GET(req: NextRequest) {
       tokenExpiresAt: true,
       cachedTierId: true,
       rankCachedAt: true,
+      user: {
+        select: {
+          name: true,
+          image: true,
+          discordId: true,
+        },
+      },
     },
     orderBy: [{ region: "asc" }, { gameName: "asc" }],
   });
@@ -142,9 +161,15 @@ export async function GET(req: NextRequest) {
     const region = account.region.toUpperCase() === "AP" ? "AP" : "KR";
     const cacheAge = account.rankCachedAt ? now - account.rankCachedAt.getTime() : Infinity;
     const isFresh = cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null;
+    const member = {
+      name: account.user?.name ?? account.gameName,
+      riotId: `${account.gameName}#${account.tagLine}`,
+      image: account.user?.image ?? null,
+      discordId: account.user?.discordId ?? null,
+    };
 
     if (isFresh) {
-      return { region, tier: tierIdToDetailTier(account.cachedTierId!) };
+      return { region, tier: tierIdToDetailTier(account.cachedTierId!), member };
     }
 
     const tokens = await ensureValidTokens(
@@ -164,23 +189,28 @@ export async function GET(req: NextRequest) {
       data: { cachedTierId: tierId, cachedTierName: rank.tierName, rankCachedAt: new Date() },
     }).catch((e: unknown) => console.error("[tier-distribution] rank cache update failed:", e));
 
-    return { region, tier: tierIdToDetailTier(tierId) };
+    return { region, tier: tierIdToDetailTier(tierId), member };
   });
 
   const countsByRegion = {
     KR: Object.fromEntries(DETAIL_TIERS.map((tier) => [tier, 0])) as Record<DetailTier, number>,
     AP: Object.fromEntries(DETAIL_TIERS.map((tier) => [tier, 0])) as Record<DetailTier, number>,
   };
+  const membersByRegion = {
+    KR: Object.fromEntries(DETAIL_TIERS.map((tier) => [tier, []])) as Record<DetailTier, TierDistributionMember[]>,
+    AP: Object.fromEntries(DETAIL_TIERS.map((tier) => [tier, []])) as Record<DetailTier, TierDistributionMember[]>,
+  };
 
   for (const account of rankedAccounts) {
     const region = account.region as "KR" | "AP";
     countsByRegion[region][account.tier] += 1;
+    membersByRegion[region][account.tier].push(account.member);
   }
 
   return Response.json({
     regions: {
-      KR: await buildRegion("KR", countsByRegion.KR),
-      AP: await buildRegion("AP", countsByRegion.AP),
+      KR: await buildRegion("KR", countsByRegion.KR, membersByRegion.KR),
+      AP: await buildRegion("AP", countsByRegion.AP, membersByRegion.AP),
     },
     generatedAt: new Date().toISOString(),
   });
@@ -196,7 +226,10 @@ async function buildEmptyRegions() {
 
 async function buildRegion(
   region: "KR" | "AP",
-  counts: Record<DetailTier, number>
+  counts: Record<DetailTier, number>,
+  membersByTier: Record<DetailTier, TierDistributionMember[]> = Object.fromEntries(
+    DETAIL_TIERS.map((tier) => [tier, []])
+  ) as Record<DetailTier, TierDistributionMember[]>
 ) {
   const total = DETAIL_TIERS.reduce((sum, tier) => sum + counts[tier], 0);
   const tiers = await Promise.all(
@@ -207,6 +240,7 @@ async function buildRegion(
       count: counts[tier],
       percent: total > 0 ? Math.round((counts[tier] / total) * 1000) / 10 : 0,
       icon: await getRankIconByTier(TIER_IDS[tier]),
+      members: membersByTier[tier] ?? [],
     }))
   );
 

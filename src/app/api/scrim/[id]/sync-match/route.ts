@@ -3,6 +3,7 @@ import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { getRecentMatches, getRiotOfficialRecentMatches, type MatchStats } from "@/lib/valorant";
 import { getPrivateRecentMatches } from "@/lib/riotPrivateApi";
+import { ensureValidTokens } from "@/lib/rankFetcher";
 
 /**
  * POST /api/scrim/[id]/sync-match
@@ -26,7 +27,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
             select: {
               id: true,
               riotAccounts: {
-                select: { puuid: true, region: true, accessToken: true, entitlementsToken: true },
+                select: { puuid: true, region: true, accessToken: true, entitlementsToken: true, ssid: true, authCookie: true, tokenExpiresAt: true },
               },
             },
           },
@@ -66,6 +67,9 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     region: string;
     accessToken?: string | null;
     entitlementsToken?: string | null;
+    ssid?: string | null;
+    authCookie?: string | null;
+    tokenExpiresAt?: Date | null;
   };
   const playerPuuids: PlayerPuuidEntry[] = [];
   for (const p of targetPlayers) {
@@ -79,6 +83,9 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
           region: acc.region ?? "KR",
           accessToken: acc.accessToken,
           entitlementsToken: acc.entitlementsToken,
+          ssid: acc.ssid,
+          authCookie: acc.authCookie,
+          tokenExpiresAt: acc.tokenExpiresAt,
         });
       }
     }
@@ -91,32 +98,40 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   // 여러 대표 계정으로 최근 커스텀 매치 조회 (스코어보드 포함)
   const qRegion = playerPuuids[0].region === "AP" ? "ap" : "kr";
 
-  // API 폴백 체인: Private Riot API → Riot Official API → Henrik API
+  // API 폴백 체인: Private Riot API (ssid 자동갱신) → Riot Official API → Henrik API
   // Henrik 429는 API 키 단위 제한이므로 감지 시 즉시 중단
   let recentMatches: MatchStats[] = [];
   let lastFetchError = "";
   let rateLimited = false;
 
   outer: for (const candidate of playerPuuids.slice(0, 3)) {
-    // 1) Private Riot API (토큰이 있을 때 우선 시도)
-    if (candidate.accessToken && candidate.entitlementsToken) {
-      try {
+    // 1) Private Riot API — ssid로 만료 토큰 자동 갱신 후 시도
+    try {
+      const tokens = await ensureValidTokens(
+        candidate.puuid,
+        candidate.accessToken ?? null,
+        candidate.entitlementsToken ?? null,
+        candidate.ssid ?? null,
+        candidate.authCookie ?? null,
+        candidate.tokenExpiresAt ?? null,
+      );
+      if (tokens) {
         const privateMatches = await getPrivateRecentMatches(
           candidate.puuid,
           candidate.region,
-          candidate.accessToken,
-          candidate.entitlementsToken,
+          tokens.accessToken,
+          tokens.entitlementsToken,
           { count: 20 }
         );
         if (privateMatches.length > 0) {
           recentMatches = privateMatches;
           break outer;
         }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.warn("[sync-match] Private API 실패:", candidate.puuid, msg);
-        lastFetchError = msg;
       }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[sync-match] Private API 실패:", candidate.puuid, msg);
+      lastFetchError = msg;
     }
 
     // 2) Riot Official API (RIOT_API_KEY 환경변수 있을 때)
@@ -132,7 +147,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
       lastFetchError = msg;
     }
 
-    // 3) Henrik API (폴백)
+    // 3) Henrik API (폴백) — 429 시 즉시 중단 (API 키 단위 제한)
     try {
       const henrikMatches = await getRecentMatches(candidate.puuid, 25, qRegion, "pc", {
         skipAccountFallback: true,
@@ -155,7 +170,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
 
   if (recentMatches.length === 0) {
     const errorMsg = rateLimited
-      ? "Henrik API 요청 한도 초과입니다. 잠시 후 다시 시도해 주세요."
+      ? "Henrik API 요청 한도 초과입니다. 잠시 후 다시 시도하거나 라이엇 계정을 재연동해 주세요."
       : `전적 데이터를 가져오는 데 실패했습니다.${lastFetchError ? ` (${lastFetchError})` : " 라이엇 계정이 연동된 참가자를 확인해 주세요."}`;
     return Response.json({ error: errorMsg }, { status: rateLimited ? 429 : 500 });
   }

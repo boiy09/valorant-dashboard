@@ -371,6 +371,60 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const settings = useMemo(() => parseSettings(scrim?.settings), [scrim?.settings]);
   const [showSettings, setShowSettings] = useState(false);
 
+  // 더미 데이터 모달 상태
+  const [dummyOpen, setDummyOpen] = useState(false);
+  const [dummyAdding, setDummyAdding] = useState(false);
+  const DUMMY_ROLES = ["감시자", "타격대", "척후대", "전략가"];
+  const TIER_OPTIONS = [
+    { label: "언랭크", id: 0 }, { label: "아이언 1", id: 1 }, { label: "아이언 2", id: 2 }, { label: "아이언 3", id: 3 },
+    { label: "브론즈 1", id: 4 }, { label: "브론즈 2", id: 5 }, { label: "브론즈 3", id: 6 },
+    { label: "실버 1", id: 7 }, { label: "실버 2", id: 8 }, { label: "실버 3", id: 9 },
+    { label: "골드 1", id: 10 }, { label: "골드 2", id: 11 }, { label: "골드 3", id: 12 },
+    { label: "플래티넘 1", id: 13 }, { label: "플래티넘 2", id: 14 }, { label: "플래티넘 3", id: 15 },
+    { label: "다이아몬드 1", id: 16 }, { label: "다이아몬드 2", id: 17 }, { label: "다이아몬드 3", id: 18 },
+    { label: "초월자 1", id: 19 }, { label: "초월자 2", id: 20 }, { label: "초월자 3", id: 21 },
+    { label: "불멸 1", id: 22 }, { label: "불멸 2", id: 23 }, { label: "불멸 3", id: 24 },
+    { label: "레디언트", id: 25 },
+  ];
+  type DummyRow = { discordName: string; riotId: string; tierId: number; valorantRole: string; favoriteAgents: string };
+  const emptyRow = (): DummyRow => ({ discordName: "", riotId: "", tierId: 0, valorantRole: "", favoriteAgents: "" });
+  const [dummyRows, setDummyRows] = useState<DummyRow[]>(() => [emptyRow()]);
+
+  function setDummyRow(index: number, patch: Partial<DummyRow>) {
+    setDummyRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  async function submitDummy() {
+    if (dummyAdding) return;
+    const players = dummyRows
+      .filter((row) => row.discordName.trim())
+      .map((row) => ({
+        discordName: row.discordName.trim(),
+        riotId: row.riotId.trim() || undefined,
+        cachedTierName: TIER_OPTIONS.find((t) => t.id === row.tierId)?.label,
+        cachedTierId: row.tierId,
+        valorantRole: row.valorantRole || undefined,
+        favoriteAgents: row.favoriteAgents ? row.favoriteAgents.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+      }));
+    if (players.length === 0) { setMessage("디스코드 이름을 입력해 주세요."); return; }
+    setDummyAdding(true); setMessage(null);
+    try {
+      const res = await fetch(`/api/scrim/${id}/dummy`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ players }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "더미 추가에 실패했습니다.");
+      setMessage(`더미 참가자 ${data.added?.length ?? 0}명 추가됨.`);
+      setDummyOpen(false);
+      setDummyRows([emptyRow()]);
+      const reloadRes = await fetch(`/api/scrim/${id}`, { cache: "no-store" });
+      const reloadData = await reloadRes.json();
+      setScrim(reloadData.scrim ?? null);
+    } catch (e) { setMessage(e instanceof Error ? e.message : "더미 추가에 실패했습니다."); }
+    finally { setDummyAdding(false); }
+  }
+
   async function updateSettings(updates: Partial<ScrimDetailSettings>) {
     if (!scrim) return;
     const next = { ...settings, ...updates };
@@ -742,6 +796,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           )}
 
           <button type="button" onClick={() => void syncMatch()} disabled={saving} className="val-btn border border-[#00e7c2]/40 bg-[#00e7c2]/10 px-3 py-2 text-xs font-black text-[#00e7c2] disabled:opacity-50" title="참가자 전원이 포함된 커스텀 매치를 자동으로 찾아 승패/맵/KDA를 기록합니다">🔄 전적 자동 연동</button>
+          <button type="button" onClick={() => { setDummyRows([emptyRow()]); setDummyOpen(true); }} className="val-btn border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-2 text-xs font-black text-[#f6c945]" title="테스트용 더미 참가자 추가">🧪 더미 데이터</button>
           <button type="button" onClick={() => setShowSettings(!showSettings)} className={`val-btn border border-[#2a3540] px-3 py-2 text-xs font-black transition-colors ${showSettings ? "bg-[#ff4655] text-white" : "bg-[#111c24] text-white"}`}>⚙️ 설정</button>
         </div>
       </div>
@@ -1132,6 +1187,96 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </aside>
       </div>
+
+      {/* 더미 데이터 모달 */}
+      {dummyOpen && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 px-4">
+          <div className="val-card max-h-[90vh] w-full max-w-2xl overflow-y-auto p-5 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-black text-white">🧪 더미 데이터 추가</h2>
+                <p className="mt-0.5 text-xs text-[#7b8a96]">테스트용 가상 참가자를 추가합니다. 디스코드 이름이 같으면 기존 유저로 처리됩니다.</p>
+              </div>
+              <button type="button" onClick={() => setDummyOpen(false)}
+                className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-xs font-black text-[#9aa8b3] hover:border-[#ff4655]/50 hover:text-white">
+                닫기
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {dummyRows.map((row, index) => (
+                <div key={index} className="rounded border border-[#2a3540] bg-[#0b141c] p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-black text-[#7b8a96]">참가자 {index + 1}</span>
+                    {dummyRows.length > 1 && (
+                      <button type="button" onClick={() => setDummyRows((prev) => prev.filter((_, i) => i !== index))}
+                        className="text-[11px] text-[#ff4655] hover:text-white">삭제</button>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">디스코드 이름 <span className="text-[#ff4655]">*</span></label>
+                      <input value={row.discordName} onChange={(e) => setDummyRow(index, { discordName: e.target.value })}
+                        placeholder="예: 플레이어닉네임"
+                        className="w-full rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945] placeholder:text-[#56636f]" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">라이엇 ID</label>
+                      <input value={row.riotId} onChange={(e) => setDummyRow(index, { riotId: e.target.value })}
+                        placeholder="예: 닉네임#KR1"
+                        className="w-full rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 font-mono text-sm font-bold text-white outline-none focus:border-[#f6c945] placeholder:text-[#56636f]" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">티어</label>
+                      <select value={row.tierId} onChange={(e) => setDummyRow(index, { tierId: Number(e.target.value) })}
+                        className="w-full rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]">
+                        {TIER_OPTIONS.map((t) => (
+                          <option key={t.id} value={t.id}>{t.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">역할군</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {DUMMY_ROLES.map((role) => (
+                          <button key={role} type="button"
+                            onClick={() => setDummyRow(index, { valorantRole: row.valorantRole === role ? "" : role })}
+                            className={`rounded px-2.5 py-1 text-xs font-black transition-colors ${row.valorantRole === role ? "bg-[#f6c945] text-[#0b141c]" : "border border-[#2a3540] bg-[#111c24] text-[#9aa8b3] hover:border-[#f6c945]/50"}`}>
+                            {role}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">모스트 3 요원 <span className="font-normal text-[#56636f]">(쉼표로 구분, 예: 제트,오멘,레이나)</span></label>
+                      <input value={row.favoriteAgents} onChange={(e) => setDummyRow(index, { favoriteAgents: e.target.value })}
+                        placeholder="예: 제트,오멘,레이나"
+                        className="w-full rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945] placeholder:text-[#56636f]" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button type="button" onClick={() => setDummyRows((prev) => [...prev, emptyRow()])}
+              disabled={dummyRows.length >= 20}
+              className="mt-3 w-full rounded border border-dashed border-[#2a3540] py-2 text-xs font-black text-[#7b8a96] hover:border-[#f6c945]/50 hover:text-[#f6c945] disabled:opacity-40">
+              + 참가자 추가
+            </button>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setDummyOpen(false)}
+                className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-5 py-2 text-sm font-black text-[#9aa8b3] hover:border-[#ff4655]/50 hover:text-white">
+                취소
+              </button>
+              <button type="button" onClick={() => void submitDummy()} disabled={dummyAdding}
+                className="val-btn bg-[#f6c945] px-5 py-2 text-sm font-black text-[#0b141c] disabled:opacity-50">
+                {dummyAdding ? "추가 중..." : "추가"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

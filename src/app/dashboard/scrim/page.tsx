@@ -126,6 +126,12 @@ export default function ScrimPage() {
   const [createMode, setCreateMode] = useState<"normal" | "auction">("normal");
   const [creating, setCreating] = useState(false);
 
+  const [importOpen, setImportOpen] = useState(false);
+  const [importChannelId, setImportChannelId] = useState("");
+  const [importMessageId, setImportMessageId] = useState("");
+  const [importTitle, setImportTitle] = useState("");
+  const [importing, setImporting] = useState(false);
+
   useEffect(() => {
     Promise.all([
       fetch("/api/scrim", { cache: "no-store" }).then((response) => response.json()),
@@ -245,6 +251,37 @@ export default function ScrimPage() {
     setCreateOpen(true);
   }
 
+  async function importScrim() {
+    if (importing) return;
+    const channelId = importChannelId.trim();
+    const messageId = importMessageId.trim();
+    if (!channelId || !messageId) {
+      setMessage("채널 ID와 메시지 ID를 입력해 주세요.");
+      return;
+    }
+    setImporting(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/scrim/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId, messageId, title: importTitle }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "내전 불러오기에 실패했습니다.");
+      setScrims((current) => [data.scrim, ...current]);
+      setImportOpen(false);
+      setImportChannelId("");
+      setImportMessageId("");
+      setImportTitle("");
+      setMessage(`내전 카드를 생성했습니다. (참가자 ${data.joined}명)`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "내전 불러오기에 실패했습니다.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -261,6 +298,17 @@ export default function ScrimPage() {
           <Link href="/dashboard/scrim/ranking" className="val-btn border border-[#2a3540] bg-[#0f1923] px-4 py-2 text-xs font-black text-white hover:border-[#ff4655]/50">
             KD 랭킹
           </Link>
+          <button
+            type="button"
+            onClick={() => { setMessage(null); setImportOpen(true); }}
+            className="val-btn flex items-center gap-1.5 border border-[#2a3540] bg-[#0f1923] px-4 py-2 text-xs font-black text-white hover:border-[#ff4655]/50"
+            title="내전 불러오기"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            불러오기
+          </button>
           <button type="button" onClick={openCreateModal} className="val-btn bg-[#ff4655] px-4 py-2 text-xs font-black text-white">
             내전 생성
           </button>
@@ -350,6 +398,81 @@ export default function ScrimPage() {
             </div>
           )}
         </section>
+      )}
+
+      {importOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
+          <div className="val-card w-full max-w-md p-5 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-black text-white">내전 불러오기</h2>
+                <p className="mt-0.5 text-xs text-[#7b8a96]">Discord 메시지의 이모지 반응자를 참가자로 가져옵니다.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportOpen(false)}
+                className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-xs font-black text-[#9aa8b3] hover:border-[#ff4655]/50 hover:text-white"
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-black text-white">채널 ID</label>
+                <input
+                  value={importChannelId}
+                  onChange={(e) => setImportChannelId(e.target.value)}
+                  placeholder="예: 123456789012345678"
+                  className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 font-mono text-sm font-bold text-white outline-none transition-colors placeholder:text-[#56636f] focus:border-[#ff4655]"
+                />
+                <p className="mt-1 text-[11px] text-[#56636f]">Discord 채널 우클릭 → ID 복사</p>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-black text-white">메시지 ID</label>
+                <input
+                  value={importMessageId}
+                  onChange={(e) => setImportMessageId(e.target.value)}
+                  placeholder="예: 987654321098765432"
+                  className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 font-mono text-sm font-bold text-white outline-none transition-colors placeholder:text-[#56636f] focus:border-[#ff4655]"
+                />
+                <p className="mt-1 text-[11px] text-[#56636f]">모집 메시지 우클릭 → ID 복사</p>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-black text-white">
+                  내전 제목 <span className="text-[11px] font-normal text-[#7b8a96]">(optional)</span>
+                </label>
+                <input
+                  value={importTitle}
+                  onChange={(e) => setImportTitle(e.target.value)}
+                  maxLength={80}
+                  placeholder="예: 금요일 내전"
+                  className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-4 py-3 text-sm font-bold text-white outline-none transition-colors placeholder:text-[#56636f] focus:border-[#ff4655]"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setImportOpen(false)}
+                className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-5 py-2 text-sm font-black text-[#9aa8b3] hover:border-[#ff4655]/50 hover:text-white"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={importScrim}
+                disabled={importing}
+                className="val-btn bg-[#ff4655] px-5 py-2 text-sm font-black text-white disabled:opacity-50"
+              >
+                {importing ? "불러오는 중..." : "불러오기"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {createOpen && (

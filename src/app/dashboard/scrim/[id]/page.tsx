@@ -318,7 +318,7 @@ function normalizeAgentKey(value: string) {
   return value.trim().toLowerCase();
 }
 function formatDateTime(value: string | null) {
-  if (!value) return "시작 시간 미정";
+  if (!value) return null;
   return new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
 }
 function parseSettings(value: string | null | undefined): ScrimDetailSettings {
@@ -797,7 +797,9 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
             <h1 className="text-3xl font-black text-white">{scrim.title}</h1>
             <span className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-3 py-1 text-sm font-black text-[#ff8a95]">⚔ 일반 내전</span>
           </div>
-          <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
+          {formatDateTime(scrim.scheduledAt) && (
+            <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={randomAssign} disabled={saving || participantPlayers.length < 2} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40" title="참가자를 랜덤으로 두 팀에 배분">🎲 랜덤 배정</button>
@@ -809,13 +811,6 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
               👥 참가자 로드
             </button>
           )}
-          {(scrim.status === 'waiting' || scrim.status === 'recruiting') && (
-            <button type="button" onClick={() => handleStatusChange('playing')} className="val-btn bg-[#f6c945] px-3 py-2 text-xs font-black text-[#0b141c]">내전 시작</button>
-          )}
-          {scrim.status === 'playing' && (
-            <button type="button" onClick={() => handleStatusChange('finished')} className="val-btn bg-[#ff4655] px-3 py-2 text-xs font-black text-white">내전 종료</button>
-          )}
-
           <button type="button" onClick={() => void syncMatch()} disabled={saving} className="val-btn border border-[#00e7c2]/40 bg-[#00e7c2]/10 px-3 py-2 text-xs font-black text-[#00e7c2] disabled:opacity-50" title="참가자 전원이 포함된 커스텀 매치를 자동으로 찾아 승패/맵/KDA를 기록합니다">🔄 전적 자동 연동</button>
           <button type="button" onClick={() => { setDummyRows([emptyRow()]); setDummyOpen(true); }} className="val-btn border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-2 text-xs font-black text-[#f6c945]" title="테스트용 더미 참가자 추가">🧪 더미 데이터</button>
           <button type="button" onClick={() => setShowSettings(!showSettings)} className={`val-btn border border-[#2a3540] px-3 py-2 text-xs font-black transition-colors ${showSettings ? "bg-[#ff4655] text-white" : "bg-[#111c24] text-white"}`}>⚙️ 설정</button>
@@ -1462,7 +1457,9 @@ function AuctionScrimPage({
             <h1 className="text-4xl font-black text-white">{scrim.title}</h1>
             <span className="rounded border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-1 text-sm font-black text-[#f6c945]">🏷 경매 내전</span>
           </div>
-          <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
+          {formatDateTime(scrim.scheduledAt) && (
+            <p className="mt-2 text-sm font-bold text-[#9aa8b3]">{formatDateTime(scrim.scheduledAt)}</p>
+          )}
         </div>
         {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
 

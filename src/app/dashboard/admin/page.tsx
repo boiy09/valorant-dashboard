@@ -307,10 +307,6 @@ export default function AdminPage() {
       ) : (
         <NewbiesTab
           members={members}
-          records={adminRecords}
-          onAdd={(type, member) => setModal({ type, member })}
-          onEdit={(record) => setModal({ type: record.type, record })}
-          onDelete={deleteAdminRecord}
         />
       )}
 
@@ -674,24 +670,16 @@ function RecordItem({
 
 function NewbiesTab({
   members,
-  records,
-  onAdd,
-  onEdit,
-  onDelete,
 }: {
   members: Member[];
-  records: AdminRecord[];
-  onAdd: (type: RecordType, member?: Member) => void;
-  onEdit: (record: AdminRecord) => void;
-  onDelete: (record: AdminRecord) => void;
 }) {
   const probation = members.filter((member) => newbieGroup(member) === "probation");
   const newbies = members.filter((member) => newbieGroup(member) === "newbie");
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <NewbieGroup title="웰컴 수습" members={probation} records={records} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} />
-      <NewbieGroup title="신입" members={newbies} records={records} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} />
+      <NewbieGroup title="웰컴 수습" members={probation} />
+      <NewbieGroup title="신입" members={newbies} />
     </div>
   );
 }
@@ -699,17 +687,9 @@ function NewbiesTab({
 function NewbieGroup({
   title,
   members,
-  records,
-  onAdd,
-  onEdit,
-  onDelete,
 }: {
   title: string;
   members: Member[];
-  records: AdminRecord[];
-  onAdd: (type: RecordType, member?: Member) => void;
-  onEdit: (record: AdminRecord) => void;
-  onDelete: (record: AdminRecord) => void;
 }) {
   return (
     <section className="val-card p-5">
@@ -727,10 +707,6 @@ function NewbieGroup({
             <NewbieCard
               key={member.discordId ?? member.name}
               member={member}
-              records={records.filter((record) => record.user.discordId === member.discordId)}
-              onAdd={onAdd}
-              onEdit={onEdit}
-              onDelete={onDelete}
             />
           ))
         )}
@@ -741,16 +717,8 @@ function NewbieGroup({
 
 function NewbieCard({
   member,
-  records,
-  onAdd,
-  onEdit,
-  onDelete,
 }: {
   member: Member;
-  records: AdminRecord[];
-  onAdd: (type: RecordType, member?: Member) => void;
-  onEdit: (record: AdminRecord) => void;
-  onDelete: (record: AdminRecord) => void;
 }) {
   return (
     <details className="rounded border border-[#263442] bg-[#0f1923]/70">
@@ -762,14 +730,10 @@ function NewbieCard({
             <div className="truncate text-xs text-[#7b8a96]">{member.roles.join(" / ")}</div>
           </div>
         </div>
-        <div className="flex shrink-0 gap-1">
-          <button type="button" onClick={(event) => { event.preventDefault(); onAdd("warning", member); }} className="rounded bg-[#ff4655]/15 px-2 py-1 text-[11px] font-bold text-[#ff8b95]">+경고</button>
-          <button type="button" onClick={(event) => { event.preventDefault(); onAdd("complaint", member); }} className="rounded bg-[#f59e0b]/15 px-2 py-1 text-[11px] font-bold text-[#f59e0b]">+민원</button>
-        </div>
+        <span className="shrink-0 text-xs text-[#7b8a96]">메모 관리</span>
       </summary>
       <div className="space-y-3 border-t border-[#263442] p-3">
         <MemberNotes discordId={member.discordId} />
-        <CompactRecords records={records} onEdit={onEdit} onDelete={onDelete} />
       </div>
     </details>
   );

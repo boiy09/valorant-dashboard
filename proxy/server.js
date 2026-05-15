@@ -953,7 +953,20 @@ setInterval(() => {
   }
 }, 30000);
 
+// ─── 이벤트 저장소 (Long Polling용) ───────────────────────────────────────────
+let eventCounter = 0;
+const eventBuffer = [];
+const longPollClients = new Set();
+
+function emitEvent(type, data) {
+  const event = { id: ++eventCounter, type, data, ts: Date.now() };
+  eventBuffer.push(event);
+  if (eventBuffer.length > 200) eventBuffer.shift();
+  for (const resolve of longPollClients) resolve(event);
+}
+
 function broadcast(type, data) {
+  emitEvent(type, data);
   const msg = JSON.stringify({ type, data, ts: Date.now() });
   for (const ws of wsClients) {
     if (ws.readyState === WS.OPEN) {
@@ -961,6 +974,35 @@ function broadcast(type, data) {
     }
   }
 }
+
+// GET /events - Long Polling (Vercel → proxy 서버사이드 연결)
+app.get('/events', (req, res) => {
+  const secret = process.env.PROXY_SECRET;
+  if (secret && req.headers['x-proxy-secret'] !== secret) {
+    return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+  }
+
+  const since = parseInt(req.query.since || '0', 10);
+  const pending = eventBuffer.filter((e) => e.id > since);
+
+  if (pending.length > 0) {
+    return res.json({ events: pending, lastId: eventCounter });
+  }
+
+  const timer = setTimeout(() => {
+    longPollClients.delete(resolve);
+    if (!res.headersSent) res.json({ events: [], lastId: eventCounter });
+  }, 25000);
+
+  function resolve(event) {
+    clearTimeout(timer);
+    longPollClients.delete(resolve);
+    if (!res.headersSent) res.json({ events: [event], lastId: event.id });
+  }
+
+  longPollClients.add(resolve);
+  req.on('close', () => { clearTimeout(timer); longPollClients.delete(resolve); });
+});
 
 // POST /broadcast - Next.js API에서 이벤트 전송
 app.post('/broadcast', (req, res) => {
@@ -971,6 +1013,6 @@ app.post('/broadcast', (req, res) => {
   const { type, data } = req.body || {};
   if (!type) return res.status(400).json({ status: 'error', message: 'type이 필요합니다.' });
   broadcast(type, data ?? {});
-  console.log(`[ws] broadcast: ${type} (${wsClients.size}명)`);
-  return res.json({ status: 'ok', clients: wsClients.size });
+  console.log(`[ws] broadcast: ${type} (ws:${wsClients.size}명, poll:${longPollClients.size}명)`);
+  return res.json({ status: 'ok', wsClients: wsClients.size, pollClients: longPollClients.size });
 });

@@ -83,18 +83,24 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     return Response.json({ error: "라이엇 계정이 연동된 참가자가 없습니다." }, { status: 400 });
   }
 
-  // 대표 계정 1개로 최근 커스텀 매치 조회 (스코어보드 포함)
+  // 여러 대표 계정으로 최근 커스텀 매치 조회 (스코어보드 포함)
   const representative = playerPuuids[0];
   const qRegion = representative.region === "AP" ? "ap" : "kr";
 
-  let recentMatches: MatchStats[];
-  try {
-    recentMatches = await getRecentMatches(representative.puuid, 20, qRegion, "pc", {
-      skipAccountFallback: true,
-      skipRankFallback: true,
-    });
-  } catch {
-    return Response.json({ error: "전적 데이터를 가져오는 데 실패했습니다." }, { status: 500 });
+  // 대표 1명으로 최대 50경기 조회, 실패 시 다음 계정으로 순차 시도
+  let recentMatches: MatchStats[] = [];
+  for (const candidate of playerPuuids.slice(0, 3)) {
+    try {
+      recentMatches = await getRecentMatches(candidate.puuid, 50, qRegion, "pc", {
+        skipAccountFallback: true,
+        skipRankFallback: true,
+      });
+      if (recentMatches.length > 0) break;
+    } catch { /* 다음 계정 시도 */ }
+  }
+
+  if (recentMatches.length === 0) {
+    return Response.json({ error: "전적 데이터를 가져오는 데 실패했습니다. 라이엇 계정이 연동된 참가자를 확인해 주세요." }, { status: 500 });
   }
 
   // 커스텀 매치만 필터링
@@ -104,30 +110,32 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   });
 
   if (customMatches.length === 0) {
-    return Response.json({ error: "최근 커스텀 매치를 찾을 수 없습니다." }, { status: 404 });
+    return Response.json({ error: "최근 50경기 중 커스텀 매치를 찾을 수 없습니다." }, { status: 404 });
   }
 
   // 내전 참가자 PUUID 전체 Set
   const allParticipantPuuids = new Set(playerPuuids.map((p) => p.puuid));
+  const minRequired = Math.max(2, Math.ceil(allParticipantPuuids.size * 0.5));
 
-  // 매칭되는 커스텀 매치 탐색
+  // 가장 많이 겹치는 커스텀 매치 탐색 (전원 매칭 불필요 — 50% 이상 포함이면 채택)
   let matchedMatch: MatchStats | null = null;
+  let bestOverlap = 0;
   for (const match of customMatches) {
     const matchPuuids = (match.scoreboard?.players ?? [])
       .map((p) => p.puuid)
       .filter(Boolean);
     if (matchPuuids.length === 0) continue;
     const matchSet = new Set(matchPuuids);
-    const allPresent = [...allParticipantPuuids].every((puuid) => matchSet.has(puuid));
-    if (allPresent) {
+    const overlap = [...allParticipantPuuids].filter((puuid) => matchSet.has(puuid)).length;
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
       matchedMatch = match;
-      break;
     }
   }
 
-  if (!matchedMatch) {
+  if (!matchedMatch || bestOverlap < minRequired) {
     return Response.json({
-      error: "참가자 전원이 포함된 커스텀 매치를 찾을 수 없습니다. 아직 전적이 업데이트되지 않았을 수 있습니다.",
+      error: `참가자와 겹치는 커스텀 매치를 찾을 수 없습니다. (최근 50경기 검색, 최대 겹침: ${bestOverlap}/${allParticipantPuuids.size}명) 전적이 아직 업데이트되지 않았을 수 있습니다.`,
     }, { status: 404 });
   }
 

@@ -194,6 +194,102 @@ export async function getTrackerCurrentRank(
   }
 }
 
+export interface TggMatchStats {
+  matchId: string;
+  map: string;
+  mode: string;
+  startedAt: string;
+  isWin: boolean;
+  kills: number;
+  deaths: number;
+  assists: number;
+  acs: number;
+  headshotPct: number;
+  damagePerRound: number;
+  teamRoundsWon: number | null;
+  enemyRoundsWon: number | null;
+  agentName: string;
+  agentIcon: string | null;
+}
+
+export async function getTrackerMatchHistory(
+  gameName: string,
+  tagLine: string,
+  limit = 10
+): Promise<TggMatchStats[]> {
+  if (!process.env.TRACKER_GG_API_KEY) return [];
+
+  try {
+    const encoded = `${encodeURIComponent(gameName)}%2F${encodeURIComponent(tagLine)}`;
+    const url = `${BASE_URL}/matches/riot/${encoded}`;
+    const res = await fetch(url, {
+      headers: getHeaders(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+
+    const json = await res.json() as {
+      data?: {
+        items?: unknown[];
+        matches?: unknown[];
+      };
+    };
+
+    const items: unknown[] = json?.data?.items ?? json?.data?.matches ?? [];
+
+    return items.slice(0, limit).flatMap((item): TggMatchStats[] => {
+      if (!item || typeof item !== "object") return [];
+      const m = item as Record<string, unknown>;
+      const meta = (m.metadata ?? {}) as Record<string, unknown>;
+      const segments = Array.isArray(m.segments) ? m.segments as unknown[] : [];
+      const playerSeg = segments.find(
+        (s): s is Record<string, unknown> =>
+          typeof s === "object" && s !== null && (s as Record<string, unknown>).type === "player"
+      );
+      if (!playerSeg) return [];
+
+      const stats = (playerSeg.stats ?? {}) as Record<string, unknown>;
+      const segMeta = (playerSeg.metadata ?? {}) as Record<string, unknown>;
+
+      const kills = Math.round(statVal(stats.kills));
+      const deaths = Math.round(statVal(stats.deaths));
+      const assists = Math.round(statVal(stats.assists));
+      const acs = Math.round(statVal(stats.scorePerRound ?? stats.score));
+      const headshotPct = Math.round(statVal(stats.headshotsPercentage) * 10) / 10;
+      const dpr = Math.round(statVal(stats.damagePerRound ?? stats.damage));
+
+      const roundsWon = Math.round(statVal((segMeta.roundsWon as unknown) ?? stats.roundsWon));
+      const roundsPlayed = Math.round(statVal((segMeta.roundsPlayed as unknown) ?? stats.roundsPlayed));
+      const roundsLost = roundsPlayed > 0 && roundsWon >= 0 ? roundsPlayed - roundsWon : null;
+
+      const resultRaw = String(meta.result ?? segMeta.result ?? "").toLowerCase();
+      const isWin = resultRaw === "victory" || resultRaw === "win";
+
+      return [{
+        matchId: String(m.id ?? ""),
+        map: String(meta.map ?? meta.mapName ?? ""),
+        mode: String(meta.mode ?? meta.gameMode ?? ""),
+        startedAt: String(meta.timestamp ?? meta.startedAt ?? ""),
+        isWin,
+        kills,
+        deaths,
+        assists,
+        acs,
+        headshotPct,
+        damagePerRound: dpr,
+        teamRoundsWon: roundsWon > 0 ? roundsWon : null,
+        enemyRoundsWon: roundsLost !== null && roundsLost >= 0 ? roundsLost : null,
+        agentName: String(segMeta.agentName ?? ""),
+        agentIcon: typeof segMeta.agentImageUrl === "string" ? segMeta.agentImageUrl : null,
+      }];
+    });
+  } catch (e) {
+    console.warn("[trackergg] match history failed:", e instanceof Error ? e.message : String(e));
+    return [];
+  }
+}
+
 export async function getTrackerAgents(
   gameName: string,
   tagLine: string

@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getAdminSession } from "@/lib/admin";
 
 export const maxDuration = 60;
 
@@ -60,17 +59,7 @@ async function fetchChannelMessages(
 }
 
 export async function GET(req: Request) {
-  const session = await auth();
-  if (!session?.user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id! },
-    select: { guilds: { select: { roles: true } } },
-  });
-  const roles: string[] = user?.guilds?.flatMap((g) => {
-    try { return JSON.parse(g.roles) as string[]; } catch { return []; }
-  }) ?? [];
-  const isAdmin = roles.some((r) => ["관리자", "부운영자", "팀장"].includes(r));
+  const { isAdmin } = await getAdminSession();
   if (!isAdmin) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const token = process.env.DISCORD_BOT_TOKEN;

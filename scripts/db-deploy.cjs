@@ -1,11 +1,10 @@
 #!/usr/bin/env node
-// 프로덕션 DB에 마이그레이션 히스토리가 없는 경우(db push로 초기 설정된 경우)
-// 기존 마이그레이션을 baseline으로 표시한 뒤 새 마이그레이션만 실행합니다.
 
 const { execSync } = require("child_process");
 const { Client } = require("pg");
+const fs = require("fs");
+const path = require("path");
 
-// 이미 DB에 적용된 것으로 간주할 기존 마이그레이션 목록 (note 컬럼 추가 이전까지)
 const BASELINE_MIGRATIONS = [
   "20260502033644_init",
   "20260502040955_add_nextauth_models",
@@ -18,9 +17,19 @@ const BASELINE_MIGRATIONS = [
   "20260513000000_add_missing_indexes",
 ];
 
+function getLocalMigrations() {
+  const migrationsDir = path.join(process.cwd(), "prisma", "migrations");
+  return fs
+    .readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+}
+
 async function main() {
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
+  let shouldRunMigrate = true;
 
   try {
     const { rows } = await client.query(`
@@ -32,22 +41,38 @@ async function main() {
     `);
 
     if (!rows[0].exists) {
-      console.log("_prisma_migrations 테이블 없음 → 기존 마이그레이션 baseline 처리 중...");
+      console.log("_prisma_migrations table missing. Resolving baseline migrations...");
       for (const name of BASELINE_MIGRATIONS) {
         console.log(`  baseline: ${name}`);
         execSync(`npx prisma migrate resolve --applied "${name}"`, { stdio: "inherit" });
       }
-      console.log("Baseline 완료.");
+      console.log("Baseline complete.");
     } else {
-      console.log("_prisma_migrations 테이블 존재 → baseline 생략.");
+      console.log("_prisma_migrations table exists. Checking pending migrations...");
+      const appliedResult = await client.query(`
+        SELECT migration_name
+        FROM "_prisma_migrations"
+        WHERE rolled_back_at IS NULL
+      `);
+      const applied = new Set(appliedResult.rows.map((row) => row.migration_name));
+      const pending = getLocalMigrations().filter((name) => !applied.has(name));
+
+      if (pending.length === 0) {
+        console.log("No pending migrations. Skipping prisma migrate deploy.");
+        shouldRunMigrate = false;
+      } else {
+        console.log(`Pending migrations: ${pending.join(", ")}`);
+      }
     }
   } finally {
     await client.end();
   }
 
-  console.log("prisma migrate deploy 실행 중...");
+  if (!shouldRunMigrate) return;
+
+  console.log("Running prisma migrate deploy...");
   execSync("npx prisma migrate deploy", { stdio: "inherit" });
-  console.log("마이그레이션 완료.");
+  console.log("Migration deploy complete.");
 }
 
 main().catch((err) => {

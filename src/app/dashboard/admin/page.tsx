@@ -48,6 +48,12 @@ interface AdminNote {
   updatedAt?: string;
 }
 
+interface IntroEntry {
+  content: string;
+  timestamp: string;
+  hasAttachments: boolean;
+}
+
 const TABS: Array<[AdminView, string]> = [
   ["server-records", "서버 기록"],
   ["warnings", "경고"],
@@ -707,10 +713,21 @@ function NewbiesTab({
   const [graduatingId, setGraduatingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [localMembers, setLocalMembers] = useState(members);
+  const [intros, setIntros] = useState<Record<string, IntroEntry>>({});
+  const [introsLoading, setIntrosLoading] = useState(true);
 
   useEffect(() => {
     setLocalMembers(members);
   }, [members]);
+
+  useEffect(() => {
+    setIntrosLoading(true);
+    fetch("/api/admin/newbies/intro", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setIntros(d.intros ?? {}))
+      .catch(() => setIntros({}))
+      .finally(() => setIntrosLoading(false));
+  }, []);
 
   async function graduateMember(member: Member) {
     if (!member.discordId || graduatingId) return;
@@ -750,8 +767,8 @@ function NewbiesTab({
     <>
       {message && <div className="mb-4 rounded border border-[#263442] bg-[#0f1923] px-4 py-3 text-sm text-[#c8d3db]">{message}</div>}
       <div className="grid gap-4 xl:grid-cols-2">
-        <NewbieGroup title="웰컴 수습" members={visibleProbation} onGraduate={graduateMember} graduatingId={graduatingId} />
-        <NewbieGroup title="신입" members={newbies} onGraduate={graduateMember} graduatingId={graduatingId} />
+        <NewbieGroup title="웰컴 수습" members={visibleProbation} onGraduate={graduateMember} graduatingId={graduatingId} intros={intros} introsLoading={introsLoading} />
+        <NewbieGroup title="신입" members={newbies} onGraduate={graduateMember} graduatingId={graduatingId} intros={intros} introsLoading={introsLoading} />
       </div>
     </>
   );
@@ -762,11 +779,15 @@ function NewbieGroup({
   members,
   onGraduate,
   graduatingId,
+  intros,
+  introsLoading,
 }: {
   title: string;
   members: Member[];
   onGraduate: (member: Member) => void;
   graduatingId: string | null;
+  intros: Record<string, IntroEntry>;
+  introsLoading: boolean;
 }) {
   return (
     <section className="val-card p-5">
@@ -786,6 +807,8 @@ function NewbieGroup({
               member={member}
               onGraduate={onGraduate}
               graduating={Boolean(member.discordId && graduatingId === member.discordId)}
+              intro={member.discordId ? intros[member.discordId] : undefined}
+              introsLoading={introsLoading}
             />
           ))
         )}
@@ -798,18 +821,31 @@ function NewbieCard({
   member,
   onGraduate,
   graduating,
+  intro,
+  introsLoading,
 }: {
   member: Member;
   onGraduate: (member: Member) => void;
   graduating: boolean;
+  intro: IntroEntry | undefined;
+  introsLoading: boolean;
 }) {
+  const hasIntro = Boolean(intro?.content?.trim() || intro?.hasAttachments);
+
   return (
     <details className="rounded border border-[#263442] bg-[#0f1923]/70">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <MemberAvatar member={member} size="h-8 w-8" />
           <div className="min-w-0">
-            <div className="truncate text-sm font-bold text-white">{member.name ?? "알 수 없음"}</div>
+            <div className="flex items-center gap-2">
+              <div className="truncate text-sm font-bold text-white">{member.name ?? "알 수 없음"}</div>
+              {!introsLoading && (
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${hasIntro ? "bg-[#10b981]/15 text-[#6ee7b7]" : "bg-[#ff4655]/15 text-[#ff8b95]"}`}>
+                  {hasIntro ? "자소서 ✓" : "미작성"}
+                </span>
+              )}
+            </div>
             <div className="truncate text-xs text-[#7b8a96]">{member.roles.join(" / ")}</div>
             <div className="mt-0.5 text-xs text-[#8da0ad]">{formatServerJoinDate(member.joinedAt)}</div>
           </div>
@@ -826,13 +862,44 @@ function NewbieCard({
           >
             {graduating ? "처리 중" : "졸업"}
           </button>
-          <span className="text-xs text-[#7b8a96]">메모 관리</span>
+          <span className="text-xs text-[#7b8a96]">▾</span>
         </div>
       </summary>
       <div className="space-y-3 border-t border-[#263442] p-3">
+        <IntroSection intro={intro} loading={introsLoading} />
         <MemberNotes discordId={member.discordId} />
       </div>
     </details>
+  );
+}
+
+function IntroSection({ intro, loading }: { intro: IntroEntry | undefined; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="rounded border border-[#263442] bg-[#07131e] p-3">
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-[#7b8a96]">닉네임작성-자소서</div>
+        <div className="text-xs text-[#7b8a96]">불러오는 중...</div>
+      </div>
+    );
+  }
+
+  const hasContent = intro?.content?.trim();
+  const date = intro?.timestamp ? new Date(intro.timestamp).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : null;
+
+  return (
+    <div className="rounded border border-[#263442] bg-[#07131e] p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-xs font-bold uppercase tracking-widest text-[#7b8a96]">닉네임작성-자소서</div>
+        {date && <div className="text-[11px] text-[#7b8a96]">{date}</div>}
+      </div>
+      {hasContent ? (
+        <div className="whitespace-pre-wrap break-words text-sm text-[#c8d3db]">{intro!.content}</div>
+      ) : intro?.hasAttachments ? (
+        <div className="text-sm text-[#8da0ad]">첨부파일만 있습니다.</div>
+      ) : (
+        <div className="text-sm text-[#ff8b95]">아직 작성하지 않았습니다.</div>
+      )}
+    </div>
   );
 }
 

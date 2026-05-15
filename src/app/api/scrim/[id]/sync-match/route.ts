@@ -96,15 +96,16 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   }
 
   // 버튼 누른 사람(현재 세션 유저)의 계정을 후보 맨 앞에 배치 — 토큰이 가장 신선할 가능성이 높음
+  const sessionUserId = session.user!.id;
   const sessionUserAccounts = await prisma.riotAccount.findMany({
-    where: { user: { id: session.user.id } },
+    where: { user: { id: sessionUserId } },
     select: { puuid: true, region: true, accessToken: true, entitlementsToken: true, ssid: true, authCookie: true, tokenExpiresAt: true },
   });
   const extraCandidates = sessionUserAccounts
     .filter((acc) => acc.puuid && !playerPuuids.some((p) => p.puuid === acc.puuid))
     .map((acc) => ({
       playerId: "",
-      userId: session.user!.id,
+      userId: sessionUserId,
       team: "",
       puuid: acc.puuid,
       region: acc.region ?? "KR",
@@ -116,9 +117,9 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     }));
 
   // 현재 유저가 참가자에 이미 있으면 맨 앞으로, 없으면 extraCandidates를 앞에 추가
-  const sessionInPlayers = playerPuuids.find((p) => p.userId === session.user.id);
+  const sessionInPlayers = playerPuuids.find((p) => p.userId === sessionUserId);
   const orderedCandidates = sessionInPlayers
-    ? [sessionInPlayers, ...playerPuuids.filter((p) => p.userId !== session.user.id), ...extraCandidates]
+    ? [sessionInPlayers, ...playerPuuids.filter((p) => p.userId !== sessionUserId), ...extraCandidates]
     : [...extraCandidates, ...playerPuuids];
 
   // 여러 대표 계정으로 최근 커스텀 매치 조회 (스코어보드 포함)

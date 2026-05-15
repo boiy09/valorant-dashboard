@@ -156,7 +156,7 @@ export default function AdminPage() {
     if (!isAdmin || view === "server-records") return;
     fetch("/api/warnings", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => setWarnings(d.warnings ?? []))
+      .then((d) => setAdminRecords(d.warnings ?? []))
       .catch(() => {});
   });
 

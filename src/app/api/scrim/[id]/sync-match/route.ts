@@ -92,12 +92,12 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   const qRegion = playerPuuids[0].region === "AP" ? "ap" : "kr";
 
   // API 폴백 체인: Private Riot API → Riot Official API → Henrik API
+  // Henrik 429는 API 키 단위 제한이므로 감지 시 즉시 중단
   let recentMatches: MatchStats[] = [];
   let lastFetchError = "";
+  let rateLimited = false;
 
-  const candidates = playerPuuids.slice(0, 3);
-
-  for (const candidate of candidates) {
+  outer: for (const candidate of playerPuuids.slice(0, 3)) {
     // 1) Private Riot API (토큰이 있을 때 우선 시도)
     if (candidate.accessToken && candidate.entitlementsToken) {
       try {
@@ -110,7 +110,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
         );
         if (privateMatches.length > 0) {
           recentMatches = privateMatches;
-          break;
+          break outer;
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -124,7 +124,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
       const officialMatches = await getRiotOfficialRecentMatches(candidate.puuid, qRegion, 10);
       if (officialMatches.length > 0) {
         recentMatches = officialMatches;
-        break;
+        break outer;
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -140,19 +140,24 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
       });
       if (henrikMatches.length > 0) {
         recentMatches = henrikMatches;
-        break;
+        break outer;
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn("[sync-match] Henrik API 실패:", candidate.puuid, msg);
       lastFetchError = msg;
+      if (msg.includes("429")) {
+        rateLimited = true;
+        break outer;
+      }
     }
   }
 
   if (recentMatches.length === 0) {
-    return Response.json({
-      error: `전적 데이터를 가져오는 데 실패했습니다.${lastFetchError ? ` (${lastFetchError})` : " 라이엇 계정이 연동된 참가자를 확인해 주세요."}`,
-    }, { status: 500 });
+    const errorMsg = rateLimited
+      ? "Henrik API 요청 한도 초과입니다. 잠시 후 다시 시도해 주세요."
+      : `전적 데이터를 가져오는 데 실패했습니다.${lastFetchError ? ` (${lastFetchError})` : " 라이엇 계정이 연동된 참가자를 확인해 주세요."}`;
+    return Response.json({ error: errorMsg }, { status: rateLimited ? 429 : 500 });
   }
 
   // 커스텀 매치만 필터링
@@ -254,7 +259,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
 
   // KDA + score 추출
   const kdaUpdates: { id: string; kills: number; deaths: number; assists: number }[] = [];
-  // ScrimGame.kdaSnapshot용: acs 포함 (ScoreboardPlayer.acs는 이미 계산된 값)
   const kdaSnapshot: {
     userId: string; kills: number; deaths: number; assists: number;
     acs: number; team: string;
@@ -283,7 +287,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
 
   // DB 저장
   await prisma.$transaction(async (tx) => {
-    // 승패 + 맵 + 상태 업데이트
     const sessionData: Record<string, unknown> = {
       status: "done",
       endedAt: new Date(),
@@ -296,7 +299,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
       data: sessionData,
     });
 
-    // participant 모드: Valorant 팀 컬러 기반으로 팀 배정 저장
     if (usingParticipants) {
       for (const entry of playerPuuids) {
         await tx.scrimPlayer.updateMany({
@@ -306,7 +308,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
       }
     }
 
-    // ScrimPlayer KDA 업데이트
     for (const kda of kdaUpdates) {
       await tx.scrimPlayer.updateMany({
         where: { id: kda.id, sessionId: scrim.id },
@@ -315,8 +316,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     }
   });
 
-  // ScrimGame.kdaSnapshot 업데이트 (score 포함)
-  // 이 세션의 가장 최근 ScrimGame을 찾아 업데이트, 없으면 새로 생성
   if (kdaSnapshot.length > 0) {
     const existingGames = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
       `SELECT "id" FROM "ScrimGame" WHERE "sessionId" = $1 ORDER BY "gameNumber" DESC LIMIT 1`,

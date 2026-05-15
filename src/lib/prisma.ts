@@ -14,7 +14,7 @@ function createPrisma() {
   const pool = new Pool({
     connectionString,
     max: 1,                      // 서버리스: 인스턴스당 최대 1개
-    idleTimeoutMillis: 10000,    // 10초 미사용 시 즉시 반환
+    idleTimeoutMillis: 300000,   // keep the warm DB connection around between bursts
     connectionTimeoutMillis: 4000,
   });
 

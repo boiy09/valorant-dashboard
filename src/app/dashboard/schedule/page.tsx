@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 
 type CalendarType = "schedule" | "scrim" | "auction";
 
@@ -101,7 +102,7 @@ export default function SchedulePage() {
 
   const range = useMemo(() => gridRange(cursor), [cursor]);
 
-  useEffect(() => {
+  const fetchSchedule = useCallback(() => {
     setLoading(true);
     Promise.all([
       fetch(`/api/calendar?start=${encodeURIComponent(range.start.toISOString())}&end=${encodeURIComponent(range.end.toISOString())}`, { cache: "no-store" })
@@ -139,6 +140,10 @@ export default function SchedulePage() {
     setCursor(today);
     setSelectedDate(startOfDay(today));
   }
+
+  useEffect(() => { fetchSchedule(); }, [fetchSchedule]);
+
+  useRealtime("schedule", () => fetchSchedule());
 
   async function deleteEvent(id: string) {
     if (!isAdmin || deletingId) return;

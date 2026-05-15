@@ -3,6 +3,7 @@ import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { getRecentMatches, type ValorantRegion } from "@/lib/valorant";
 import { apiCache, TTL } from "@/lib/apiCache";
+import { broadcast } from "@/lib/broadcast";
 
 const reactionSyncCache = new Map<string, number>();
 
@@ -488,5 +489,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
   }
 
   const nextScrim = await findScrim(scrim.id, guild.id);
+  broadcast(`scrim:${scrim.id}`, { action: "updated" }).catch(() => {});
   return Response.json({ success: true, scrim: nextScrim });
 }

@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
+import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/broadcast";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -16,4 +18,17 @@ export async function GET(req: NextRequest) {
   });
 
   return Response.json({ events });
+}
+
+export async function DELETE(req: NextRequest) {
+  const { isAdmin } = await getAdminSession();
+  if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+
+  const id = req.nextUrl.searchParams.get("id");
+  if (!id) return Response.json({ error: "id가 필요합니다." }, { status: 400 });
+
+  await prisma.scrimEvent.delete({ where: { id } }).catch(() => null);
+
+  broadcast("schedule", { action: "deleted", id }).catch(() => {});
+  return Response.json({ success: true });
 }

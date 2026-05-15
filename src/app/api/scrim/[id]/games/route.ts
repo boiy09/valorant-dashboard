@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/broadcast";
 
 async function ensureScrimGameTable() {
   await prisma.$executeRawUnsafe(`
@@ -123,6 +124,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     gameId
   );
 
+  broadcast(`scrim:${id}`, { action: "game_added" }).catch(() => {});
   return Response.json({ game });
 }
 
@@ -173,6 +175,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     gameId
   );
 
+  broadcast(`scrim:${id}`, { action: "game_updated" }).catch(() => {});
   return Response.json({ game });
 }
 
@@ -215,5 +218,6 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
     );
   }
 
+  broadcast(`scrim:${id}`, { action: "game_deleted" }).catch(() => {});
   return Response.json({ success: true });
 }

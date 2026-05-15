@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/broadcast";
 
 export async function GET(req: NextRequest) {
   const guildDiscordId = req.nextUrl.searchParams.get("guildId");
@@ -57,5 +58,6 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  broadcast("announce", { action: "created" }).catch(() => {});
   return Response.json({ success: true, announcement });
 }

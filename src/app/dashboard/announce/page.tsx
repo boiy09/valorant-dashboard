@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 
 interface Announcement {
   id: string;
@@ -80,6 +81,8 @@ export default function AnnouncePage() {
         .catch(() => setGlobalVideos([])),
     ]).finally(() => setLoading(false));
   }, []);
+
+  useRealtime("announce", () => loadAnnouncements());
 
   function resetWriter() {
     setTitle("");

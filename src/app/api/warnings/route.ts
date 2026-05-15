@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { syncWarningAutomation } from "@/lib/adminAutomation";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/broadcast";
 
 async function ensureWarningColumns() {
   try {
@@ -144,6 +145,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  broadcast("admin", { action: "warning_added" }).catch(() => {});
   return Response.json({
     warning: {
       id,

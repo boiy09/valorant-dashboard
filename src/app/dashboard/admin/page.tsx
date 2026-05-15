@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 
 type AdminView = "server-records" | "warnings" | "newbies";
 type AdminAction = "sync-members" | "restart-bot" | "graduate-newbies";
@@ -150,6 +151,16 @@ export default function AdminPage() {
       .then((data) => setMembers(data.members ?? []))
       .catch(() => setMembers([]));
   }, [view, isAdmin]);
+
+  useRealtime("admin", () => {
+    if (!isAdmin || view === "server-records") return;
+    fetch("/api/warnings", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setWarnings(d.warnings ?? []))
+      .catch(() => {});
+  });
+
+  const roleMembers = useMemo(() => allMembers.filter(isRoleHolder), [allMembers]);
 
   const totals = useMemo(
     () => ({

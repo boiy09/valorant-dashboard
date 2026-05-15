@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 
 interface Highlight {
   id: string;
@@ -20,7 +21,7 @@ export default function HighlightPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchHighlights = useCallback(() => {
     Promise.all([
       fetch("/api/highlight").then((response) => response.json()),
       fetch("/api/me/roles").then((response) => response.json()).catch(() => ({ isAdmin: false })),
@@ -31,6 +32,10 @@ export default function HighlightPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { fetchHighlights(); }, [fetchHighlights]);
+
+  useRealtime("highlight", () => fetchHighlights());
 
   async function toggleLike(id: string) {
     if (liked.has(id)) return;

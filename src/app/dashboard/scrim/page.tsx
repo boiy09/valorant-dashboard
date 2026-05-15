@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 import Link from "next/link";
 
 interface ScrimPlayer {
@@ -132,7 +133,7 @@ export default function ScrimPage() {
   const [importTitle, setImportTitle] = useState("");
   const [importing, setImporting] = useState(false);
 
-  useEffect(() => {
+  const fetchScrims = useCallback(() => {
     Promise.all([
       fetch("/api/scrim", { cache: "no-store" }).then((response) => response.json()),
       fetch("/api/me/roles", { cache: "no-store" })
@@ -146,6 +147,10 @@ export default function ScrimPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { fetchScrims(); }, [fetchScrims]);
+
+  useRealtime("scrim", () => fetchScrims());
 
   useEffect(() => {
     if (!createOpen || channels.length > 0) return;

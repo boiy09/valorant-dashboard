@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 
 // ─── 인터페이스 ────────────────────────────────────────────────────────────────
 interface RiotAccount {
@@ -477,6 +478,20 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
 
+  const refreshScrim = useCallback(async () => {
+    const res = await fetch(`/api/scrim/${id}`, { cache: "no-store" });
+    const data = await res.json();
+    setScrim(data.scrim ?? null);
+    setManagerIds(data.managerIds ?? []);
+    setGuildMembers(data.guildMembers ?? []);
+  }, [id]);
+
+  const refreshGames = useCallback(async () => {
+    const res = await fetch(`/api/scrim/${id}/games`, { cache: "no-store" });
+    const data = await res.json();
+    setGames(data.games ?? []);
+  }, [id]);
+
   useEffect(() => {
     let cancelled = false;
     async function loadScrim({ silent = false } = {}) {
@@ -491,24 +506,21 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
       } finally { if (!cancelled && !silent) setLoading(false); }
     }
     loadScrim();
-    const timer = window.setInterval(() => loadScrim({ silent: true }), 5000);
+    // 폴링 간격을 실시간 WebSocket으로 대체 (5초 → 30초)
+    const timer = window.setInterval(() => loadScrim({ silent: true }), 30000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [id]);
 
   // 경기 목록 로드
   useEffect(() => {
-    let cancelled = false;
-    async function loadGames() {
-      try {
-        const res = await fetch(`/api/scrim/${id}/games`, { cache: "no-store" });
-        const data = await res.json();
-        if (cancelled) return;
-        setGames(data.games ?? []);
-      } catch { /* silent */ }
-    }
-    loadGames();
-    return () => { cancelled = true; };
-  }, [id]);
+    refreshGames().catch(() => {});
+  }, [refreshGames]);
+
+  // 실시간 업데이트
+  useRealtime(`scrim:${id}`, () => {
+    refreshScrim().catch(() => {});
+    refreshGames().catch(() => {});
+  });
 
   async function patchScrim(payload: {
     players?: ScrimPlayer[];

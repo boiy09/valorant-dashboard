@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/broadcast";
 
 export async function GET(req: NextRequest) {
   const guildDiscordId = req.nextUrl.searchParams.get("guildId");
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
           `\n🗓 내전 날짜: ${scrim.scheduledAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`
         );
       }
-      lines.push("\n이 메시지에 반응을 남기면 참가자로 등록됩니다.");
+      lines.push("\n✅ 이 메시지에 반응을 남기면 참가자로 등록됩니다.");
 
       const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
         method: "POST",
@@ -81,6 +82,8 @@ export async function POST(req: NextRequest) {
       // Discord posting is best-effort; scrim is already created
     }
   }
+
+  broadcast("scrim", { action: "created", scrimId: scrim.id }).catch(() => {});
 
   return Response.json({
     scrim: {
@@ -122,6 +125,8 @@ export async function DELETE(req: NextRequest) {
       ).catch(() => { /* best-effort */ });
     }
   }
+
+  broadcast("scrim", { action: "deleted", scrimId: id }).catch(() => {});
 
   return Response.json({ success: true });
 }

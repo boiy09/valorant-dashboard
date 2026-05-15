@@ -1361,25 +1361,25 @@ const TRACKER_HEADERS = {
   "Referer": "https://tracker.gg/valorant",
 };
 
-export async function getTrackerCustomMatchIds(
-  gameName: string,
-  tagLine: string
-): Promise<string[]> {
+async function fetchTrackerMatchIds(gameName: string, tagLine: string, typeFilter?: string): Promise<string[]> {
   try {
     const encoded = `${encodeURIComponent(gameName)}%23${encodeURIComponent(tagLine)}`;
-    const url = `https://api.tracker.gg/api/v2/valorant/standard/matches/riot/${encoded}?type=custom`;
-    const res = await fetch(url, {
-      headers: TRACKER_HEADERS as Record<string, string>,
-      signal: AbortSignal.timeout(10000),
-    });
+    const url = `https://api.tracker.gg/api/v2/valorant/standard/matches/riot/${encoded}${typeFilter ? `?type=${typeFilter}` : ""}`;
+    const res = await fetch(url, { headers: TRACKER_HEADERS as Record<string, string>, signal: AbortSignal.timeout(10000) });
     if (!res.ok) return [];
     const data = await res.json() as { data?: Array<{ attributes?: { id?: string } }> };
-    return (data.data ?? [])
-      .map((m) => m.attributes?.id)
-      .filter((id): id is string => typeof id === "string");
+    return (data.data ?? []).map((m) => m.attributes?.id).filter((id): id is string => typeof id === "string");
   } catch {
     return [];
   }
+}
+
+export async function getTrackerCustomMatchIds(gameName: string, tagLine: string): Promise<string[]> {
+  return fetchTrackerMatchIds(gameName, tagLine, "custom");
+}
+
+export async function getTrackerRecentMatchIds(gameName: string, tagLine: string): Promise<string[]> {
+  return fetchTrackerMatchIds(gameName, tagLine);
 }
 
 export async function getHenrikMatchById(

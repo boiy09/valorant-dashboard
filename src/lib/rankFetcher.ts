@@ -10,6 +10,7 @@ import { refreshTokens } from "@/lib/riotAuth";
 import { getPrivateMMR, getPrivateProfile } from "@/lib/riotPrivateApi";
 import { getTrackerCurrentRank } from "@/lib/trackergg";
 import { getRankByPuuid, getRankIconByTier, getPlayerByRiotId, type ValorantRegion } from "@/lib/valorant";
+import { getOpGgProfileFallback } from "@/lib/opgg";
 
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
@@ -201,7 +202,7 @@ export async function fetchRank(
   return { tierId: 0, tierName: "언랭크", rankIcon: null };
 }
 
-// 프로필(레벨+카드) 조회: Private API(5s) → Henrik(10s)
+// 프로필(레벨+카드) 조회: Private API(5s) → Henrik+op.gg(10s) → op.gg 단독(5s)
 export async function fetchProfile(
   puuid: string,
   region: string,
@@ -223,14 +224,25 @@ export async function fetchProfile(
     }
   }
 
-  // 2. Henrik
+  // 2. Henrik (내부적으로 op.gg 카드/레벨 포함)
   const henrik = await withTimeout(
     getPlayerByRiotId(gameName, tagLine).catch(() => null),
     10000
   );
+  const henrikLevel = henrik?.accountLevel != null && henrik.accountLevel >= 0 ? henrik.accountLevel : null;
+  const henrikCard = henrik?.card ?? null;
+  if (henrikLevel !== null || henrikCard !== null) {
+    return { level: henrikLevel, card: henrikCard };
+  }
+
+  // 3. op.gg 직접 스크래핑 (Henrik 완전 실패 시 최종 보험)
+  const opgg = await withTimeout(
+    getOpGgProfileFallback(gameName, tagLine).catch(() => null),
+    5000
+  );
   return {
-    level: henrik?.accountLevel != null && henrik.accountLevel >= 0 ? henrik.accountLevel : null,
-    card: henrik?.card ?? null,
+    level: opgg?.level ?? null,
+    card: opgg?.playerCardIcon ?? null,
   };
 }
 

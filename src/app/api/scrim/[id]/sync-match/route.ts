@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getRecentMatches, getRiotOfficialRecentMatches, getTrackerCustomMatchIds, getHenrikMatchById, type MatchStats, type ScoreboardPlayer, type ScoreboardTeam } from "@/lib/valorant";
 import { getPrivateRecentMatches } from "@/lib/riotPrivateApi";
 import { ensureValidTokens } from "@/lib/rankFetcher";
-import { getOpGgCustomMatches, type OpGgMatch } from "@/lib/opgg-valorant";
+import { getOpGgCustomMatches, getOpGgRecentMatches, type OpGgMatch } from "@/lib/opgg-valorant";
 
 export async function POST(_: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -228,13 +228,13 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
 
   // tracker.gg → Henrik match-by-ID 폴백 (Henrik 히스토리 한도 초과 시)
   if (recentMatches.length === 0) {
-    trackerFallback: for (const candidate of orderedParticipants.slice(0, 3)) {
+    trackerFallback: for (const candidate of orderedParticipants.slice(0, 5)) {
       if (!candidate.gameName || !candidate.tagLine) continue;
       try {
         const matchIds = await getTrackerCustomMatchIds(candidate.gameName, candidate.tagLine);
         if (matchIds.length === 0) continue;
         const region = (candidate.region === "AP" ? "ap" : "kr") as "ap" | "kr";
-        for (const mId of matchIds.slice(0, 5)) {
+        for (const mId of matchIds.slice(0, 10)) {
           const m = await getHenrikMatchById(mId, region);
           if (m) { recentMatches = [m]; break trackerFallback; }
         }
@@ -242,7 +242,7 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
     }
   }
 
-  // op.gg 폴백 — Henrik을 전혀 사용하지 않음 (Henrik 전역 차단 시에도 작동)
+  // op.gg 커스텀 폴백 — Henrik 전역 차단 시에도 작동
   if (recentMatches.length === 0) {
     for (const candidate of orderedParticipants.slice(0, 5)) {
       if (!candidate.gameName || !candidate.tagLine) continue;
@@ -250,11 +250,32 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
         const opggMatches = await getOpGgCustomMatches(candidate.gameName, candidate.tagLine, 20);
         if (opggMatches.length > 0) {
           recentMatches = opggMatches.map(opggMatchToMatchStats);
-          console.log("[sync-match] op.gg 폴백 성공:", candidate.gameName, opggMatches.length, "경기");
+          console.log("[sync-match] op.gg 커스텀 폴백 성공:", candidate.gameName, opggMatches.length, "경기");
           break;
         }
       } catch (e) {
-        console.warn("[sync-match] op.gg 폴백 실패:", candidate.gameName, e instanceof Error ? e.message : String(e));
+        console.warn("[sync-match] op.gg 커스텀 폴백 실패:", candidate.gameName, e instanceof Error ? e.message : String(e));
+      }
+    }
+  }
+
+  // op.gg 일반 매치 폴백 — 커스텀 필터 없이 전체 조회 후 custom 필터링
+  if (recentMatches.length === 0) {
+    for (const candidate of orderedParticipants.slice(0, 5)) {
+      if (!candidate.gameName || !candidate.tagLine) continue;
+      try {
+        const opggMatches = await getOpGgRecentMatches(candidate.gameName, candidate.tagLine, 30);
+        const customOnly = opggMatches.filter((m) => {
+          const q = (m.queueId ?? "").toLowerCase();
+          return q.includes("custom") || q === "커스텀";
+        });
+        if (customOnly.length > 0) {
+          recentMatches = customOnly.map(opggMatchToMatchStats);
+          console.log("[sync-match] op.gg 일반→커스텀 폴백 성공:", candidate.gameName, customOnly.length, "경기");
+          break;
+        }
+      } catch (e) {
+        console.warn("[sync-match] op.gg 일반 폴백 실패:", candidate.gameName, e instanceof Error ? e.message : String(e));
       }
     }
   }

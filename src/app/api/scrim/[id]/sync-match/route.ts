@@ -340,17 +340,40 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
   const rawMapName = matchedMatch.map ?? "";
   const mapName = MAP_KO[rawMapName] ?? rawMapName;
 
+  // 팀별 라운드 승수 맵
+  const teamRoundsMap: Record<string, number> = {};
+  for (const t of teams) {
+    const tid = (t.teamId ?? "").toLowerCase();
+    if (tid) teamRoundsMap[tid] = t.roundsWon ?? 0;
+  }
+
   const kdaUpdates: { id: string; kills: number; deaths: number; assists: number }[] = [];
   const kdaSnapshot: {
-    userId: string; kills: number; deaths: number; assists: number; acs: number; team: string;
+    userId: string; kills: number; deaths: number; assists: number; acs: number;
+    team: string; name: string; agent: string; agentIcon: string; cardIcon: string;
+    tierName: string; currentTier: number; teamRoundsWon: number;
   }[] = [];
 
   for (const entry of playerPuuids) {
     const sbPlayer = scoreboardPlayers.find((p) => p.puuid === entry.puuid);
     if (!sbPlayer) continue;
-    const teamColor = sbPlayer.teamId?.toLowerCase() ?? "";
+    const teamColor = (sbPlayer.teamId ?? "").toLowerCase();
     kdaUpdates.push({ id: entry.playerId, kills: sbPlayer.kills ?? 0, deaths: sbPlayer.deaths ?? 0, assists: sbPlayer.assists ?? 0 });
-    kdaSnapshot.push({ userId: entry.userId, kills: sbPlayer.kills ?? 0, deaths: sbPlayer.deaths ?? 0, assists: sbPlayer.assists ?? 0, acs: sbPlayer.acs ?? 0, team: teamColor });
+    kdaSnapshot.push({
+      userId: entry.userId,
+      kills: sbPlayer.kills ?? 0,
+      deaths: sbPlayer.deaths ?? 0,
+      assists: sbPlayer.assists ?? 0,
+      acs: sbPlayer.acs ?? 0,
+      team: teamColor,
+      name: sbPlayer.name ?? entry.gameName ?? "",
+      agent: sbPlayer.agent ?? "",
+      agentIcon: sbPlayer.agentIcon ?? "",
+      cardIcon: sbPlayer.cardIcon ?? "",
+      tierName: sbPlayer.tierName ?? "",
+      currentTier: sbPlayer.tierId ?? 0,
+      teamRoundsWon: teamRoundsMap[teamColor] ?? 0,
+    });
   }
 
   await prisma.$transaction(async (tx) => {

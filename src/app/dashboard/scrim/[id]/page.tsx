@@ -760,10 +760,22 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "전적 연동에 실패했습니다.");
       setMessage(data.message ?? "전적 자동 연동 완료!");
-      // 업데이트된 내전 데이터 다시 로드
-      const reloadRes = await fetch(`/api/scrim/${id}`, { cache: "no-store" });
-      const reloadData = await reloadRes.json();
-      setScrim(reloadData.scrim ?? null);
+      // 내전 데이터 + 경기 목록 함께 리로드
+      const [reloadRes, gRes] = await Promise.all([
+        fetch(`/api/scrim/${id}`, { cache: "no-store" }),
+        fetch(`/api/scrim/${id}/games`, { cache: "no-store" }),
+      ]);
+      const [reloadData, gData] = await Promise.all([reloadRes.json(), gRes.json()]);
+      if (reloadData.scrim) setScrim(reloadData.scrim);
+      const refreshedGames: ScrimGame[] = gData.games ?? [];
+      setGames(refreshedGames);
+      // 연동된 경기를 자동으로 활성화
+      if (data.matchId) {
+        const linked = refreshedGames.find((g) => g.matchId === data.matchId);
+        if (linked) setActiveGameId(linked.id);
+      } else if (refreshedGames.length > 0) {
+        setActiveGameId(refreshedGames[refreshedGames.length - 1].id);
+      }
     } catch (e) { setMessage(e instanceof Error ? e.message : "전적 연동에 실패했습니다."); }
     finally { setSaving(false); }
   }

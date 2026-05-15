@@ -95,8 +95,34 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     return Response.json({ error: "라이엇 계정이 연동된 참가자가 없습니다." }, { status: 400 });
   }
 
+  // 버튼 누른 사람(현재 세션 유저)의 계정을 후보 맨 앞에 배치 — 토큰이 가장 신선할 가능성이 높음
+  const sessionUserAccounts = await prisma.riotAccount.findMany({
+    where: { user: { id: session.user.id } },
+    select: { puuid: true, region: true, accessToken: true, entitlementsToken: true, ssid: true, authCookie: true, tokenExpiresAt: true },
+  });
+  const extraCandidates = sessionUserAccounts
+    .filter((acc) => acc.puuid && !playerPuuids.some((p) => p.puuid === acc.puuid))
+    .map((acc) => ({
+      playerId: "",
+      userId: session.user.id,
+      team: "",
+      puuid: acc.puuid,
+      region: acc.region ?? "KR",
+      accessToken: acc.accessToken,
+      entitlementsToken: acc.entitlementsToken,
+      ssid: acc.ssid,
+      authCookie: acc.authCookie,
+      tokenExpiresAt: acc.tokenExpiresAt,
+    }));
+
+  // 현재 유저가 참가자에 이미 있으면 맨 앞으로, 없으면 extraCandidates를 앞에 추가
+  const sessionInPlayers = playerPuuids.find((p) => p.userId === session.user.id);
+  const orderedCandidates = sessionInPlayers
+    ? [sessionInPlayers, ...playerPuuids.filter((p) => p.userId !== session.user.id), ...extraCandidates]
+    : [...extraCandidates, ...playerPuuids];
+
   // 여러 대표 계정으로 최근 커스텀 매치 조회 (스코어보드 포함)
-  const qRegion = playerPuuids[0].region === "AP" ? "ap" : "kr";
+  const qRegion = (orderedCandidates[0]?.region ?? "KR") === "AP" ? "ap" : "kr";
 
   // API 폴백 체인: Private Riot API (ssid 자동갱신) → Riot Official API → Henrik API
   // Henrik 429는 API 키 단위 제한이므로 감지 시 즉시 중단
@@ -104,7 +130,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   let lastFetchError = "";
   let rateLimited = false;
 
-  outer: for (const candidate of playerPuuids.slice(0, 3)) {
+  outer: for (const candidate of orderedCandidates.slice(0, 5)) {
     // 1) Private Riot API — ssid로 만료 토큰 자동 갱신 후 시도
     try {
       const tokens = await ensureValidTokens(

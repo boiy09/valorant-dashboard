@@ -1443,27 +1443,28 @@ function AuctionScrimPage({
   }, []);
 
   // 경매 상태 폴링
+  const pollAuction = useCallback(async (silent = false) => {
+    if (!silent) setAuctionLoading(true);
+    try {
+      const res = await fetch(`/api/scrim/auction?sessionId=${scrim.id}`, { cache: "no-store" });
+      const data = await res.json();
+      setAuction(data.auction ?? null);
+      if (data.auction?.phase !== "setup") {
+        const scrimRes = await fetch(`/api/scrim/${scrim.id}`, { cache: "no-store" });
+        const scrimData = await scrimRes.json();
+        if (scrimData.scrim) onScrimUpdate(scrimData.scrim);
+      }
+    } finally { if (!silent) setAuctionLoading(false); }
+  }, [scrim.id, onScrimUpdate]);
+
   useEffect(() => {
     let cancelled = false;
-    async function poll(silent = false) {
-      if (!silent) setAuctionLoading(true);
-      try {
-        const res = await fetch(`/api/scrim/auction?sessionId=${scrim.id}`, { cache: "no-store" });
-        const data = await res.json();
-        if (cancelled) return;
-        setAuction(data.auction ?? null);
-        // 낙찰/유찰 처리 후 scrim 플레이어 목록 갱신
-        if (data.auction?.phase !== "setup") {
-          const scrimRes = await fetch(`/api/scrim/${scrim.id}`, { cache: "no-store" });
-          const scrimData = await scrimRes.json();
-          if (!cancelled && scrimData.scrim) onScrimUpdate(scrimData.scrim);
-        }
-      } finally { if (!silent) setAuctionLoading(false); }
-    }
-    poll();
-    const t = window.setInterval(() => poll(true), 3000);
+    pollAuction().catch(() => {});
+    const t = window.setInterval(() => { if (!cancelled) pollAuction(true).catch(() => {}); }, 3000);
     return () => { cancelled = true; window.clearInterval(t); };
-  }, [scrim.id, onScrimUpdate]);
+  }, [pollAuction]);
+
+  useRealtime(`scrim:${scrim.id}`, () => { pollAuction(true).catch(() => {}); });
 
   // 타이머 카운트다운
   useEffect(() => {

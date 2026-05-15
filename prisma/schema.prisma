@@ -267,6 +267,31 @@ model AuctionState {
   createdAt       DateTime @default(now())
 }
 
+// 경매 내전 입찰 기록
+model AuctionBid {
+  id          String   @id @default(cuid())
+  sessionId   String
+  lotUserId   String
+  captainId   String
+  amount      Int
+  createdAt   DateTime @default(now())
+  @@index([sessionId, lotUserId])
+  @@index([sessionId, captainId])
+}
+
+// 경매 내전 낙찰 결과
+model AuctionPick {
+  id          String   @id @default(cuid())
+  sessionId   String
+  userId      String
+  captainId   String
+  team        String
+  amount      Int
+  createdAt   DateTime @default(now())
+  @@unique([sessionId, userId])
+  @@index([sessionId, captainId])
+}
+
 // 내전 ELO
 model ScrimElo {
   id      String @id @default(cuid())

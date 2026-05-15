@@ -19,6 +19,27 @@ interface AuctionRow {
   failedQueue: string;
   bidLog: string;
   auditLog: string;
+  picks?: AuctionPickRow[];
+  bidHistory?: AuctionBidRow[];
+}
+
+interface AuctionPickRow {
+  id: string;
+  sessionId: string;
+  userId: string;
+  captainId: string;
+  team: string;
+  amount: number;
+  createdAt: Date;
+}
+
+interface AuctionBidRow {
+  id: string;
+  sessionId: string;
+  lotUserId: string;
+  captainId: string;
+  amount: number;
+  createdAt: Date;
 }
 
 interface AuctionLogEntry {
@@ -59,6 +80,31 @@ function ensureAuctionTable() {
         await prisma.$executeRawUnsafe(`ALTER TABLE "AuctionState" ADD COLUMN IF NOT EXISTS "pausedPhase" TEXT`);
         await prisma.$executeRawUnsafe(`ALTER TABLE "AuctionState" ADD COLUMN IF NOT EXISTS "bidLog" TEXT NOT NULL DEFAULT '[]'`);
         await prisma.$executeRawUnsafe(`ALTER TABLE "AuctionState" ADD COLUMN IF NOT EXISTS "auditLog" TEXT NOT NULL DEFAULT '[]'`);
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "AuctionBid" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "sessionId" TEXT NOT NULL,
+            "lotUserId" TEXT NOT NULL,
+            "captainId" TEXT NOT NULL,
+            "amount" INTEGER NOT NULL,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "AuctionBid_sessionId_lotUserId_idx" ON "AuctionBid"("sessionId", "lotUserId")`);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "AuctionBid_sessionId_captainId_idx" ON "AuctionBid"("sessionId", "captainId")`);
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "AuctionPick" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "sessionId" TEXT NOT NULL,
+            "userId" TEXT NOT NULL,
+            "captainId" TEXT NOT NULL,
+            "team" TEXT NOT NULL,
+            "amount" INTEGER NOT NULL,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "AuctionPick_sessionId_userId_key" ON "AuctionPick"("sessionId", "userId")`);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "AuctionPick_sessionId_captainId_idx" ON "AuctionPick"("sessionId", "captainId")`);
       })
       .catch((error) => {
         tablePromise = null;
@@ -146,7 +192,59 @@ async function getAuction(sessionId: string) {
     `SELECT * FROM "AuctionState" WHERE "sessionId" = $1 LIMIT 1`,
     sessionId
   );
-  return rows[0] ?? null;
+  const auction = rows[0] ?? null;
+  if (!auction) return null;
+  const [picks, bidHistory] = await Promise.all([
+    prisma.$queryRawUnsafe<AuctionPickRow[]>(
+      `SELECT * FROM "AuctionPick" WHERE "sessionId" = $1 ORDER BY "createdAt" ASC`,
+      sessionId
+    ),
+    prisma.$queryRawUnsafe<AuctionBidRow[]>(
+      `SELECT * FROM "AuctionBid" WHERE "sessionId" = $1 ORDER BY "createdAt" ASC`,
+      sessionId
+    ),
+  ]);
+  return { ...auction, picks, bidHistory };
+}
+
+async function recordBid(sessionId: string, lotUserId: string, captainId: string, amount: number) {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "AuctionBid" ("id","sessionId","lotUserId","captainId","amount","createdAt")
+     VALUES ($1,$2,$3,$4,$5,NOW())`,
+    `bid_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    sessionId,
+    lotUserId,
+    captainId,
+    amount
+  );
+}
+
+async function recordPick(sessionId: string, userId: string, captainId: string, team: string, amount: number) {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "AuctionPick" ("id","sessionId","userId","captainId","team","amount","createdAt")
+     VALUES ($1,$2,$3,$4,$5,$6,NOW())
+     ON CONFLICT ("sessionId","userId")
+     DO UPDATE SET "captainId" = EXCLUDED."captainId", "team" = EXCLUDED."team", "amount" = EXCLUDED."amount"`,
+    `pick_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    sessionId,
+    userId,
+    captainId,
+    team,
+    amount
+  );
+}
+
+async function applyFinalAssignments(sessionId: string) {
+  const picks = await prisma.$queryRawUnsafe<AuctionPickRow[]>(
+    `SELECT * FROM "AuctionPick" WHERE "sessionId" = $1`,
+    sessionId
+  );
+  for (const pick of picks) {
+    await prisma.scrimPlayer.updateMany({
+      where: { sessionId, userId: pick.userId },
+      data: { team: pick.team, role: "member" },
+    });
+  }
 }
 
 async function upsertAuction(sessionId: string, data: Record<string, unknown>) {
@@ -206,6 +304,7 @@ async function finalizeCurrentLot(auction: AuctionRow, actorId = "system") {
         message: "입찰 없이 유찰 처리되었습니다.",
       }),
     });
+    if (updated?.phase === "done") await applyFinalAssignments(auction.sessionId);
     return updated;
   }
 
@@ -219,10 +318,7 @@ async function finalizeCurrentLot(auction: AuctionRow, actorId = "system") {
   }
 
   captainPoints[winnerId] = (captainPoints[winnerId] ?? 0) - winnerBid;
-  await prisma.scrimPlayer.updateMany({
-    where: { sessionId: auction.sessionId, userId: auction.currentUserId },
-    data: { team: teamId, role: "member" },
-  });
+  await recordPick(auction.sessionId, auction.currentUserId, winnerId, teamId, winnerBid);
 
   const nextState = getNextAuctionState(auction, "sold");
   const updated = await upsertAuction(auction.sessionId, {
@@ -245,6 +341,7 @@ async function finalizeCurrentLot(auction: AuctionRow, actorId = "system") {
       message: "타이머 종료로 자동 낙찰되었습니다.",
     }),
   });
+  if (updated?.phase === "done") await applyFinalAssignments(auction.sessionId);
   return updated;
 }
 
@@ -290,6 +387,8 @@ export async function POST(req: NextRequest) {
   }
 
   const captainIds = Object.keys(captainPoints);
+  await prisma.$executeRawUnsafe(`DELETE FROM "AuctionBid" WHERE "sessionId" = $1`, sessionId);
+  await prisma.$executeRawUnsafe(`DELETE FROM "AuctionPick" WHERE "sessionId" = $1`, sessionId);
   for (let i = 0; i < captainIds.length; i++) {
     const teamId = `team_${String.fromCharCode(97 + i)}`;
     await prisma.scrimPlayer.updateMany({
@@ -420,6 +519,7 @@ export async function PATCH(req: NextRequest) {
           message: "관리자가 현재 매물을 유찰 처리했습니다.",
         }),
       });
+      if (updated?.phase === "done") await applyFinalAssignments(sessionId);
       broadcastAuction(sessionId, "auction_passed", updated);
       return Response.json({ success: true, auction: updated });
     }
@@ -441,10 +541,7 @@ export async function PATCH(req: NextRequest) {
       if (!teamId) return Response.json({ error: "팀 정보를 찾을 수 없습니다." }, { status: 400 });
 
       captainPoints[captainId] = available - amount;
-      await prisma.scrimPlayer.updateMany({
-        where: { sessionId, userId: auction.currentUserId },
-        data: { team: teamId, role: "member" },
-      });
+      await recordPick(sessionId, auction.currentUserId, captainId, teamId, amount);
       const nextState = getNextAuctionState(auction, "sold");
       const updated = await upsertAuction(sessionId, {
         ...nextState,
@@ -466,6 +563,7 @@ export async function PATCH(req: NextRequest) {
           message: "관리자가 현재 매물을 강제 낙찰 처리했습니다.",
         }),
       });
+      if (updated?.phase === "done") await applyFinalAssignments(sessionId);
       broadcastAuction(sessionId, "auction_force_assigned", updated);
       return Response.json({ success: true, auction: updated });
     }
@@ -504,6 +602,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   currentBids[captainId] = bidAmount;
+  await recordBid(sessionId, auction.currentUserId, captainId, bidAmount);
 
   const updated = await upsertAuction(sessionId, {
     currentBids: JSON.stringify(currentBids),
@@ -531,6 +630,8 @@ export async function DELETE(req: NextRequest) {
   if (!sessionId) return Response.json({ error: "sessionId가 필요합니다." }, { status: 400 });
 
   await prisma.$executeRawUnsafe(`DELETE FROM "AuctionState" WHERE "sessionId" = $1`, sessionId);
+  await prisma.$executeRawUnsafe(`DELETE FROM "AuctionBid" WHERE "sessionId" = $1`, sessionId);
+  await prisma.$executeRawUnsafe(`DELETE FROM "AuctionPick" WHERE "sessionId" = $1`, sessionId);
   await prisma.scrimPlayer.updateMany({
     where: { sessionId },
     data: { team: "participant", role: "participant" },

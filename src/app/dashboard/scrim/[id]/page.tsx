@@ -107,6 +107,27 @@ interface AuctionState {
   pausedPhase?: string | null;
   bidLog?: string;
   auditLog?: string;
+  picks?: AuctionPick[];
+  bidHistory?: AuctionBid[];
+}
+
+interface AuctionPick {
+  id: string;
+  sessionId: string;
+  userId: string;
+  captainId: string;
+  team: string;
+  amount: number;
+  createdAt: string;
+}
+
+interface AuctionBid {
+  id: string;
+  sessionId: string;
+  lotUserId: string;
+  captainId: string;
+  amount: number;
+  createdAt: string;
 }
 
 interface AuctionLogEntry {
@@ -1367,6 +1388,7 @@ function AuctionScrimPage({
   const [isAdmin, setIsAdmin] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteCopied, setInviteCopied] = useState<string | null>(null);
+  const [accessLinks, setAccessLinks] = useState<AuctionInviteLink[]>([]);
 
   const auctionSettings = useMemo(() => parseSettings(scrim.settings), [scrim.settings]);
 
@@ -1537,6 +1559,7 @@ function AuctionScrimPage({
   const queue = parseJson<string[]>(auction?.queue, []);
   const bidLog = parseJson<AuctionLogEntry[]>(auction?.bidLog, []);
   const auditLog = parseJson<AuctionLogEntry[]>(auction?.auditLog, []);
+  const auctionPicks = useMemo(() => auction?.picks ?? [], [auction?.picks]);
   const captainIds = Object.keys(captainPoints);
   const inviteCaptainIds = captainIds.length > 0 ? captainIds : Object.keys(captainSelections);
 
@@ -1546,7 +1569,13 @@ function AuctionScrimPage({
     return m;
   }, [scrim.players]);
 
+  const playersForAuctionTeam = useCallback((teamId: string, captainId?: string) => {
+    const pickedUserIds = new Set(auctionPicks.filter((pick) => pick.team === teamId).map((pick) => pick.userId));
+    return scrim.players.filter((player) => player.user.id === captainId || player.team === teamId || pickedUserIds.has(player.user.id));
+  }, [auctionPicks, scrim.players]);
+
   const inviteLinks = useMemo<AuctionInviteLink[]>(() => {
+    if (accessLinks.length > 0) return accessLinks;
     const origin = typeof window === "undefined" ? "" : window.location.origin;
     const base = `${origin}/dashboard/scrim/${scrim.id}`;
     return [
@@ -1561,7 +1590,21 @@ function AuctionScrimPage({
       }),
       { label: "옵저버 링크", href: `${base}?auctionRole=observer`, tone: "#9aa8b3" },
     ];
-  }, [scrim.id, inviteCaptainIds, playerMap]);
+  }, [accessLinks, scrim.id, inviteCaptainIds, playerMap]);
+
+  useEffect(() => {
+    if (!inviteOpen || !isAdmin) return;
+    let cancelled = false;
+    fetch(`/api/scrim/auction/access?sessionId=${encodeURIComponent(scrim.id)}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { links?: Array<{ label: string; href: string }> } | null) => {
+        if (cancelled || !data?.links) return;
+        const tones = ["#f6c945", "#ff4655", "#f59e0b", "#10b981", "#3b82f6", "#9aa8b3"];
+        setAccessLinks(data.links.map((link, index) => ({ ...link, tone: tones[index % tones.length] })));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [inviteOpen, isAdmin, scrim.id, auction?.captainPoints]);
 
   const currentPlayer = auction?.currentUserId ? playerMap.get(auction.currentUserId) : null;
 
@@ -1913,7 +1956,7 @@ function AuctionScrimPage({
   const teamAssignments: Record<string, ScrimPlayer[]> = {};
   captainIds.forEach((cId, i) => {
     const tId = `team_${String.fromCharCode(97 + i)}`;
-    teamAssignments[tId] = scrim.players.filter((p) => p.team === tId);
+    teamAssignments[tId] = playersForAuctionTeam(tId, cId);
   });
 
   return (
@@ -2039,7 +2082,7 @@ function AuctionScrimPage({
                 const myBid = currentBids[cId] ?? 0;
                 const myPoints = captainPoints[cId] ?? 0;
                 const color = TEAM_COLORS[i % TEAM_COLORS.length];
-                const teamMembers = scrim.players.filter((p) => p.team === tId && (p.role === "member" || p.role === "captain"));
+                const teamMembers = playersForAuctionTeam(tId, cId);
 
                 return (
                   <div key={cId} className="val-card p-4" style={{ borderTop: `3px solid ${color}` }}>
@@ -2094,7 +2137,7 @@ function AuctionScrimPage({
             {captainIds.map((cId, i) => {
               const tId = `team_${String.fromCharCode(97 + i)}`;
               const color = TEAM_COLORS[i % TEAM_COLORS.length];
-              const members = scrim.players.filter((p) => p.team === tId);
+              const members = playersForAuctionTeam(tId, cId);
               const remainPoints = captainPoints[cId] ?? 0;
               return (
                 <div key={cId} className="rounded border border-[#2a3540] overflow-hidden">
@@ -2127,7 +2170,7 @@ function AuctionScrimPage({
             const captain = playerMap.get(cId);
             const color = TEAM_COLORS[i % TEAM_COLORS.length];
             const tId = `team_${String.fromCharCode(97 + i)}`;
-            const memberCount = scrim.players.filter((p) => p.team === tId && p.role === "member").length;
+            const memberCount = playersForAuctionTeam(tId, cId).filter((p) => p.user.id !== cId).length;
             return (
               <div key={cId} className="val-card p-4" style={{ borderTop: `3px solid ${color}` }}>
                 <div className="text-xs font-black" style={{ color }}>{getDefaultTeamName(i)}</div>

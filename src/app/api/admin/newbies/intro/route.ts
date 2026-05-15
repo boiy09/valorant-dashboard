@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const INTRO_CHANNEL_ID = "1343592307164844115";
 const DISCORD_API = "https://discord.com/api/v10";
@@ -14,33 +14,55 @@ interface DiscordMessage {
   attachments: Array<{ url: string; filename: string }>;
 }
 
-// 채널 메시지 최대 200개 조회 (100개씩 2페이지)
-async function fetchChannelMessages(token: string): Promise<DiscordMessage[]> {
+// 채널 전체 메시지 조회 — 찾아야 할 Discord ID 목록을 전달하면 모두 발견 시 조기 종료
+async function fetchChannelMessages(
+  token: string,
+  targetIds: Set<string>
+): Promise<DiscordMessage[]> {
   const headers = { Authorization: `Bot ${token}` };
   const messages: DiscordMessage[] = [];
+  const found = new Set<string>();
 
   let before: string | undefined;
-  for (let page = 0; page < 2; page++) {
+  // 최대 20페이지(2000개)까지 조회, 모든 대상자 발견 시 조기 종료
+  for (let page = 0; page < 20; page++) {
     const qs = before ? `?limit=100&before=${before}` : "?limit=100";
     const res = await fetch(`${DISCORD_API}/channels/${INTRO_CHANNEL_ID}/messages${qs}`, {
       headers,
       cache: "no-store",
     });
+
+    if (res.status === 429) {
+      // rate limit — retry-after 헤더 기다린 후 재시도
+      const retryAfter = Number(res.headers.get("retry-after") ?? "1") * 1000;
+      await new Promise((r) => setTimeout(r, Math.min(retryAfter, 5000)));
+      continue; // 같은 페이지 재시도
+    }
+
     if (!res.ok) break;
+
     const batch = await res.json() as DiscordMessage[];
     if (!Array.isArray(batch) || batch.length === 0) break;
+
     messages.push(...batch);
+
+    for (const msg of batch) {
+      if (targetIds.has(msg.author.id)) found.add(msg.author.id);
+    }
+
+    // 모든 대상자를 발견했으면 더 이상 조회 불필요
+    if (targetIds.size > 0 && found.size >= targetIds.size) break;
+
     before = batch[batch.length - 1].id;
   }
 
   return messages;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  // 관리자 확인
   const user = await prisma.user.findUnique({
     where: { id: session.user.id! },
     select: { guilds: { select: { roles: true } } },
@@ -54,10 +76,15 @@ export async function GET() {
   const token = process.env.DISCORD_BOT_TOKEN;
   if (!token) return Response.json({ error: "Bot token not configured" }, { status: 500 });
 
-  try {
-    const messages = await fetchChannelMessages(token);
+  // 쿼리로 신입 멤버 Discord ID 목록 받아서 조기 종료에 활용
+  const url = new URL(req.url);
+  const idsParam = url.searchParams.get("ids");
+  const targetIds = new Set<string>(idsParam ? idsParam.split(",").filter(Boolean) : []);
 
-    // discordId → 마지막(가장 최근) 메시지 매핑
+  try {
+    const messages = await fetchChannelMessages(token, targetIds);
+
+    // discordId → 가장 최근 메시지 매핑
     const byAuthor = new Map<string, { content: string; timestamp: string; hasAttachments: boolean }>();
     for (const msg of messages) {
       const existing = byAuthor.get(msg.author.id);
@@ -70,9 +97,7 @@ export async function GET() {
       }
     }
 
-    return Response.json({
-      intros: Object.fromEntries(byAuthor),
-    });
+    return Response.json({ intros: Object.fromEntries(byAuthor) });
   } catch (e) {
     console.error("[intro] failed:", e);
     return Response.json({ error: "Failed to fetch messages" }, { status: 500 });

@@ -721,13 +721,19 @@ function NewbiesTab({
   }, [members]);
 
   useEffect(() => {
+    const ids = localMembers
+      .filter((m) => newbieGroup(m))
+      .map((m) => m.discordId)
+      .filter((id): id is string => Boolean(id));
+    if (ids.length === 0) { setIntrosLoading(false); return; }
+
     setIntrosLoading(true);
-    fetch("/api/admin/newbies/intro", { cache: "no-store" })
+    fetch(`/api/admin/newbies/intro?ids=${ids.join(",")}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setIntros(d.intros ?? {}))
       .catch(() => setIntros({}))
       .finally(() => setIntrosLoading(false));
-  }, []);
+  }, [localMembers]);
 
   async function graduateMember(member: Member) {
     if (!member.discordId || graduatingId) return;

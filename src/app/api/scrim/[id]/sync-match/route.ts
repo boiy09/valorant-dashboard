@@ -11,6 +11,16 @@ import { ensureValidTokens } from "@/lib/rankFetcher";
  * 참가자 전원이 포함된 매치를 찾아 승패/맵/KDA를 자동으로 기록한다.
  */
 export async function POST(_: NextRequest, context: { params: Promise<{ id: string }> }) {
+  try {
+    return await handleSyncMatch(context);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[sync-match] 예상치 못한 오류:", msg);
+    return Response.json({ error: `서버 오류: ${msg}` }, { status: 500 });
+  }
+}
+
+async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
   const { session, isAdmin, guild } = await getAdminSession();
   if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
   if (!guild) return Response.json({ error: "서버 정보를 찾을 수 없습니다." }, { status: 404 });

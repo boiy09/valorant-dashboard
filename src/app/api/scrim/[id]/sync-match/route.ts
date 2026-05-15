@@ -104,7 +104,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     .filter((acc) => acc.puuid && !playerPuuids.some((p) => p.puuid === acc.puuid))
     .map((acc) => ({
       playerId: "",
-      userId: session.user.id,
+      userId: session.user!.id,
       team: "",
       puuid: acc.puuid,
       region: acc.region ?? "KR",

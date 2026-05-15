@@ -83,8 +83,13 @@ interface AgentOption {
 
 interface ScrimDetailSettings {
   teamNames?: Record<string, string>;
-  useTeamBoard?: boolean; // 팀 배치 기능 사용 여부 (기본값: true)
-  useCaptain?: boolean;   // 팀장 기능 사용 여부 (기본값: true)
+  useTeamBoard?: boolean;
+  useCaptain?: boolean;
+  showRiotNickname?: boolean;
+  showDiscordNickname?: boolean;
+  showRankTier?: boolean;
+  showValorantRole?: boolean;
+  showFavoriteAgents?: boolean;
 }
 
 interface AuctionState {
@@ -322,16 +327,15 @@ function formatDateTime(value: string | null) {
   return new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
 }
 function parseSettings(value: string | null | undefined): ScrimDetailSettings {
-  const fallback: ScrimDetailSettings = { useTeamBoard: true, useCaptain: true };
+  const fallback: ScrimDetailSettings = {
+    useTeamBoard: true, useCaptain: true,
+    showRiotNickname: true, showDiscordNickname: true, showRankTier: true,
+    showValorantRole: true, showFavoriteAgents: true,
+  };
   if (!value) return fallback;
-  try { 
-    const p = JSON.parse(value); 
-    if (p && typeof p === "object") {
-      return {
-        ...fallback,
-        ...(p as ScrimDetailSettings)
-      };
-    }
+  try {
+    const p = JSON.parse(value);
+    if (p && typeof p === "object") return { ...fallback, ...(p as ScrimDetailSettings) };
     return fallback;
   }
   catch { return fallback; }
@@ -869,7 +873,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           <DropArea title={`${settings.useTeamBoard ? "참가자 목록" : "전체 참가자"} (${participantPlayers.length}명)`} 
             subtitle={settings.useTeamBoard ? "드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." : "내전에 참여 중인 플레이어 목록입니다."} 
             onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
-            <ParticipantList players={participantPlayers} guildMembers={guildMembers} onRemove={removePlayer} />
+            <ParticipantList players={participantPlayers} guildMembers={guildMembers} onRemove={removePlayer} settings={settings} />
           </DropArea>
           
           {settings.useTeamBoard && (
@@ -881,7 +885,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
                   captain={captain} members={members} 
                   onDropCaptain={settings.useCaptain ? (pId) => movePlayer(pId, tId, "captain") : undefined} 
                   onDropMember={(pId) => movePlayer(pId, tId, settings.useCaptain ? "member" : "participant")} 
-                  onRename={(n) => updateTeamName(tId, n)} onRemove={removePlayer} guildMembers={guildMembers} />;
+                  onRename={(n) => updateTeamName(tId, n)} onRemove={removePlayer} guildMembers={guildMembers} settings={settings} />;
               })}
             </section>
           )}
@@ -1318,6 +1322,8 @@ function AuctionScrimPage({
   const [auctionLoading, setAuctionLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  const auctionSettings = useMemo(() => parseSettings(scrim.settings), [scrim.settings]);
+
   // 설정 단계 상태
   const [captainSelections, setCaptainSelections] = useState<Record<string, number>>({}); // userId → points
   const [defaultPoints, setDefaultPoints] = useState(1000);
@@ -1330,6 +1336,60 @@ function AuctionScrimPage({
   // 타이머
   const [timeLeft, setTimeLeft] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 더미 데이터
+  const [dummyOpen, setDummyOpen] = useState(false);
+  const [dummyAdding, setDummyAdding] = useState(false);
+  const AUCTION_DUMMY_ROLES = ["감시자", "타격대", "척후대", "전략가"];
+  const AUCTION_TIER_OPTIONS = [
+    { label: "언랭크", id: 0 }, { label: "아이언 1", id: 1 }, { label: "아이언 2", id: 2 }, { label: "아이언 3", id: 3 },
+    { label: "브론즈 1", id: 4 }, { label: "브론즈 2", id: 5 }, { label: "브론즈 3", id: 6 },
+    { label: "실버 1", id: 7 }, { label: "실버 2", id: 8 }, { label: "실버 3", id: 9 },
+    { label: "골드 1", id: 10 }, { label: "골드 2", id: 11 }, { label: "골드 3", id: 12 },
+    { label: "플래티넘 1", id: 13 }, { label: "플래티넘 2", id: 14 }, { label: "플래티넘 3", id: 15 },
+    { label: "다이아몬드 1", id: 16 }, { label: "다이아몬드 2", id: 17 }, { label: "다이아몬드 3", id: 18 },
+    { label: "초월자 1", id: 19 }, { label: "초월자 2", id: 20 }, { label: "초월자 3", id: 21 },
+    { label: "불멸 1", id: 22 }, { label: "불멸 2", id: 23 }, { label: "불멸 3", id: 24 },
+    { label: "레디언트", id: 25 },
+  ];
+  type AuctionDummyRow = { discordName: string; riotId: string; tierId: number; valorantRole: string; favoriteAgents: string };
+  const auctionEmptyRow = (): AuctionDummyRow => ({ discordName: "", riotId: "", tierId: 0, valorantRole: "", favoriteAgents: "" });
+  const [dummyRows, setDummyRows] = useState<AuctionDummyRow[]>(() => [auctionEmptyRow()]);
+
+  function setDummyRow(index: number, patch: Partial<AuctionDummyRow>) {
+    setDummyRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  async function submitDummy() {
+    if (dummyAdding) return;
+    const players = dummyRows
+      .filter((row) => row.discordName.trim())
+      .map((row) => ({
+        discordName: row.discordName.trim(),
+        riotId: row.riotId.trim() || undefined,
+        cachedTierName: AUCTION_TIER_OPTIONS.find((t) => t.id === row.tierId)?.label,
+        cachedTierId: row.tierId,
+        valorantRole: row.valorantRole || undefined,
+        favoriteAgents: row.favoriteAgents ? row.favoriteAgents.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+      }));
+    if (players.length === 0) { setMessage("디스코드 이름을 입력해 주세요."); return; }
+    setDummyAdding(true); setMessage(null);
+    try {
+      const res = await fetch(`/api/scrim/${scrim.id}/dummy`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ players }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "더미 추가에 실패했습니다.");
+      setMessage(`더미 참가자 ${data.added?.length ?? 0}명 추가됨.`);
+      setDummyOpen(false);
+      setDummyRows([auctionEmptyRow()]);
+      const reloadRes = await fetch(`/api/scrim/${scrim.id}`, { cache: "no-store" });
+      const reloadData = await reloadRes.json();
+      if (reloadData.scrim) onScrimUpdate(reloadData.scrim);
+    } catch (e) { setMessage(e instanceof Error ? e.message : "더미 추가에 실패했습니다."); }
+    finally { setDummyAdding(false); }
+  }
 
   useEffect(() => {
     fetch("/api/me/roles", { cache: "no-store" })
@@ -1519,8 +1579,9 @@ function AuctionScrimPage({
                     );
                   })}
                 </div>
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
                   <button type="button" onClick={addRecruitment} disabled={saving} className="rounded border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
+                  <button type="button" onClick={() => { setDummyRows([auctionEmptyRow()]); setDummyOpen(true); }} className="val-btn border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-2 text-xs font-black text-[#f6c945]" title="테스트용 더미 참가자 추가">🧪 더미 데이터</button>
                   <button type="button" onClick={startAuction} disabled={Object.keys(captainSelections).length < 2} className="val-btn bg-[#f6c945] px-5 py-2 text-sm font-black text-black disabled:opacity-40">
                     🏷 경매 시작
                   </button>
@@ -1533,7 +1594,7 @@ function AuctionScrimPage({
               <div className="mb-3 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">참가자 목록 ({participants.length}명)</div>
               {participants.length === 0
                 ? <div className="rounded border border-dashed border-[#2a3540] py-8 text-center text-xs text-[#7b8a96]">아직 참가자가 없습니다. 디스코드 모집 글에 이모지를 달면 자동 등록됩니다.</div>
-                : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 items-stretch">{participants.map((p) => <div key={p.id}><PlayerCard player={p} compact guildMembers={guildMembers} /></div>)}</div>
+                : <ParticipantList players={participants} guildMembers={guildMembers} onRemove={() => {}} settings={auctionSettings} />
               }
             </section>
           </div>
@@ -1554,6 +1615,93 @@ function AuctionScrimPage({
             </div>
           </aside>
         </div>
+
+        {/* 더미 데이터 모달 */}
+        {dummyOpen && (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 px-4">
+            <div className="val-card max-h-[90vh] w-full max-w-2xl overflow-y-auto p-5 shadow-2xl">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-black text-white">🧪 더미 데이터 추가</h2>
+                  <p className="mt-0.5 text-xs text-[#7b8a96]">테스트용 가상 참가자를 추가합니다. 디스코드 이름이 같으면 기존 유저로 처리됩니다.</p>
+                </div>
+                <button type="button" onClick={() => setDummyOpen(false)}
+                  className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-3 py-2 text-xs font-black text-[#9aa8b3] hover:border-[#ff4655]/50 hover:text-white">
+                  닫기
+                </button>
+              </div>
+              <div className="space-y-3">
+                {dummyRows.map((row, index) => (
+                  <div key={index} className="rounded border border-[#2a3540] bg-[#0b141c] p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-black text-[#7b8a96]">참가자 {index + 1}</span>
+                      {dummyRows.length > 1 && (
+                        <button type="button" onClick={() => setDummyRows((prev) => prev.filter((_, i) => i !== index))}
+                          className="text-[11px] text-[#ff4655] hover:text-white">삭제</button>
+                      )}
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">디스코드 이름 <span className="text-[#ff4655]">*</span></label>
+                        <input value={row.discordName} onChange={(e) => setDummyRow(index, { discordName: e.target.value })}
+                          placeholder="예: 플레이어닉네임"
+                          className="w-full rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945] placeholder:text-[#56636f]" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">라이엇 ID</label>
+                        <input value={row.riotId} onChange={(e) => setDummyRow(index, { riotId: e.target.value })}
+                          placeholder="예: 닉네임#KR1"
+                          className="w-full rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 font-mono text-sm font-bold text-white outline-none focus:border-[#f6c945] placeholder:text-[#56636f]" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">티어</label>
+                        <select value={row.tierId} onChange={(e) => setDummyRow(index, { tierId: Number(e.target.value) })}
+                          className="w-full rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]">
+                          {AUCTION_TIER_OPTIONS.map((t) => (
+                            <option key={t.id} value={t.id}>{t.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">역할군</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {AUCTION_DUMMY_ROLES.map((role) => (
+                            <button key={role} type="button"
+                              onClick={() => setDummyRow(index, { valorantRole: row.valorantRole === role ? "" : role })}
+                              className={`rounded px-2.5 py-1 text-xs font-black transition-colors ${row.valorantRole === role ? "bg-[#f6c945] text-[#0b141c]" : "border border-[#2a3540] bg-[#111c24] text-[#9aa8b3] hover:border-[#f6c945]/50"}`}>
+                              {role}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">모스트 3 요원 <span className="font-normal text-[#56636f]">(쉼표로 구분, 예: 제트,오멘,레이나)</span></label>
+                        <input value={row.favoriteAgents} onChange={(e) => setDummyRow(index, { favoriteAgents: e.target.value })}
+                          placeholder="예: 제트,오멘,레이나"
+                          className="w-full rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945] placeholder:text-[#56636f]" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={() => setDummyRows((prev) => [...prev, auctionEmptyRow()])}
+                disabled={dummyRows.length >= 20}
+                className="mt-3 w-full rounded border border-dashed border-[#2a3540] py-2 text-xs font-black text-[#7b8a96] hover:border-[#f6c945]/50 hover:text-[#f6c945] disabled:opacity-40">
+                + 참가자 추가
+              </button>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setDummyOpen(false)}
+                  className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-5 py-2 text-sm font-black text-[#9aa8b3] hover:border-[#ff4655]/50 hover:text-white">
+                  취소
+                </button>
+                <button type="button" onClick={() => void submitDummy()} disabled={dummyAdding}
+                  className="val-btn bg-[#f6c945] px-5 py-2 text-sm font-black text-[#0b141c] disabled:opacity-50">
+                  {dummyAdding ? "추가 중..." : "추가"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1794,10 +1942,12 @@ function ParticipantList({
   players,
   guildMembers,
   onRemove,
+  settings,
 }: {
   players: ScrimPlayer[];
   guildMembers: GuildMemberOption[];
   onRemove: (playerId: string) => void;
+  settings?: ScrimDetailSettings;
 }) {
   const [agentPortraits, setAgentPortraits] = useState<Record<string, string>>({});
 
@@ -1818,19 +1968,35 @@ function ParticipantList({
     return () => { cancelled = true; };
   }, []);
 
+  const showRiot = settings?.showRiotNickname !== false;
+  const showTier = settings?.showRankTier !== false;
+  const showRole = settings?.showValorantRole !== false;
+  const showAgents = settings?.showFavoriteAgents !== false;
+
+  const gridCols = [
+    "minmax(150px,1.15fr)",
+    showRiot ? "minmax(170px,1.05fr)" : null,
+    showTier ? "86px" : null,
+    "66px",
+    showRole ? "86px" : null,
+    showAgents ? "minmax(86px,0.65fr)" : null,
+    "28px",
+  ].filter(Boolean).join(" ");
+
   if (players.length === 0) return <EmptyState text="참가자가 없습니다." />;
 
   return (
     <div className="overflow-hidden rounded border border-[#2a3540] bg-[#0b141c]/50">
       <div className="overflow-x-auto">
-        <div className="min-w-[720px]">
-          <div className="grid grid-cols-[minmax(150px,1.15fr)_minmax(170px,1.05fr)_86px_66px_86px_minmax(86px,0.65fr)_28px] items-center gap-1.5 border-b border-[#2a3540] bg-[#0f1923] px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]">
+        <div style={{ minWidth: "400px" }}>
+          <div className="items-center gap-1.5 border-b border-[#2a3540] bg-[#0f1923] px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]"
+            style={{ display: "grid", gridTemplateColumns: gridCols }}>
             <div>Player</div>
-            <div>Riot ID</div>
-            <div>Tier</div>
+            {showRiot && <div>Riot ID</div>}
+            {showTier && <div>Tier</div>}
             <div className="text-right">KD</div>
-            <div>Role</div>
-            <div>Agents</div>
+            {showRole && <div>Role</div>}
+            {showAgents && <div>Agents</div>}
             <div />
           </div>
           <div className="divide-y divide-[#1f2d38]">
@@ -1841,6 +2007,8 @@ function ParticipantList({
                 guildMembers={guildMembers}
                 agentPortraits={agentPortraits}
                 onRemove={() => onRemove(player.id)}
+                settings={settings}
+                gridCols={gridCols}
               />
             ))}
           </div>
@@ -1855,11 +2023,15 @@ function ParticipantRow({
   guildMembers,
   agentPortraits,
   onRemove,
+  settings,
+  gridCols,
 }: {
   player: ScrimPlayer;
   guildMembers: GuildMemberOption[];
   agentPortraits: Record<string, string>;
   onRemove: () => void;
+  settings?: ScrimDetailSettings;
+  gridCols?: string;
 }) {
   const displayName = resolveServerNick(player.user.id, guildMembers, player.user.name) || "이름 없음";
   const riotNames = player.user.riotAccounts.map((account) => `${account.region.toUpperCase()} · ${account.gameName}#${account.tagLine}`);
@@ -1868,6 +2040,11 @@ function ParticipantRow({
   const agents = parseAgents(player.user.favoriteAgents);
   const kd = player.kdSummary;
 
+  const showRiot = settings?.showRiotNickname !== false;
+  const showTier = settings?.showRankTier !== false;
+  const showRole = settings?.showValorantRole !== false;
+  const showAgents = settings?.showFavoriteAgents !== false;
+
   return (
     <div
       draggable
@@ -1875,7 +2052,8 @@ function ParticipantRow({
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", player.id);
       }}
-      className="grid cursor-grab grid-cols-[minmax(150px,1.15fr)_minmax(170px,1.05fr)_86px_66px_86px_minmax(86px,0.65fr)_28px] items-center gap-1.5 px-2 py-1.5 transition hover:bg-[#13212b] active:cursor-grabbing"
+      className="cursor-grab items-center gap-1.5 px-2 py-1.5 transition hover:bg-[#13212b] active:cursor-grabbing"
+      style={{ display: "grid", gridTemplateColumns: gridCols ?? "minmax(150px,1.15fr) minmax(170px,1.05fr) 86px 66px 86px minmax(86px,0.65fr) 28px" }}
     >
       <div className="flex min-w-0 items-center gap-1.5">
         {player.user.image ? (
@@ -1888,14 +2066,18 @@ function ParticipantRow({
           <div className="text-[10px] font-bold text-[#52616d]">대기 참가자</div>
         </div>
       </div>
-      <div className="min-w-0 truncate text-xs font-bold text-[#9aa8b3]">
-        {riotNames.join(" / ") || "Riot 계정 미연동"}
-      </div>
-      <div className="truncate">
-        <span className="rounded bg-[#ff4655]/12 px-1.5 py-0.5 text-[10px] font-black text-[#ff8a95]">
-          {primaryTier}
-        </span>
-      </div>
+      {showRiot && (
+        <div className="min-w-0 truncate text-xs font-bold text-[#9aa8b3]">
+          {riotNames.join(" / ") || "Riot 계정 미연동"}
+        </div>
+      )}
+      {showTier && (
+        <div className="truncate">
+          <span className="rounded bg-[#ff4655]/12 px-1.5 py-0.5 text-[10px] font-black text-[#ff8a95]">
+            {primaryTier}
+          </span>
+        </div>
+      )}
       <div className="text-right">
         {kd ? (
           <div>
@@ -1908,39 +2090,43 @@ function ParticipantRow({
           <span className="text-xs font-bold text-[#52616d]">-</span>
         )}
       </div>
-      <div className="flex min-w-0 flex-wrap gap-1">
-        {roleLabels.length > 0 ? (
-          roleLabels.slice(0, 2).map((role) => (
-            <span key={role} className="rounded bg-[#24313c] px-1.5 py-0.5 text-[10px] font-bold text-[#c8d3db]">
-              {role}
-            </span>
-          ))
-        ) : (
-          <span className="text-xs font-bold text-[#52616d]">-</span>
-        )}
-      </div>
-      <div className="flex min-w-0 items-center gap-1">
-        {agents.length > 0 ? (
-          agents.slice(0, 3).map((agent) => {
-            const portrait = agentPortraits[normalizeAgentKey(agent)];
-            return portrait ? (
-              <img
-                key={agent}
-                src={portrait}
-                alt={agent}
-                title={agent}
-                className="h-6 w-6 rounded bg-[#24313c] object-cover object-top ring-1 ring-white/10"
-              />
-            ) : (
-              <span key={agent} title={agent} className="flex h-6 w-6 items-center justify-center rounded bg-[#24313c] text-[10px] font-black text-[#9aa8b3] ring-1 ring-white/10">
-                {agent.slice(0, 1)}
+      {showRole && (
+        <div className="flex min-w-0 flex-wrap gap-1">
+          {roleLabels.length > 0 ? (
+            roleLabels.slice(0, 2).map((role) => (
+              <span key={role} className="rounded bg-[#24313c] px-1.5 py-0.5 text-[10px] font-bold text-[#c8d3db]">
+                {role}
               </span>
-            );
-          })
-        ) : (
-          <span className="text-xs font-bold text-[#52616d]">-</span>
-        )}
-      </div>
+            ))
+          ) : (
+            <span className="text-xs font-bold text-[#52616d]">-</span>
+          )}
+        </div>
+      )}
+      {showAgents && (
+        <div className="flex min-w-0 items-center gap-1">
+          {agents.length > 0 ? (
+            agents.slice(0, 3).map((agent) => {
+              const portrait = agentPortraits[normalizeAgentKey(agent)];
+              return portrait ? (
+                <img
+                  key={agent}
+                  src={portrait}
+                  alt={agent}
+                  title={agent}
+                  className="h-6 w-6 rounded bg-[#24313c] object-cover object-top ring-1 ring-white/10"
+                />
+              ) : (
+                <span key={agent} title={agent} className="flex h-6 w-6 items-center justify-center rounded bg-[#24313c] text-[10px] font-black text-[#9aa8b3] ring-1 ring-white/10">
+                  {agent.slice(0, 1)}
+                </span>
+              );
+            })
+          ) : (
+            <span className="text-xs font-bold text-[#52616d]">-</span>
+          )}
+        </div>
+      )}
       <button
         type="button"
         onClick={(event) => {
@@ -1956,7 +2142,7 @@ function ParticipantRow({
   );
 }
 
-function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename, guildMembers = [] }: { teamIds: string[]; teamNames: Record<string, string>; players: ScrimPlayer[]; onDrop: (playerId: string, teamId: string) => void; onRename: (teamId: string, name: string) => void; guildMembers?: GuildMemberOption[] }) {
+function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename, guildMembers = [], settings }: { teamIds: string[]; teamNames: Record<string, string>; players: ScrimPlayer[]; onDrop: (playerId: string, teamId: string) => void; onRename: (teamId: string, name: string) => void; guildMembers?: GuildMemberOption[]; settings?: ScrimDetailSettings }) {
   return (
     <div className="val-card p-4">
       <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">Team Captains</div>
@@ -1966,7 +2152,7 @@ function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename, guildM
           return (
             <div key={tId} className="rounded border border-[#2a3540] bg-[#0f1923]/80 p-3" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDrop(id, tId); }}>
               <input defaultValue={teamNames[tId] ?? getDefaultTeamName(i)} onBlur={(e) => onRename(tId, e.target.value.trim())} className="mb-2 w-full rounded border border-[#384653] bg-[#111c24] px-2 py-1 text-xs font-black text-white outline-none focus:border-[#ff4655]" />
-              {captain ? <PlayerCard player={captain} compact guildMembers={guildMembers} /> : <EmptyState text="팀장 슬롯" small />}
+              {captain ? <PlayerCard player={captain} compact guildMembers={guildMembers} settings={settings} /> : <EmptyState text="팀장 슬롯" small />}
             </div>
           );
         })}
@@ -1975,7 +2161,7 @@ function TeamCaptainRail({ teamIds, teamNames, players, onDrop, onRename, guildM
   );
 }
 
-function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename, onRemove, guildMembers = [] }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain?: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void; onRemove?: (id: string) => void; guildMembers?: GuildMemberOption[] }) {
+function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDropMember, onRename, onRemove, guildMembers = [], settings }: { teamId: string; name: string; color: string; captain?: ScrimPlayer; members: ScrimPlayer[]; onDropCaptain?: (id: string) => void; onDropMember: (id: string) => void; onRename: (name: string) => void; onRemove?: (id: string) => void; guildMembers?: GuildMemberOption[]; settings?: ScrimDetailSettings }) {
   return (
     <article className="val-card overflow-hidden">
       <div className="border-b border-[#2a3540] bg-[#1d2732] px-5 py-4" style={{ borderTop: `3px solid ${color}` }}>
@@ -1986,11 +2172,11 @@ function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDro
       </div>
       <div className="grid gap-4 p-4">
         {onDropCaptain && (
-          <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} guildMembers={guildMembers} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
+          <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} guildMembers={guildMembers} settings={settings} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
         )}
         <DropAreaMini label="팀원" onDrop={onDropMember}>
           <div className="grid gap-2">
-            {members.map((p) => <PlayerCard key={p.id} player={p} guildMembers={guildMembers} onRemove={onRemove ? () => onRemove(p.id) : undefined} />)}
+            {members.map((p) => <PlayerCard key={p.id} player={p} guildMembers={guildMembers} settings={settings} onRemove={onRemove ? () => onRemove(p.id) : undefined} />)}
             {members.length === 0 && <EmptyState text="팀원 배치" />}
           </div>
         </DropAreaMini>
@@ -2016,19 +2202,27 @@ function DropAreaMini({ label, children, onDrop }: { label: string; children: Re
   );
 }
 
-function PlayerCard({ player, compact = false, onRemove, guildMembers = [] }: { player: ScrimPlayer; compact?: boolean; onRemove?: () => void; guildMembers?: GuildMemberOption[] }) {
+function PlayerCard({ player, compact = false, onRemove, guildMembers = [], settings }: { player: ScrimPlayer; compact?: boolean; onRemove?: () => void; guildMembers?: GuildMemberOption[]; settings?: ScrimDetailSettings }) {
   const riotNames = player.user.riotAccounts.map((a) => `${a.region.toUpperCase()} · ${a.gameName}#${a.tagLine}`);
   const tiers = player.user.riotAccounts.map((a) => a.cachedTierName).filter(Boolean);
   const agents = parseAgents(player.user.favoriteAgents);
   const roleLabels = toRoleLabels(player.user.valorantRole);
   const kdSummary = player.kdSummary;
+
+  const showDiscord = settings?.showDiscordNickname !== false;
+  const showRiot = settings?.showRiotNickname !== false;
+  const showTier = settings?.showRankTier !== false;
+  const showRole = settings?.showValorantRole !== false;
+  const showAgents = settings?.showFavoriteAgents !== false;
+
   return (
-    <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab flex flex-col h-full min-h-[140px] rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
+    <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab flex flex-col h-full min-h-[120px] rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
       <div className="flex items-center gap-3">
         {player.user.image ? <img src={player.user.image} alt="" className={compact ? "h-9 w-9 rounded-full object-cover" : "h-12 w-12 rounded object-cover"} /> : <div className={compact ? "h-9 w-9 rounded-full bg-[#24313c]" : "h-12 w-12 rounded bg-[#24313c]"} />}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-black text-white">{resolveServerNick(player.user.id, guildMembers, player.user.name)}</div>
-          <div className="truncate text-[11px] text-[#7b8a96]">{riotNames.join(" · ") || "Riot 계정 미연동"}</div>
+          {showDiscord && <div className="truncate text-sm font-black text-white">{resolveServerNick(player.user.id, guildMembers, player.user.name)}</div>}
+          {showRiot && <div className="truncate text-[11px] text-[#7b8a96]">{riotNames.join(" · ") || "Riot 계정 미연동"}</div>}
+          {!showDiscord && !showRiot && <div className="truncate text-sm font-black text-white">{resolveServerNick(player.user.id, guildMembers, player.user.name)}</div>}
         </div>
         {onRemove && (
           <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(); }} className="ml-1 flex-shrink-0 rounded p-1 text-[#7b8a96] hover:bg-[#ff4655]/20 hover:text-[#ff4655]" title="참가자 제거">
@@ -2039,19 +2233,15 @@ function PlayerCard({ player, compact = false, onRemove, guildMembers = [] }: { 
       <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
         {kdSummary && (
           <span
-            className={`rounded px-2 py-0.5 font-black ${
-              kdSummary.source === "scrim"
-                ? "bg-[#00e7c2]/12 text-[#00e7c2]"
-                : "bg-[#7c5cff]/14 text-[#b8a7ff]"
-            }`}
+            className={`rounded px-2 py-0.5 font-black ${kdSummary.source === "scrim" ? "bg-[#00e7c2]/12 text-[#00e7c2]" : "bg-[#7c5cff]/14 text-[#b8a7ff]"}`}
             title={`${kdSummary.kills}킬 ${kdSummary.deaths}데스 · ${kdSummary.matches}경기`}
           >
             {kdSummary.source === "scrim" ? "내전" : "랭크"} KD {kdSummary.kd.toFixed(2)}
           </span>
         )}
-        {tiers.slice(0, 2).map((t) => <span key={t} className="rounded bg-[#ff4655]/12 px-2 py-0.5 font-bold text-[#ff8a95]">{t}</span>)}
-        {roleLabels.map((r) => <span key={r} className="rounded bg-[#24313c] px-2 py-0.5 font-bold text-[#c8d3db]">{r}</span>)}
-        {agents.slice(0, 3).map((a) => <span key={a} className="rounded bg-[#0b141c] px-2 py-0.5 font-bold text-[#9aa8b3]">{a}</span>)}
+        {showTier && tiers.slice(0, 2).map((t) => <span key={t} className="rounded bg-[#ff4655]/12 px-2 py-0.5 font-bold text-[#ff8a95]">{t}</span>)}
+        {showRole && roleLabels.map((r) => <span key={r} className="rounded bg-[#24313c] px-2 py-0.5 font-bold text-[#c8d3db]">{r}</span>)}
+        {showAgents && agents.slice(0, 3).map((a) => <span key={a} className="rounded bg-[#0b141c] px-2 py-0.5 font-bold text-[#9aa8b3]">{a}</span>)}
       </div>
     </div>
   );

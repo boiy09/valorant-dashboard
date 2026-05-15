@@ -333,7 +333,7 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
         data: { kills: kda.kills, deaths: kda.deaths, assists: kda.assists },
       });
     }
-  });
+  }, { timeout: 15000 });
 
   if (kdaSnapshot.length > 0) {
     const existingGames = await prisma.$queryRawUnsafe<Array<{ id: string }>>(

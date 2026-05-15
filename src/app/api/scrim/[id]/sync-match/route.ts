@@ -132,19 +132,14 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
     ? [sessionInPlayers, ...playerPuuids.filter((p) => p.userId !== sessionUserId), ...extraCandidates]
     : [...extraCandidates, ...playerPuuids];
 
-  // 여러 대표 계정으로 최근 커스텀 매치 조회 (스코어보드 포함)
-  const qRegion = (orderedCandidates[0]?.region ?? "KR") === "AP" ? "ap" : "kr";
+  const qRegion = (playerPuuids[0]?.region ?? "KR") === "AP" ? "ap" : "kr";
 
-  // API 폴백 체인: Private Riot API (ssid 자동갱신) → Riot Official API → Henrik API
-  // Henrik 429는 API 키 단위 제한이므로 감지 시 즉시 중단
-  let recentMatches: MatchStats[] = [];
-  let lastFetchError = "";
-  let rateLimited = false;
-
-  outer: for (const candidate of orderedCandidates.slice(0, 5)) {
-    // 1) Private Riot API — ssid로 만료 토큰 자동 갱신 후 시도
+  // 유효한 Private API 토큰 확보 (관리자/세션유저 우선, 참가자 순)
+  // 토큰을 가진 누구의 것이든 참가자 PUUID 조회에 사용 가능
+  let sharedTokens: { accessToken: string; entitlementsToken: string } | null = null;
+  for (const candidate of orderedCandidates.slice(0, 5)) {
     try {
-      const tokens = await ensureValidTokens(
+      const t = await ensureValidTokens(
         candidate.puuid,
         candidate.accessToken ?? null,
         candidate.entitlementsToken ?? null,
@@ -152,23 +147,37 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
         candidate.authCookie ?? null,
         candidate.tokenExpiresAt ?? null,
       );
-      if (tokens) {
+      if (t) { sharedTokens = t; break; }
+    } catch { /* 다음 후보로 */ }
+  }
+
+  // API 폴백 체인: Private Riot API → Riot Official API → Henrik API
+  // Private API는 sharedTokens로 참가자 PUUID를 조회 (토큰 소유자와 PUUID 불일치 허용)
+  // Henrik 429는 API 키 단위 제한이므로 감지 시 즉시 중단
+  let recentMatches: MatchStats[] = [];
+  let lastFetchError = "";
+  let rateLimited = false;
+
+  outer: for (const candidate of playerPuuids.slice(0, 3)) {
+    // 1) Private Riot API — 유효 토큰으로 참가자 PUUID 조회
+    if (sharedTokens) {
+      try {
         const privateMatches = await getPrivateRecentMatches(
           candidate.puuid,
           candidate.region,
-          tokens.accessToken,
-          tokens.entitlementsToken,
+          sharedTokens.accessToken,
+          sharedTokens.entitlementsToken,
           { count: 20 }
         );
         if (privateMatches.length > 0) {
           recentMatches = privateMatches;
           break outer;
         }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn("[sync-match] Private API 실패:", candidate.puuid, msg);
+        lastFetchError = msg;
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn("[sync-match] Private API 실패:", candidate.puuid, msg);
-      lastFetchError = msg;
     }
 
     // 2) Riot Official API (RIOT_API_KEY 환경변수 있을 때)

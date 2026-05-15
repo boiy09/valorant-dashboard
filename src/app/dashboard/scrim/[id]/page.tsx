@@ -1324,6 +1324,25 @@ function AuctionScrimPage({
 
   const auctionSettings = useMemo(() => parseSettings(scrim.settings), [scrim.settings]);
 
+  // 에이전트 초상화
+  const [agentPortraits, setAgentPortraits] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/valorant/agents", { cache: "force-cache" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((payload: { agents?: AgentOption[] } | null) => {
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        for (const agent of payload?.agents ?? []) {
+          const image = agent.portrait || agent.icon;
+          if (agent.name && image) next[normalizeAgentKey(agent.name)] = image;
+        }
+        setAgentPortraits(next);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   // 설정 단계 상태
   const [captainSelections, setCaptainSelections] = useState<Record<string, number>>({}); // userId → points
   const [defaultPoints, setDefaultPoints] = useState(1000);
@@ -1761,31 +1780,47 @@ function AuctionScrimPage({
                 대기 {queue.length}명 · 유찰 {failedQueue.length}명
               </div>
 
-              {currentPlayer ? (
-                <div className="mt-4 flex items-start gap-4">
-                  {currentPlayer.user.image
-                    ? <img src={currentPlayer.user.image} alt="" className="h-20 w-20 rounded-lg object-cover" />
-                    : <div className="h-20 w-20 rounded-lg bg-[#24313c]" />
-                  }
-                  <div className="min-w-0 flex-1">
-                    <div className="text-2xl font-black text-white">{resolveServerNick(currentPlayer.user.id, guildMembers, currentPlayer.user.name) ?? "이름 없음"}</div>
-                    {currentPlayer.user.riotAccounts.map((a) => (
-                      <div key={a.gameName} className="mt-1 text-sm text-[#9aa8b3]">
-                        {a.region.toUpperCase()} · {a.gameName}#{a.tagLine}
-                        {a.cachedTierName && <span className="ml-2 rounded bg-[#ff4655]/12 px-2 py-0.5 text-xs font-bold text-[#ff8a95]">{a.cachedTierName}</span>}
+              {currentPlayer ? (() => {
+                const showRiot = auctionSettings.showRiotNickname !== false;
+                const showTier = auctionSettings.showRankTier !== false;
+                const showRole = auctionSettings.showValorantRole !== false;
+                const showAgents = auctionSettings.showFavoriteAgents !== false;
+                const agents = parseAgents(currentPlayer.user.favoriteAgents).slice(0, 3);
+                const roleLabels = toRoleLabels(currentPlayer.user.valorantRole);
+                return (
+                  <div className="mt-4 flex items-start gap-4">
+                    {currentPlayer.user.image
+                      ? <img src={currentPlayer.user.image} alt="" className="h-20 w-20 rounded-lg object-cover" />
+                      : <div className="h-20 w-20 rounded-lg bg-[#24313c]" />
+                    }
+                    <div className="min-w-0 flex-1">
+                      <div className="text-2xl font-black text-white">{resolveServerNick(currentPlayer.user.id, guildMembers, currentPlayer.user.name) ?? "이름 없음"}</div>
+                      {showRiot && currentPlayer.user.riotAccounts.map((a) => (
+                        <div key={a.gameName} className="mt-1 text-sm text-[#9aa8b3]">
+                          {a.region.toUpperCase()} · {a.gameName}#{a.tagLine}
+                          {showTier && a.cachedTierName && <span className="ml-2 rounded bg-[#ff4655]/12 px-2 py-0.5 text-xs font-bold text-[#ff8a95]">{a.cachedTierName}</span>}
+                        </div>
+                      ))}
+                      {!showRiot && showTier && currentPlayer.user.riotAccounts.map((a) => a.cachedTierName && (
+                        <span key={a.gameName} className="mt-1 mr-1 inline-block rounded bg-[#ff4655]/12 px-2 py-0.5 text-xs font-bold text-[#ff8a95]">{a.cachedTierName}</span>
+                      ))}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {showRole && roleLabels.map((r) => (
+                          <span key={r} className="rounded bg-[#24313c] px-2 py-0.5 text-[11px] font-bold text-[#c8d3db]">{r}</span>
+                        ))}
+                        {showAgents && agents.map((a) => {
+                          const portrait = agentPortraits[normalizeAgentKey(a)];
+                          return portrait ? (
+                            <img key={a} src={portrait} alt={a} title={a} className="h-9 w-9 rounded bg-[#24313c] object-cover object-top ring-1 ring-white/10" />
+                          ) : (
+                            <span key={a} title={a} className="flex h-9 w-9 items-center justify-center rounded bg-[#24313c] text-[11px] font-black text-[#9aa8b3] ring-1 ring-white/10">{a.slice(0, 1)}</span>
+                          );
+                        })}
                       </div>
-                    ))}
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {toRoleLabels(currentPlayer.user.valorantRole).map((r) => (
-                        <span key={r} className="rounded bg-[#24313c] px-2 py-0.5 text-[11px] font-bold text-[#c8d3db]">{r}</span>
-                      ))}
-                      {parseAgents(currentPlayer.user.favoriteAgents).slice(0, 3).map((a) => (
-                        <span key={a} className="rounded bg-[#0b141c] px-2 py-0.5 text-[11px] font-bold text-[#9aa8b3]">{a}</span>
-                      ))}
                     </div>
                   </div>
-                </div>
-              ) : (
+                );
+              })() : (
                 <div className="mt-4 py-8 text-center text-[#7b8a96]">경매 대상자를 불러오는 중...</div>
               )}
             </section>

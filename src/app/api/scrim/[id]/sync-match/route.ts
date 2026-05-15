@@ -163,7 +163,20 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
   ];
 
   outer: for (const candidate of orderedParticipants.slice(0, 3)) {
-    // 1) Private Riot API — 이 PUUID의 소유자 토큰만 사용
+    // 1) Riot Official API — 먼저 시도 (20경기, 가장 안정적)
+    try {
+      const officialMatches = await getRiotOfficialRecentMatches(candidate.puuid, qRegion, 20);
+      if (officialMatches.length > 0) {
+        recentMatches = officialMatches;
+        break outer;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[sync-match] Official API 실패:", candidate.puuid.slice(0, 8), msg);
+      lastFetchError = msg;
+    }
+
+    // 2) Private Riot API — 이 PUUID의 소유자 토큰만 사용
     const privateTokens = resolvePrivateTokens(candidate, sharedTokens, tokenHolderPuuid);
     if (privateTokens) {
       try {
@@ -183,19 +196,6 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
         console.warn("[sync-match] Private API 실패:", candidate.puuid.slice(0, 8), msg);
         lastFetchError = msg;
       }
-    }
-
-    // 2) Riot Official API
-    try {
-      const officialMatches = await getRiotOfficialRecentMatches(candidate.puuid, qRegion, 10);
-      if (officialMatches.length > 0) {
-        recentMatches = officialMatches;
-        break outer;
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn("[sync-match] Official API 실패:", candidate.puuid.slice(0, 8), msg);
-      lastFetchError = msg;
     }
 
     // 3) Henrik API 폴백 — 429 즉시 중단

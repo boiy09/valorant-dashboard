@@ -120,7 +120,8 @@ export async function GET(req: NextRequest) {
     auction &&
     (auction.phase === "auction" || auction.phase === "reauction") &&
     auction.auctionStartAt &&
-    auction.currentUserId
+    auction.currentUserId &&
+    auction.auctionDuration > 0
   ) {
     const elapsed = (Date.now() - new Date(auction.auctionStartAt).getTime()) / 1000;
     if (elapsed >= auction.auctionDuration) {
@@ -255,9 +256,80 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+  const action = typeof body.action === "string" ? body.action : null;
   const bidAmount = typeof body.bidAmount === "number" ? body.bidAmount : 0;
 
   if (!sessionId) return Response.json({ error: "sessionId가 필요합니다." }, { status: 400 });
+
+  // 수동 낙찰/유찰 처리 (타이머 없을 때 관리자 전용)
+  if (action === "resolve" || action === "pass") {
+    if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+    const auction = await getAuction(sessionId);
+    if (!auction) return Response.json({ error: "경매 상태를 찾을 수 없습니다." }, { status: 404 });
+    if (auction.phase !== "auction" && auction.phase !== "reauction") {
+      return Response.json({ error: "경매가 진행 중이 아닙니다." }, { status: 400 });
+    }
+    if (!auction.currentUserId) return Response.json({ error: "경매 중인 참가자가 없습니다." }, { status: 400 });
+
+    const bids = parseJson<Record<string, number>>(auction.currentBids, {});
+    const entries = Object.entries(bids).filter(([, v]) => v > 0);
+    const queue = parseJson<string[]>(auction.queue, []);
+    const failedQueue = parseJson<string[]>(auction.failedQueue, []);
+    const scrim = await prisma.scrimSession.findFirst({ where: { id: sessionId } });
+
+    if (action === "resolve" && entries.length > 0) {
+      // 낙찰: 최고가 팀장에게 배정
+      const [winnerId, winnerBid] = entries.sort((a, b) => b[1] - a[1])[0];
+      const points = parseJson<Record<string, number>>(auction.captainPoints, {});
+      points[winnerId] = (points[winnerId] ?? 0) - winnerBid;
+
+      if (scrim) {
+        const captainPoints = parseJson<Record<string, number>>(auction.captainPoints, {});
+        const captainIds = Object.keys(captainPoints);
+        const captainIndex = captainIds.indexOf(winnerId);
+        const teamId = `team_${String.fromCharCode(97 + captainIndex)}`;
+        await prisma.scrimPlayer.updateMany({
+          where: { sessionId, userId: auction.currentUserId },
+          data: { team: teamId, role: "member" },
+        });
+      }
+
+      const nextUserId = queue[0] ?? null;
+      const isReauction = auction.phase === "reauction";
+      let nextPhase = auction.phase;
+      if (queue.length === 0) {
+        nextPhase = !isReauction && failedQueue.length > 0 ? "reauction" : "done";
+      }
+
+      const updated = await upsertAuction(sessionId, {
+        captainPoints: JSON.stringify(points),
+        queue: JSON.stringify(queue.slice(1)),
+        currentUserId: nextPhase === "done" ? null : (nextUserId ?? (failedQueue[0] ?? null)),
+        currentBids: "{}",
+        auctionStartAt: (nextUserId || failedQueue.length > 0) ? new Date() : null,
+        failedQueue: nextPhase === "reauction" ? JSON.stringify(failedQueue.slice(1)) : auction.failedQueue,
+        phase: nextPhase,
+      });
+      return Response.json({ success: true, auction: updated });
+    } else {
+      // 유찰 (action === "pass" 또는 낙찰이지만 입찰 없음)
+      const nextUserId = queue[0] ?? null;
+      let nextPhase = auction.phase;
+      if (queue.length === 0) {
+        nextPhase = failedQueue.length > 0 ? "reauction" : "done";
+      }
+      const updated = await upsertAuction(sessionId, {
+        failedQueue: JSON.stringify([...failedQueue, auction.currentUserId]),
+        queue: JSON.stringify(queue.slice(1)),
+        currentUserId: nextPhase === "done" ? null : (nextUserId ?? (failedQueue[0] ?? null)),
+        currentBids: "{}",
+        auctionStartAt: nextUserId ? new Date() : null,
+        phase: nextPhase,
+      });
+      return Response.json({ success: true, auction: updated });
+    }
+  }
+
   if (bidAmount <= 0) return Response.json({ error: "입찰 금액은 1 이상이어야 합니다." }, { status: 400 });
 
   const auction = await getAuction(sessionId);

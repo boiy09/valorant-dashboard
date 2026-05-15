@@ -81,12 +81,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // create the scrim session
+  // create the scrim session — imported scrims are historical, mark as done
   const scrim = await prisma.scrimSession.create({
     data: {
       guildId: guild.id,
       title: title?.trim() || "불러온 내전",
-      status: "waiting",
+      status: "done",
       createdBy: session.user.id,
       recruitmentChannelId: channelId.trim(),
       recruitmentMessageIds: JSON.stringify([messageId.trim()]),

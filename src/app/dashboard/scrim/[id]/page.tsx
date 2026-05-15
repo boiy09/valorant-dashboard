@@ -1560,6 +1560,7 @@ function AuctionScrimPage({
   const bidLog = parseJson<AuctionLogEntry[]>(auction?.bidLog, []);
   const auditLog = parseJson<AuctionLogEntry[]>(auction?.auditLog, []);
   const auctionPicks = useMemo(() => auction?.picks ?? [], [auction?.picks]);
+  const auctionBidHistory = useMemo(() => auction?.bidHistory ?? [], [auction?.bidHistory]);
   const captainIds = Object.keys(captainPoints);
   const inviteCaptainIds = captainIds.length > 0 ? captainIds : Object.keys(captainSelections);
 
@@ -1958,6 +1959,16 @@ function AuctionScrimPage({
     const tId = `team_${String.fromCharCode(97 + i)}`;
     teamAssignments[tId] = playersForAuctionTeam(tId, cId);
   });
+  const currentBidRows = Object.entries(currentBids)
+    .map(([captainId, amount]) => ({ captainId, amount }))
+    .filter((row) => row.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+  const highestBid = currentBidRows[0]?.amount ?? 0;
+  const highestCaptainId = currentBidRows[0]?.captainId ?? null;
+  const currentLotBidHistory = auction.currentUserId
+    ? auctionBidHistory.filter((bid) => bid.lotUserId === auction.currentUserId).slice(-8).reverse()
+    : [];
+  const showLegacyAuctionPanel = false;
 
   return (
     <div className="mx-auto max-w-[1200px]">
@@ -1998,6 +2009,138 @@ function AuctionScrimPage({
 
       {/* 현재 경매 중인 참가자 */}
       {(auction.phase === "auction" || auction.phase === "reauction") && (
+        <div className="mb-5 rounded-none border border-[#2a4b5d] bg-[#0b3346] p-3 text-white shadow-2xl shadow-black/30">
+          {auction.auctionDuration > 0 && (
+            <div className="mb-3 overflow-hidden bg-[#123f54]" style={{ height: 8 }}>
+              <div className="h-full transition-all duration-200" style={{ width: `${timerPct}%`, backgroundColor: timerColor }} />
+            </div>
+          )}
+          <div className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)_360px]">
+            <section className="space-y-2">
+              {captainIds.map((cId, i) => {
+                const tId = `team_${String.fromCharCode(97 + i)}`;
+                const captain = playerMap.get(cId);
+                const color = TEAM_COLORS[i % TEAM_COLORS.length];
+                const teamMembers = playersForAuctionTeam(tId, cId).slice(0, 5);
+                const slots = Array.from({ length: 5 }, (_, slotIndex) => teamMembers[slotIndex] ?? null);
+                return (
+                  <div key={cId} className="border border-[#27546a] bg-[#123f54]">
+                    <div className="flex items-center justify-between border-b border-[#27546a] bg-[#164a60] px-3 py-1.5">
+                      <div className="text-sm font-black" style={{ color }}>{getDefaultTeamName(i)}</div>
+                      <div className="bg-[#78eaff] px-3 py-0.5 text-sm font-black text-[#082838]">포인트 {(captainPoints[cId] ?? 0).toLocaleString()}</div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2 p-2">
+                      {slots.map((member, slotIndex) => {
+                        const pick = member ? auctionPicks.find((row) => row.userId === member.user.id) : null;
+                        const isCaptain = member?.user.id === cId;
+                        return (
+                          <div key={`${cId}-${slotIndex}`} className="min-h-[74px] bg-[#22323a] p-1 text-center">
+                            {member ? (
+                              <>
+                                {member.user.image ? <img src={member.user.image} alt="" className="mx-auto h-11 w-11 object-cover" /> : <div className="mx-auto flex h-11 w-11 items-center justify-center bg-[#314653] text-lg font-black">{(resolveServerNick(member.user.id, guildMembers, member.user.name) ?? "?").slice(0, 1)}</div>}
+                                <div className="mt-1 truncate text-[10px] font-black text-white">{resolveServerNick(member.user.id, guildMembers, member.user.name)}</div>
+                                <div className="text-[10px] font-black" style={{ color }}>{isCaptain ? "팀장" : pick ? `${pick.amount}P` : "멤버"}</div>
+                              </>
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-4xl font-black text-[#657179]">{slotIndex === 0 ? "C" : slotIndex === 1 ? "M" : "-"}</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="border-t border-[#27546a] px-3 py-1 text-[11px] font-bold text-[#b9d8e3]">
+                      팀장 {captain ? resolveServerNick(captain.user.id, guildMembers, captain.user.name) : "-"} · 현재 입찰 {(currentBids[cId] ?? 0).toLocaleString()}P
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+
+            <section className="grid content-start gap-3">
+              <div className="border border-[#27546a] bg-[#123f54] p-4">
+                <div className="mb-3 text-center text-lg font-black text-[#d9f6ff]">잔여포인트로 대전 선택</div>
+                <div className="border border-[#2d5a70] bg-[#0f2838] p-4">
+                  {currentPlayer ? (
+                    <div className="grid gap-4 sm:grid-cols-[150px_minmax(0,1fr)]">
+                      {currentPlayer.user.image ? <img src={currentPlayer.user.image} alt="" className="h-[150px] w-[150px] object-cover" /> : <div className="flex h-[150px] w-[150px] items-center justify-center bg-[#24313c] text-5xl font-black">?</div>}
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#78eaff]">GROUP / YOUR AGENT</div>
+                        <div className="mt-2 truncate text-3xl font-black text-white">{resolveServerNick(currentPlayer.user.id, guildMembers, currentPlayer.user.name)}</div>
+                        {currentPlayer.user.riotAccounts.map((a) => (
+                          <div key={a.gameName} className="mt-1 text-sm font-bold text-[#b9d8e3]">
+                            {a.region.toUpperCase()} · {a.gameName}#{a.tagLine}
+                            {a.cachedTierName && <span className="ml-2 text-[#78eaff]">{a.cachedTierName}</span>}
+                          </div>
+                        ))}
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                          <div className="bg-[#1c5368] p-3">
+                            <div className="text-[11px] font-black text-[#b9d8e3]">최고 입찰</div>
+                            <div className="text-3xl font-black text-[#ffd48b]">{highestBid.toLocaleString()}P</div>
+                          </div>
+                          <div className="bg-[#1c5368] p-3">
+                            <div className="text-[11px] font-black text-[#b9d8e3]">입찰 팀</div>
+                            <div className="truncate text-xl font-black text-white">{highestCaptainId ? resolveServerNick(highestCaptainId, guildMembers, playerMap.get(highestCaptainId)?.user.name) : "없음"}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-12 text-center text-sm font-bold text-[#b9d8e3]">현재 경매 매물이 없습니다.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border border-[#27546a] bg-[#123f54] p-3">
+                <div className="mb-2 text-sm font-black text-[#d9f6ff]">입찰 현황</div>
+                <div className="max-h-[116px] space-y-1 overflow-y-auto pr-1 custom-scrollbar">
+                  {currentLotBidHistory.length === 0 ? (
+                    <div className="bg-[#0f2838] px-3 py-3 text-center text-xs font-bold text-[#8eb2c0]">입찰 대기 중</div>
+                  ) : currentLotBidHistory.map((bid) => (
+                    <div key={bid.id} className="flex justify-between bg-[#0f2838] px-3 py-1.5 text-sm font-bold">
+                      <span className="truncate">{resolveServerNick(bid.captainId, guildMembers, playerMap.get(bid.captainId)?.user.name)}</span>
+                      <span className="text-[#ffd48b]">{bid.amount.toLocaleString()}P</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <aside className="space-y-3">
+              <div className="border border-[#27546a] bg-[#123f54]">
+                <div className="flex items-center justify-between bg-[#164a60] px-3 py-1.5 text-sm font-black text-[#d9f6ff]">
+                  <span>경매순서</span>
+                  <span>{queue.length}명</span>
+                </div>
+                <div className="grid grid-cols-3 gap-px bg-[#27546a] p-px">
+                  {[auction.currentUserId, ...queue].filter(Boolean).slice(0, 18).map((uid, index) => {
+                    const player = playerMap.get(uid as string);
+                    return (
+                      <div key={`${uid}-${index}`} className="bg-[#17272e] p-2 text-center">
+                        {player?.user.image ? <img src={player.user.image} alt="" className="mx-auto h-12 w-12 object-cover" /> : <div className="mx-auto h-12 w-12 bg-[#314653]" />}
+                        <div className="mt-1 truncate text-[11px] font-black text-white">{player ? resolveServerNick(player.user.id, guildMembers, player.user.name) : uid}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="border border-[#27546a] bg-[#123f54]">
+                <div className="bg-[#164a60] px-3 py-1.5 text-sm font-black text-[#d9f6ff]">유찰순서</div>
+                <div className="min-h-[92px] space-y-1 p-2">
+                  {failedQueue.length === 0 ? (
+                    <div className="py-8 text-center text-xs font-bold text-[#8eb2c0]">유찰자 없음</div>
+                  ) : failedQueue.map((uid) => {
+                    const player = playerMap.get(uid);
+                    return <div key={uid} className="bg-[#0f2838] px-3 py-2 text-sm font-bold text-white">{player ? resolveServerNick(player.user.id, guildMembers, player.user.name) : uid}</div>;
+                  })}
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      )}
+
+      {showLegacyAuctionPanel && (auction.phase === "auction" || auction.phase === "reauction") && (
         <div className="mb-5">
           {/* 타이머 바 */}
           {auction.auctionDuration > 0 && (
@@ -2006,7 +2149,43 @@ function AuctionScrimPage({
             </div>
           )}
 
-          <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+          <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)_380px]">
+            <section className="space-y-3">
+              {captainIds.map((cId, i) => {
+                const tId = `team_${String.fromCharCode(97 + i)}`;
+                const captain = playerMap.get(cId);
+                const color = TEAM_COLORS[i % TEAM_COLORS.length];
+                const teamMembers = playersForAuctionTeam(tId, cId);
+                return (
+                  <div key={cId} className="val-card p-4" style={{ borderTop: `4px solid ${color}` }}>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-black" style={{ color }}>{getDefaultTeamName(i)}</div>
+                        <div className="truncate text-sm font-black text-white">{captain ? resolveServerNick(captain.user.id, guildMembers, captain.user.name) : "팀장"}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-black text-white">{(captainPoints[cId] ?? 0).toLocaleString()}<span className="ml-1 text-xs text-[#7b8a96]">P</span></div>
+                        {(currentBids[cId] ?? 0) > 0 && <div className="text-xs font-bold text-[#f6c945]">입찰 {currentBids[cId].toLocaleString()}P</div>}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      {teamMembers.map((member) => {
+                        const pick = auctionPicks.find((row) => row.userId === member.user.id);
+                        return (
+                          <div key={member.id} className="flex items-center gap-2 rounded bg-[#0b141c]/80 px-2 py-1.5">
+                            {member.user.image ? <img src={member.user.image} alt="" className="h-6 w-6 rounded-full object-cover" /> : <div className="h-6 w-6 rounded-full bg-[#24313c]" />}
+                            <span className="min-w-0 flex-1 truncate text-xs font-bold text-[#dce7ef]">{resolveServerNick(member.user.id, guildMembers, member.user.name) ?? "이름 없음"}</span>
+                            {member.user.id === cId && <span className="text-[10px] font-black text-[#f6c945]">C</span>}
+                            {pick && <span className="text-[10px] font-black text-[#7fffe6]">{pick.amount}P</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+
             {/* 현재 매물 */}
             <section className="val-card p-6">
               <div className="mb-1 flex items-center justify-between">
@@ -2164,7 +2343,7 @@ function AuctionScrimPage({
       )}
 
       {/* 포인트 현황 (진행 중일 때) */}
-      {(auction.phase === "auction" || auction.phase === "reauction") && (
+      {showLegacyAuctionPanel && (auction.phase === "auction" || auction.phase === "reauction") && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-5">
           {captainIds.map((cId, i) => {
             const captain = playerMap.get(cId);

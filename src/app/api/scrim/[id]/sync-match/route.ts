@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
-import { getRecentMatches, getRiotOfficialRecentMatches, type MatchStats } from "@/lib/valorant";
+import { getRecentMatches, getRiotOfficialRecentMatches, getTrackerCustomMatchIds, getHenrikMatchById, type MatchStats } from "@/lib/valorant";
 import { getPrivateRecentMatches } from "@/lib/riotPrivateApi";
 import { ensureValidTokens } from "@/lib/rankFetcher";
 
@@ -31,7 +31,7 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
             select: {
               id: true,
               riotAccounts: {
-                select: { puuid: true, region: true, accessToken: true, entitlementsToken: true, ssid: true, authCookie: true, tokenExpiresAt: true },
+                select: { puuid: true, region: true, gameName: true, tagLine: true, accessToken: true, entitlementsToken: true, ssid: true, authCookie: true, tokenExpiresAt: true },
               },
             },
           },
@@ -67,6 +67,8 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
     team: string;
     puuid: string;
     region: string;
+    gameName: string;
+    tagLine: string;
     accessToken?: string | null;
     entitlementsToken?: string | null;
     ssid?: string | null;
@@ -83,6 +85,8 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
           team: p.team,
           puuid: acc.puuid,
           region: acc.region ?? "KR",
+          gameName: acc.gameName,
+          tagLine: acc.tagLine,
           accessToken: acc.accessToken,
           entitlementsToken: acc.entitlementsToken,
           ssid: acc.ssid,
@@ -100,7 +104,7 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
   const sessionUserId = session.user!.id;
   const sessionUserAccounts = await prisma.riotAccount.findMany({
     where: { user: { id: sessionUserId } },
-    select: { puuid: true, region: true, accessToken: true, entitlementsToken: true, ssid: true, authCookie: true, tokenExpiresAt: true },
+    select: { puuid: true, region: true, gameName: true, tagLine: true, accessToken: true, entitlementsToken: true, ssid: true, authCookie: true, tokenExpiresAt: true },
   });
   const extraCandidates = sessionUserAccounts
     .filter((acc) => acc.puuid && !playerPuuids.some((p) => p.puuid === acc.puuid))
@@ -110,6 +114,8 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
       team: "",
       puuid: acc.puuid,
       region: acc.region ?? "KR",
+      gameName: acc.gameName,
+      tagLine: acc.tagLine,
       accessToken: acc.accessToken,
       entitlementsToken: acc.entitlementsToken,
       ssid: acc.ssid,
@@ -216,6 +222,22 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
         rateLimited = true;
         break outer;
       }
+    }
+  }
+
+  // tracker.gg → Henrik match-by-ID 폴백 (Henrik 히스토리 한도 초과 시)
+  if (recentMatches.length === 0) {
+    trackerFallback: for (const candidate of orderedParticipants.slice(0, 3)) {
+      if (!candidate.gameName || !candidate.tagLine) continue;
+      try {
+        const matchIds = await getTrackerCustomMatchIds(candidate.gameName, candidate.tagLine);
+        if (matchIds.length === 0) continue;
+        const region = (candidate.region === "AP" ? "ap" : "kr") as "ap" | "kr";
+        for (const mId of matchIds.slice(0, 5)) {
+          const m = await getHenrikMatchById(mId, region);
+          if (m) { recentMatches = [m]; break trackerFallback; }
+        }
+      } catch { continue; }
     }
   }
 

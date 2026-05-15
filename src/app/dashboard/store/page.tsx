@@ -190,6 +190,8 @@ function StoreSkeleton() {
 
 function AccountStoreSection({ data }: { data: AccountStore }) {
   const [tick, setTick] = useState(0);
+  const [sharing, setSharing] = useState(false);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60000);
@@ -197,6 +199,28 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
   }, []);
 
   const remainingSeconds = data.store?.offers?.[0]?.remainingSeconds ?? 0;
+
+  async function shareToDiscord() {
+    if (!data.store?.offers?.length) return;
+    setSharing(true);
+    setShareMsg(null);
+    try {
+      const items = data.store.offers.map((o) => ({ name: o.name, price: o.cost, icon: o.displayIcon ?? null }));
+      const res = await fetch("/api/valorant/store/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items, riotId: data.riotId }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "전송 실패");
+      setShareMsg("Discord에 공유했습니다.");
+    } catch (e) {
+      setShareMsg(e instanceof Error ? e.message : "전송 중 오류가 발생했습니다.");
+    } finally {
+      setSharing(false);
+      setTimeout(() => setShareMsg(null), 4000);
+    }
+  }
 
   return (
     <section className="rounded-xl border border-[#2a3540] bg-[#0a1520] p-5">
@@ -210,15 +234,30 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
             <h2 className="text-lg font-black text-white">{data.riotId}</h2>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {data.wallet && <WalletDisplay wallet={data.wallet} />}
           {remainingSeconds > 0 && (
             <div className="text-xs text-[#7b8a96]">
               갱신까지 <span className="font-bold text-white">{formatCountdown(remainingSeconds - tick * 60)}</span>
             </div>
           )}
+          {data.store?.offers?.length ? (
+            <button
+              type="button"
+              onClick={shareToDiscord}
+              disabled={sharing}
+              className="rounded border border-[#5865f2]/40 bg-[#5865f2]/10 px-3 py-1.5 text-xs font-black text-[#7b8aff] transition-colors hover:border-[#5865f2] hover:bg-[#5865f2]/20 disabled:opacity-50"
+            >
+              {sharing ? "공유 중..." : "Discord 공유"}
+            </button>
+          ) : null}
         </div>
       </div>
+      {shareMsg && (
+        <div className="mb-3 rounded border border-[#5865f2]/30 bg-[#5865f2]/10 px-3 py-2 text-xs text-[#7b8aff]">
+          {shareMsg}
+        </div>
+      )}
 
       {(data.error || data.walletError || data.battlepassError) && (
         <div className="mb-4 space-y-2">

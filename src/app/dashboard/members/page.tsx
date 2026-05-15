@@ -53,16 +53,23 @@ export default function MembersPage() {
   const [search, setSearch] = useState("");
   const [selectedRole, setSelectedRole] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchMembers = useCallback(() => {
-    fetch("/api/members")
+  const fetchMembers = useCallback((force = false) => {
+    const url = force ? "/api/members?force=true" : "/api/members";
+    fetch(url)
       .then((response) => response.json())
       .then((data) => {
         setMembers(data.members ?? []);
         setGuildName(data.guildName ?? null);
       })
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setRefreshing(false); });
   }, []);
+
+  const handleForceRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchMembers(true);
+  }, [fetchMembers]);
 
   useEffect(() => { fetchMembers(); }, [fetchMembers]);
 
@@ -116,11 +123,23 @@ export default function MembersPage() {
         <div className="mb-0.5 text-[10px] uppercase tracking-[0.2em] text-[#ff4655]">
           VALORANT DASHBOARD
         </div>
-        <h1 className="text-2xl font-black text-white">서버 멤버</h1>
-        <p className="mt-0.5 text-sm text-[#7b8a96]">
-          {guildName ? `${guildName} · ` : ""}
-          총 {members.length}명
-        </p>
+        <div className="flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-black text-white">서버 멤버</h1>
+            <p className="mt-0.5 text-sm text-[#7b8a96]">
+              {guildName ? `${guildName} · ` : ""}
+              총 {members.length}명
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleForceRefresh}
+            disabled={refreshing}
+            className="val-btn bg-[#1a242d] px-3 py-2 text-xs font-black text-[#c8d3db] hover:text-white disabled:opacity-50"
+          >
+            {refreshing ? "갱신 중..." : "랭크 갱신"}
+          </button>
+        </div>
       </div>
 
       {loading ? (

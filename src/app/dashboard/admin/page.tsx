@@ -673,23 +673,69 @@ function NewbiesTab({
 }: {
   members: Member[];
 }) {
-  const probation = members.filter((member) => newbieGroup(member) === "probation");
-  const newbies = members.filter((member) => newbieGroup(member) === "newbie");
+  const [graduatingId, setGraduatingId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [localMembers, setLocalMembers] = useState(members);
+
+  useEffect(() => {
+    setLocalMembers(members);
+  }, [members]);
+
+  async function graduateMember(member: Member) {
+    if (!member.discordId || graduatingId) return;
+    if (!confirm(`${member.name ?? "대상자"}님을 졸업 처리할까요?`)) return;
+
+    setGraduatingId(member.discordId);
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/newbies/graduate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ discordId: member.discordId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "졸업 처리에 실패했습니다.");
+
+      setLocalMembers((prev) =>
+        prev.map((item) =>
+          item.discordId === member.discordId
+            ? { ...item, roles: item.roles.filter((role) => normalizeRole(role) !== normalizeRole(data.removedRole ?? "")) }
+            : item
+        )
+      );
+      setMessage(data.message ?? "졸업 처리가 완료되었습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "졸업 처리 중 오류가 발생했습니다.");
+    } finally {
+      setGraduatingId(null);
+    }
+  }
+
+  const visibleMembers = localMembers.filter((member) => newbieGroup(member));
+  const newbies = visibleMembers.filter((member) => newbieGroup(member) === "newbie");
+  const visibleProbation = visibleMembers.filter((member) => newbieGroup(member) === "probation");
 
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      <NewbieGroup title="웰컴 수습" members={probation} />
-      <NewbieGroup title="신입" members={newbies} />
-    </div>
+    <>
+      {message && <div className="mb-4 rounded border border-[#263442] bg-[#0f1923] px-4 py-3 text-sm text-[#c8d3db]">{message}</div>}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <NewbieGroup title="웰컴 수습" members={visibleProbation} onGraduate={graduateMember} graduatingId={graduatingId} />
+        <NewbieGroup title="신입" members={newbies} onGraduate={graduateMember} graduatingId={graduatingId} />
+      </div>
+    </>
   );
 }
 
 function NewbieGroup({
   title,
   members,
+  onGraduate,
+  graduatingId,
 }: {
   title: string;
   members: Member[];
+  onGraduate: (member: Member) => void;
+  graduatingId: string | null;
 }) {
   return (
     <section className="val-card p-5">
@@ -707,6 +753,8 @@ function NewbieGroup({
             <NewbieCard
               key={member.discordId ?? member.name}
               member={member}
+              onGraduate={onGraduate}
+              graduating={Boolean(member.discordId && graduatingId === member.discordId)}
             />
           ))
         )}
@@ -717,8 +765,12 @@ function NewbieGroup({
 
 function NewbieCard({
   member,
+  onGraduate,
+  graduating,
 }: {
   member: Member;
+  onGraduate: (member: Member) => void;
+  graduating: boolean;
 }) {
   return (
     <details className="rounded border border-[#263442] bg-[#0f1923]/70">
@@ -730,7 +782,20 @@ function NewbieCard({
             <div className="truncate text-xs text-[#7b8a96]">{member.roles.join(" / ")}</div>
           </div>
         </div>
-        <span className="shrink-0 text-xs text-[#7b8a96]">메모 관리</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={!member.discordId || graduating}
+            onClick={(event) => {
+              event.preventDefault();
+              onGraduate(member);
+            }}
+            className="rounded bg-[#10b981]/15 px-2 py-1 text-[11px] font-bold text-[#6ee7b7] hover:bg-[#10b981]/25 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {graduating ? "처리 중" : "졸업"}
+          </button>
+          <span className="text-xs text-[#7b8a96]">메모 관리</span>
+        </div>
       </summary>
       <div className="space-y-3 border-t border-[#263442] p-3">
         <MemberNotes discordId={member.discordId} />

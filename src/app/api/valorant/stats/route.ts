@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export const maxDuration = 60;
-import { getRankByPuuid, getRecentMatches, getRankIconByTier, getRiotOfficialRecentMatches, getTrackerRecentMatchIds, getHenrikMatchById, type MatchStats, type RankData } from "@/lib/valorant";
+import { getRankByPuuid, getRecentMatches, getRecentMatchesByRiotId, getRankIconByTier, getRiotOfficialRecentMatches, getTrackerRecentMatchIds, getHenrikMatchById, type MatchStats, type RankData } from "@/lib/valorant";
 import { getTrackerMatchHistory, type TggMatchStats } from "@/lib/trackergg";
 import { ensureTokenState, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 import { getPrivateRankData, getPrivateRecentMatches, getPrivateCompetitiveUpdates, getPrivateProfile, type CompetitiveUpdate } from "@/lib/riotPrivateApi";
@@ -206,7 +206,7 @@ async function getRecentMatchesCached(
         }))
       : [];
 
-    // 2. Riot 공식 API (RIOT_API_KEY 있을 때, Private 실패 시)
+    // 2. Riot 공식 API (RIOT_API_KEY 있을 때)
     if (privateMatches.length === 0 && process.env.RIOT_API_KEY) {
       try {
         const riotMatches = cleanMatches(await getRiotOfficialRecentMatches(puuid, region, 10));
@@ -219,29 +219,46 @@ async function getRecentMatchesCached(
         console.warn("[stats] Riot official match API failed:", err);
       }
     }
+
+    // 3. Henrik — name/tag 검색 (PUUID 불필요, 토큰 불필요)
     let henrikMatches: MatchStats[] = [];
     let henrik429RemainSec = 0;
-    if (privateMatches.length === 0) {
+    if (privateMatches.length === 0 && gameName && tagLine) {
       const cooldownUntil = henrik429Until.get(cacheKey) ?? 0;
       if (Date.now() < cooldownUntil) {
         henrik429RemainSec = Math.ceil((cooldownUntil - Date.now()) / 1000);
-        // 쿨다운 중이면 Henrik 건너뜀 — tracker.gg/op.gg 폴백은 계속 시도
       } else {
-        try {
-          henrikMatches = cleanMatches(await getRecentMatches(puuid, 10, region, "pc", {
-            puuidRankMap,
-            skipAccountFallback: true,
-          }));
-        } catch (err) {
+        const catchHenrik429 = (err: unknown) => {
           const status = (err as { response?: { status?: number; headers?: Record<string, string> } }).response?.status;
           if (status === 429) {
-            const retryAfter = parseInt((err as { response?: { headers?: Record<string, string> } }).response?.headers?.["retry-after"] ?? "60", 10);
+            const retryAfter = parseInt(
+              (err as { response?: { headers?: Record<string, string> } }).response?.headers?.["retry-after"] ?? "60",
+              10
+            );
             henrik429Until.set(cacheKey, Date.now() + retryAfter * 1000);
             henrik429RemainSec = retryAfter;
-            // Henrik 429여도 tracker.gg/op.gg 폴백 계속 시도
           } else {
             console.warn("[stats] henrik matches failed:", err);
           }
+          return [] as MatchStats[];
+        };
+
+        // name/tag 기반 검색 먼저 (토큰/PUUID 없어도 됨)
+        henrikMatches = cleanMatches(
+          await getRecentMatchesByRiotId(gameName, tagLine, 10, region, "pc", {
+            puuidRankMap,
+            skipAccountFallback: true,
+          }).catch(catchHenrik429)
+        );
+
+        // name/tag 실패 시 PUUID 기반 백업
+        if (henrikMatches.length === 0 && henrik429RemainSec === 0) {
+          henrikMatches = cleanMatches(
+            await getRecentMatches(puuid, 10, region, "pc", {
+              puuidRankMap,
+              skipAccountFallback: true,
+            }).catch(catchHenrik429)
+          );
         }
       }
     }

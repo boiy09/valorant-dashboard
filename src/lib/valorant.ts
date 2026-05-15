@@ -880,22 +880,18 @@ export interface RecentMatchesOptions {
   skipRankFallback?: boolean;
 }
 
-export async function getRecentMatches(
-  puuid: string,
-  count = 5,
-  region: ValorantRegion = "kr",
-  platform: ValorantPlatform = "pc",
+async function parseHenrikMatchList(
+  matches: any[],
+  findMe: (players: any[]) => any,
+  region: ValorantRegion,
   options?: RecentMatchesOptions
 ): Promise<MatchStats[]> {
-  const response = await henrikClient.get(
-    `/v4/by-puuid/matches/${region}/${platform}/${puuid}?size=${count}`
-  );
-  const matches = asArray<any>(response.data?.data);
 
   return Promise.all(matches.map(async (match) => {
     const players = asArray<any>(match.players);
     const teams = asArray<any>(match.teams);
-    const me = players.find((player) => player?.puuid === puuid) ?? {};
+    const me = findMe(players) ?? {};
+    const puuid: string = me?.puuid ?? "";
     const stats = me?.stats ?? {};
     const { teamScore, enemyScore } = getTeamScores(match, puuid);
     const agentAssets = asRecord(asRecord(me?.assets).agent);
@@ -1138,6 +1134,47 @@ export async function getRecentMatches(
       scoreboard,
     };
   }));
+}
+
+export async function getRecentMatches(
+  puuid: string,
+  count = 5,
+  region: ValorantRegion = "kr",
+  platform: ValorantPlatform = "pc",
+  options?: RecentMatchesOptions
+): Promise<MatchStats[]> {
+  const response = await henrikClient.get(
+    `/v4/by-puuid/matches/${region}/${platform}/${puuid}?size=${count}`
+  );
+  const matches = asArray<any>(response.data?.data);
+  return parseHenrikMatchList(matches, (players) => players.find((p) => p?.puuid === puuid), region, options);
+}
+
+export async function getRecentMatchesByRiotId(
+  gameName: string,
+  tagLine: string,
+  count = 10,
+  region: ValorantRegion = "kr",
+  platform: ValorantPlatform = "pc",
+  options?: RecentMatchesOptions
+): Promise<MatchStats[]> {
+  const response = await henrikClient.get(
+    `/v4/matches/riot/${region}/${platform}/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}?size=${count}`
+  );
+  const matches = asArray<any>(response.data?.data);
+  const nameLower = gameName.toLowerCase();
+  const tagLower = tagLine.toLowerCase();
+  return parseHenrikMatchList(
+    matches,
+    (players) =>
+      players.find(
+        (p) =>
+          (p?.name ?? p?.game_name ?? "")?.toLowerCase() === nameLower &&
+          (p?.tag ?? p?.tagLine ?? p?.tag_line ?? "")?.toLowerCase() === tagLower
+      ) ?? players[0],
+    region,
+    options
+  );
 }
 
 export async function getPlayerStats(

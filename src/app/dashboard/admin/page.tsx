@@ -35,6 +35,7 @@ interface Member {
   name: string | null;
   image: string | null;
   roles: string[];
+  joinedAt?: string | null;
 }
 
 interface AdminNote {
@@ -73,6 +74,13 @@ function newbieGroup(member: Member): "probation" | "newbie" | null {
 
 function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function formatServerJoinDate(joinedAt?: string | null) {
+  if (!joinedAt) return "서버 가입일 없음";
+  const date = new Date(joinedAt);
+  if (Number.isNaN(date.getTime())) return "서버 가입일 없음";
+  return `서버 가입 ${date.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" })}`;
 }
 
 function recordLabel(type: RecordType) {
@@ -788,6 +796,7 @@ function NewbieCard({
           <div className="min-w-0">
             <div className="truncate text-sm font-bold text-white">{member.name ?? "알 수 없음"}</div>
             <div className="truncate text-xs text-[#7b8a96]">{member.roles.join(" / ")}</div>
+            <div className="mt-0.5 text-xs text-[#8da0ad]">{formatServerJoinDate(member.joinedAt)}</div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">

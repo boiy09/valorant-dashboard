@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
-import { getRecentMatches, getRiotOfficialRecentMatches, getTrackerCustomMatchIds, getHenrikMatchById, type MatchStats } from "@/lib/valorant";
+import { getRecentMatches, getRiotOfficialRecentMatches, getTrackerCustomMatchIds, getHenrikMatchById, type MatchStats, type ScoreboardPlayer, type ScoreboardTeam } from "@/lib/valorant";
 import { getPrivateRecentMatches } from "@/lib/riotPrivateApi";
 import { ensureValidTokens } from "@/lib/rankFetcher";
+import { getOpGgCustomMatches, type OpGgMatch } from "@/lib/opgg-valorant";
 
 export async function POST(_: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -241,6 +242,23 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
     }
   }
 
+  // op.gg 폴백 — Henrik을 전혀 사용하지 않음 (Henrik 전역 차단 시에도 작동)
+  if (recentMatches.length === 0) {
+    for (const candidate of orderedParticipants.slice(0, 5)) {
+      if (!candidate.gameName || !candidate.tagLine) continue;
+      try {
+        const opggMatches = await getOpGgCustomMatches(candidate.gameName, candidate.tagLine, 20);
+        if (opggMatches.length > 0) {
+          recentMatches = opggMatches.map(opggMatchToMatchStats);
+          console.log("[sync-match] op.gg 폴백 성공:", candidate.gameName, opggMatches.length, "경기");
+          break;
+        }
+      } catch (e) {
+        console.warn("[sync-match] op.gg 폴백 실패:", candidate.gameName, e instanceof Error ? e.message : String(e));
+      }
+    }
+  }
+
   if (recentMatches.length === 0) {
     const debugSuffix = tokenDebug ? ` [토큰 진단: ${tokenDebug.trim()}]` : "";
     const errorMsg = rateLimited
@@ -409,4 +427,64 @@ function resolvePrivateTokens(
     }
   }
   return null;
+}
+
+function opggMatchToMatchStats(m: OpGgMatch): MatchStats {
+  const players: ScoreboardPlayer[] = m.participants.map((p) => ({
+    puuid: p.puuid,
+    name: p.gameName,
+    tag: p.tagLine,
+    isPrivate: false,
+    teamId: p.teamId,
+    level: null,
+    cardIcon: "",
+    agent: p.agentName,
+    agentIcon: "",
+    tierName: "",
+    tierId: 0,
+    tierIcon: null,
+    acs: p.acs,
+    kills: p.kills,
+    deaths: p.deaths,
+    assists: p.assists,
+    plusMinus: p.kills - p.deaths,
+    kd: p.deaths > 0 ? p.kills / p.deaths : p.kills,
+    hsPercent: 0,
+    adr: null,
+  }));
+  const teams: ScoreboardTeam[] = m.teams.map((t) => ({
+    teamId: t.teamId,
+    roundsWon: t.roundsWon,
+    won: t.isWin,
+  }));
+  const totalRounds = m.teams.reduce((s, t) => s + t.roundsWon, 0);
+  return {
+    matchId: m.id,
+    map: m.mapName,
+    mode: m.queueId,
+    agent: "",
+    agentIcon: "",
+    result: "무효",
+    kills: 0,
+    deaths: 0,
+    assists: 0,
+    score: 0,
+    teamScore: null,
+    enemyScore: null,
+    headshots: 0,
+    bodyshots: 0,
+    legshots: 0,
+    adr: null,
+    playedAt: m.gameStartedAt ? new Date(m.gameStartedAt) : new Date(0),
+    scoreboard: {
+      map: m.mapName,
+      mode: m.queueId,
+      startedAt: m.gameStartedAt,
+      gameLengthMs: m.gameDuration * 1000,
+      totalRounds,
+      players,
+      teams,
+      rounds: [],
+    },
+  };
 }

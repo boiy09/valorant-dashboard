@@ -1328,6 +1328,7 @@ function AuctionScrimPage({
   const [captainSelections, setCaptainSelections] = useState<Record<string, number>>({}); // userId → points
   const [defaultPoints, setDefaultPoints] = useState(1000);
   const [timerSeconds, setTimerSeconds] = useState(30);
+  const [timerEnabled, setTimerEnabled] = useState(true);
 
   // 입찰 상태
   const [bidAmounts, setBidAmounts] = useState<Record<string, string>>({}); // captainId → input string
@@ -1473,10 +1474,33 @@ function AuctionScrimPage({
     setMessage(null);
     const res = await fetch("/api/scrim/auction", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: scrim.id, captainPoints: captainSelections, auctionDuration: timerSeconds }),
+      body: JSON.stringify({ sessionId: scrim.id, captainPoints: captainSelections, auctionDuration: timerEnabled ? timerSeconds : 0 }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setMessage(data.error ?? "경매 시작에 실패했습니다."); return; }
+    setAuction(data.auction);
+  }
+
+  async function manualResolve() {
+    setMessage(null);
+    const res = await fetch("/api/scrim/auction", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: scrim.id, action: "resolve" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setMessage(data.error ?? "처리에 실패했습니다."); return; }
+    setAuction(data.auction);
+  }
+
+  async function manualPass() {
+    if (!window.confirm("이 참가자를 유찰 처리하시겠습니까?")) return;
+    setMessage(null);
+    const res = await fetch("/api/scrim/auction", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: scrim.id, action: "pass" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setMessage(data.error ?? "처리에 실패했습니다."); return; }
     setAuction(data.auction);
   }
 
@@ -1529,7 +1553,7 @@ function AuctionScrimPage({
             {isAdmin && (
               <section className="val-card p-5">
                 <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#f6c945]">경매 설정</div>
-                <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                <div className="mb-4 grid gap-4 sm:grid-cols-3">
                   <div>
                     <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">팀장 기본 포인트</label>
                     <input
@@ -1539,47 +1563,28 @@ function AuctionScrimPage({
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">입찰 타이머 (초)</label>
-                    <input
-                      type="number" min={10} max={120} step={5} value={timerSeconds}
-                      onChange={(e) => setTimerSeconds(parseInt(e.target.value, 10))}
-                      className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
-                    />
+                    <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">입찰 타이머</label>
+                    <button
+                      type="button"
+                      onClick={() => setTimerEnabled((v) => !v)}
+                      className={`relative mt-0.5 h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus:outline-none ${timerEnabled ? "bg-[#00e7c2]" : "bg-[#2a3540]"}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${timerEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                    </button>
                   </div>
+                  {timerEnabled && (
+                    <div>
+                      <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">타이머 시간 (초)</label>
+                      <input
+                        type="number" min={10} max={120} step={5} value={timerSeconds}
+                        onChange={(e) => setTimerSeconds(parseInt(e.target.value, 10))}
+                        className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
+                      />
+                    </div>
+                  )}
                 </div>
-                <div className="mb-2 text-xs font-black text-white">팀장 선택 <span className="ml-1 text-[#7b8a96]">({Object.keys(captainSelections).length}명 선택됨)</span></div>
-                <p className="mb-3 text-[11px] text-[#7b8a96]">팀장으로 지정할 참가자를 선택하고 각자의 초기 포인트를 설정하세요.</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {participants.map((p) => {
-                    const selected = captainSelections[p.user.id] !== undefined;
-                    return (
-                      <div key={p.id} className={`rounded border p-3 transition-colors ${selected ? "border-[#f6c945] bg-[#f6c945]/8" : "border-[#2a3540] bg-[#0f1923]/70"}`}>
-                        <div className="flex items-center gap-2">
-                          {p.user.image ? <img src={p.user.image} alt="" className="h-8 w-8 rounded-full object-cover" /> : <div className="h-8 w-8 rounded-full bg-[#24313c]" />}
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-black text-white">{resolveServerNick(p.user.id, guildMembers, p.user.name) ?? "이름 없음"}</div>
-                            <div className="truncate text-[11px] text-[#7b8a96]">{p.user.riotAccounts[0] ? `${p.user.riotAccounts[0].gameName}#${p.user.riotAccounts[0].tagLine}` : "Riot 미연동"}</div>
-                          </div>
-                          <button type="button" onClick={() => toggleCaptain(p.user.id)} className={`rounded px-2 py-1 text-[11px] font-black transition-colors ${selected ? "bg-[#f6c945] text-black" : "bg-[#2a3540] text-[#9aa8b3] hover:bg-[#f6c945]/30"}`}>
-                            {selected ? "✓ 팀장" : "선택"}
-                          </button>
-                        </div>
-                        {selected && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <label className="text-[11px] text-[#7b8a96]">포인트</label>
-                            <input
-                              type="number" min={100} max={9999} step={50} value={captainSelections[p.user.id]}
-                              onChange={(e) => setCaptainPoint(p.user.id, parseInt(e.target.value, 10))}
-                              className="w-24 rounded border border-[#2a3540] bg-[#0b141c] px-2 py-1 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
-                            />
-                            <span className="text-[11px] text-[#7b8a96]">P</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mb-1 text-xs font-black text-white">팀장 선택 <span className="ml-1 font-normal text-[#7b8a96]">{Object.keys(captainSelections).length}명 선택됨 · 아래 참가자 목록에서 팀장 버튼을 눌러 선택하세요</span></div>
+                <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" onClick={addRecruitment} disabled={saving} className="rounded border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
                   <button type="button" onClick={() => { setDummyRows([auctionEmptyRow()]); setDummyOpen(true); }} className="val-btn border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-2 text-xs font-black text-[#f6c945]" title="테스트용 더미 참가자 추가">🧪 더미 데이터</button>
                   <button type="button" onClick={startAuction} disabled={Object.keys(captainSelections).length < 2} className="val-btn bg-[#f6c945] px-5 py-2 text-sm font-black text-black disabled:opacity-40">
@@ -1594,7 +1599,12 @@ function AuctionScrimPage({
               <div className="mb-3 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">참가자 목록 ({participants.length}명)</div>
               {participants.length === 0
                 ? <div className="rounded border border-dashed border-[#2a3540] py-8 text-center text-xs text-[#7b8a96]">아직 참가자가 없습니다. 디스코드 모집 글에 이모지를 달면 자동 등록됩니다.</div>
-                : <ParticipantList players={participants} guildMembers={guildMembers} onRemove={() => {}} settings={auctionSettings} />
+                : <ParticipantList players={participants} guildMembers={guildMembers} onRemove={() => {}} settings={auctionSettings}
+                    captainSelections={isAdmin ? captainSelections : undefined}
+                    onToggleCaptain={isAdmin ? toggleCaptain : undefined}
+                    onSetCaptainPoint={isAdmin ? setCaptainPoint : undefined}
+                    defaultPoints={defaultPoints}
+                  />
               }
             </section>
           </div>
@@ -1741,9 +1751,11 @@ function AuctionScrimPage({
       {(auction.phase === "auction" || auction.phase === "reauction") && (
         <div className="mb-5">
           {/* 타이머 바 */}
-          <div className="mb-4 overflow-hidden rounded-full bg-[#1d2732]" style={{ height: 8 }}>
-            <div className="h-full rounded-full transition-all duration-200" style={{ width: `${timerPct}%`, backgroundColor: timerColor }} />
-          </div>
+          {auction.auctionDuration > 0 && (
+            <div className="mb-4 overflow-hidden rounded-full bg-[#1d2732]" style={{ height: 8 }}>
+              <div className="h-full rounded-full transition-all duration-200" style={{ width: `${timerPct}%`, backgroundColor: timerColor }} />
+            </div>
+          )}
 
           <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
             {/* 현재 매물 */}
@@ -1752,10 +1764,17 @@ function AuctionScrimPage({
                 <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#f6c945]">
                   {auction.phase === "reauction" ? "🔄 재경매" : "현재 경매 매물"}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#7b8a96]">남은 시간</span>
-                  <span className="text-2xl font-black" style={{ color: timerColor }}>{timeLeft}s</span>
-                </div>
+                {auction.auctionDuration > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#7b8a96]">남은 시간</span>
+                    <span className="text-2xl font-black" style={{ color: timerColor }}>{timeLeft}s</span>
+                  </div>
+                ) : isAdmin && (
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => void manualResolve()} className="rounded bg-[#00e7c2] px-3 py-1.5 text-xs font-black text-black hover:bg-[#00c9ab]">낙찰 처리</button>
+                    <button type="button" onClick={() => void manualPass()} className="rounded border border-[#ff4655]/40 bg-[#ff4655]/10 px-3 py-1.5 text-xs font-black text-[#ff8a95] hover:border-[#ff4655]">유찰</button>
+                  </div>
+                )}
               </div>
               <div className="mb-1 text-xs text-[#7b8a96]">
                 대기 {queue.length}명 · 유찰 {failedQueue.length}명
@@ -1943,11 +1962,19 @@ function ParticipantList({
   guildMembers,
   onRemove,
   settings,
+  captainSelections,
+  onToggleCaptain,
+  onSetCaptainPoint,
+  defaultPoints,
 }: {
   players: ScrimPlayer[];
   guildMembers: GuildMemberOption[];
   onRemove: (playerId: string) => void;
   settings?: ScrimDetailSettings;
+  captainSelections?: Record<string, number>;
+  onToggleCaptain?: (userId: string) => void;
+  onSetCaptainPoint?: (userId: string, points: number) => void;
+  defaultPoints?: number;
 }) {
   const [agentPortraits, setAgentPortraits] = useState<Record<string, string>>({});
 
@@ -1973,6 +2000,7 @@ function ParticipantList({
   const showRole = settings?.showValorantRole !== false;
   const showAgents = settings?.showFavoriteAgents !== false;
 
+  const captainMode = !!onToggleCaptain;
   const gridCols = [
     "minmax(150px,1.15fr)",
     showRiot ? "minmax(170px,1.05fr)" : null,
@@ -1980,6 +2008,7 @@ function ParticipantList({
     "66px",
     showRole ? "86px" : null,
     showAgents ? "minmax(86px,0.65fr)" : null,
+    captainMode ? "60px" : null,
     "28px",
   ].filter(Boolean).join(" ");
 
@@ -1997,6 +2026,7 @@ function ParticipantList({
             <div className="text-right">KD</div>
             {showRole && <div>Role</div>}
             {showAgents && <div>Agents</div>}
+            {captainMode && <div className="text-center">팀장</div>}
             <div />
           </div>
           <div className="divide-y divide-[#1f2d38]">
@@ -2009,6 +2039,9 @@ function ParticipantList({
                 onRemove={() => onRemove(player.id)}
                 settings={settings}
                 gridCols={gridCols}
+                captainSelections={captainSelections}
+                onToggleCaptain={onToggleCaptain}
+                onSetCaptainPoint={onSetCaptainPoint}
               />
             ))}
           </div>
@@ -2025,6 +2058,9 @@ function ParticipantRow({
   onRemove,
   settings,
   gridCols,
+  captainSelections,
+  onToggleCaptain,
+  onSetCaptainPoint,
 }: {
   player: ScrimPlayer;
   guildMembers: GuildMemberOption[];
@@ -2032,7 +2068,11 @@ function ParticipantRow({
   onRemove: () => void;
   settings?: ScrimDetailSettings;
   gridCols?: string;
+  captainSelections?: Record<string, number>;
+  onToggleCaptain?: (userId: string) => void;
+  onSetCaptainPoint?: (userId: string, points: number) => void;
 }) {
+  const isSelected = captainSelections ? captainSelections[player.user.id] !== undefined : false;
   const displayName = resolveServerNick(player.user.id, guildMembers, player.user.name) || "이름 없음";
   const riotNames = player.user.riotAccounts.map((account) => `${account.region.toUpperCase()} · ${account.gameName}#${account.tagLine}`);
   const primaryTier = player.user.riotAccounts.find((account) => account.cachedTierName)?.cachedTierName ?? "Unranked";
@@ -2052,7 +2092,7 @@ function ParticipantRow({
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", player.id);
       }}
-      className="cursor-grab items-center gap-1.5 px-2 py-1.5 transition hover:bg-[#13212b] active:cursor-grabbing"
+      className={`cursor-grab items-center gap-1.5 px-2 py-1.5 transition active:cursor-grabbing ${isSelected ? "bg-[#f6c945]/8 hover:bg-[#f6c945]/12" : "hover:bg-[#13212b]"}`}
       style={{ display: "grid", gridTemplateColumns: gridCols ?? "minmax(150px,1.15fr) minmax(170px,1.05fr) 86px 66px 86px minmax(86px,0.65fr) 28px" }}
     >
       <div className="flex min-w-0 items-center gap-1.5">
@@ -2063,7 +2103,20 @@ function ParticipantRow({
         )}
         <div className="min-w-0">
           <div className="truncate text-sm font-black text-white">{displayName}</div>
-          <div className="text-[10px] font-bold text-[#52616d]">대기 참가자</div>
+          {isSelected ? (
+            <div className="flex items-center gap-1 mt-0.5">
+              <input
+                type="number" min={100} max={9999} step={50}
+                value={captainSelections![player.user.id]}
+                onChange={(e) => onSetCaptainPoint?.(player.user.id, parseInt(e.target.value, 10))}
+                onClick={(e) => e.stopPropagation()}
+                className="w-20 rounded border border-[#f6c945] bg-[#0b141c] px-1.5 py-0.5 text-xs font-bold text-white outline-none"
+              />
+              <span className="text-[10px] text-[#f6c945]">P</span>
+            </div>
+          ) : (
+            <div className="text-[10px] font-bold text-[#52616d]">대기 참가자</div>
+          )}
         </div>
       </div>
       {showRiot && (
@@ -2126,6 +2179,17 @@ function ParticipantRow({
             <span className="text-xs font-bold text-[#52616d]">-</span>
           )}
         </div>
+      )}
+      {onToggleCaptain && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleCaptain(player.user.id); }}
+          className={`flex h-6 w-14 items-center justify-center rounded text-[10px] font-black transition ${
+            isSelected ? "bg-[#f6c945] text-black" : "bg-[#2a3540] text-[#9aa8b3] hover:bg-[#f6c945]/30 hover:text-white"
+          }`}
+        >
+          {isSelected ? "✓ 팀장" : "팀장"}
+        </button>
       )}
       <button
         type="button"

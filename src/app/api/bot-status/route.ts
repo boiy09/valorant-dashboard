@@ -22,10 +22,11 @@ export async function GET() {
     return Response.json(lastGood);
   }
 
-  const startTime = now;
-
   try {
     const today = new Date().toISOString().slice(0, 10);
+    const dbStartTime = Date.now();
+    await prisma.$queryRaw`SELECT 1`;
+    const dbLatency = Date.now() - dbStartTime;
 
     const [userCount, scrimCount, announcementCount, todayAttendance] = await Promise.all([
       prisma.user.count(),
@@ -36,7 +37,7 @@ export async function GET() {
 
     const data: StatusData = {
       status: "정상",
-      db: { status: "정상", latency: Date.now() - startTime },
+      db: { status: "정상", latency: dbLatency },
       stats: { users: userCount, scrims: scrimCount, announcements: announcementCount, todayAttendance },
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),

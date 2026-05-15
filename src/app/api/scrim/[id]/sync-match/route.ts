@@ -137,8 +137,13 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
   // 유효한 Private API 토큰 확보 (관리자/세션유저 우선, 참가자 순)
   // 토큰을 가진 누구의 것이든 참가자 PUUID 조회에 사용 가능
   let sharedTokens: { accessToken: string; entitlementsToken: string } | null = null;
+  let tokenDebug = "";
   for (const candidate of orderedCandidates.slice(0, 5)) {
     try {
+      const hasSsid = !!candidate.ssid;
+      const hasAuthCookie = !!candidate.authCookie;
+      const hasAccessToken = !!candidate.accessToken;
+      tokenDebug += `[${candidate.puuid.slice(0, 8)} ssid=${hasSsid} cookie=${hasAuthCookie} at=${hasAccessToken}] `;
       const t = await ensureValidTokens(
         candidate.puuid,
         candidate.accessToken ?? null,
@@ -147,8 +152,11 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
         candidate.authCookie ?? null,
         candidate.tokenExpiresAt ?? null,
       );
-      if (t) { sharedTokens = t; break; }
-    } catch { /* 다음 후보로 */ }
+      if (t) { sharedTokens = t; tokenDebug += "→ OK"; break; }
+      else tokenDebug += "→ null ";
+    } catch (e) {
+      tokenDebug += `→ throw(${e instanceof Error ? e.message : String(e)}) `;
+    }
   }
 
   // API 폴백 체인: Private Riot API → Riot Official API → Henrik API
@@ -215,9 +223,10 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
   }
 
   if (recentMatches.length === 0) {
+    const debugSuffix = tokenDebug ? ` [토큰 진단: ${tokenDebug}]` : "";
     const errorMsg = rateLimited
-      ? "Henrik API 요청 한도 초과입니다. 잠시 후 다시 시도하거나 라이엇 계정을 재연동해 주세요."
-      : `전적 데이터를 가져오는 데 실패했습니다.${lastFetchError ? ` (${lastFetchError})` : " 라이엇 계정이 연동된 참가자를 확인해 주세요."}`;
+      ? `Henrik API 요청 한도 초과입니다. 잠시 후 다시 시도하거나 라이엇 계정을 재연동해 주세요.${debugSuffix}`
+      : `전적 데이터를 가져오는 데 실패했습니다.${lastFetchError ? ` (${lastFetchError})` : " 라이엇 계정이 연동된 참가자를 확인해 주세요."}${debugSuffix}`;
     return Response.json({ error: errorMsg }, { status: rateLimited ? 429 : 500 });
   }
 

@@ -32,7 +32,7 @@ async function startPolling() {
       const res = await fetch(`/api/events?since=${lastEventId}`, {
         signal: AbortSignal.timeout(30000),
       });
-      if (!res.ok) { await sleep(3000); continue; }
+      if (!res.ok) { await sleep(1000); continue; }
 
       const data = (await res.json()) as { events?: Array<{ id: number; type: string; data: Record<string, unknown> }>; lastId?: number };
       const events = data.events ?? [];
@@ -43,7 +43,7 @@ async function startPolling() {
         dispatch(event.type, event.data);
       }
     } catch {
-      await sleep(3000);
+      await sleep(1000);
     }
   }
 

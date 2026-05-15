@@ -1463,7 +1463,7 @@ function AuctionScrimPage({
   useEffect(() => {
     let cancelled = false;
     pollAuction().catch(() => {});
-    const t = window.setInterval(() => { if (!cancelled) pollAuction(true).catch(() => {}); }, 3000);
+    const t = window.setInterval(() => { if (!cancelled) pollAuction(true).catch(() => {}); }, 1500);
     return () => { cancelled = true; window.clearInterval(t); };
   }, [pollAuction]);
 

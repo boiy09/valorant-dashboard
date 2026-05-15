@@ -97,7 +97,17 @@ export async function GET(req: Request) {
       }
     }
 
-    return Response.json({ intros: Object.fromEntries(byAuthor) });
+    const debug = url.searchParams.get("debug") === "1";
+    return Response.json({
+      intros: Object.fromEntries(byAuthor),
+      ...(debug && {
+        _debug: {
+          totalMessages: messages.length,
+          foundAuthorIds: [...byAuthor.keys()],
+          targetIds: [...targetIds],
+        },
+      }),
+    });
   } catch (e) {
     console.error("[intro] failed:", e);
     return Response.json({ error: "Failed to fetch messages" }, { status: 500 });

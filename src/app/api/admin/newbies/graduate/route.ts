@@ -17,10 +17,14 @@ function splitRoles(roles: string) {
   return roles.split(",").map((role) => role.trim()).filter(Boolean);
 }
 
+function hasRoleKeyword(role: string, keyword: string) {
+  return normalizeRole(role).includes(normalizeRole(keyword));
+}
+
 function getGraduationRole(roles: string[]) {
-  const probationRole = roles.find((role) => normalizeRole(role) === "웰컴수습");
+  const probationRole = roles.find((role) => hasRoleKeyword(role, "웰컴수습"));
   if (probationRole) return probationRole;
-  return roles.find((role) => normalizeRole(role) === "신입") ?? null;
+  return roles.find((role) => hasRoleKeyword(role, "신입")) ?? null;
 }
 
 async function discordFetch(url: string, init?: RequestInit) {
@@ -70,7 +74,9 @@ export async function POST(req: Request) {
   }
 
   const discordRoles = await rolesResponse.json() as DiscordRole[];
-  const targetDiscordRole = discordRoles.find((role) => normalizeRole(role.name) === normalizeRole(targetRoleName));
+  const targetDiscordRole = discordRoles.find((role) => normalizeRole(role.name) === normalizeRole(targetRoleName))
+    ?? discordRoles.find((role) => hasRoleKeyword(role.name, targetRoleName))
+    ?? discordRoles.find((role) => hasRoleKeyword(targetRoleName, role.name));
   if (!targetDiscordRole) {
     return Response.json({ error: `Discord 서버에서 '${targetRoleName}' 역할을 찾지 못했습니다.` }, { status: 404 });
   }

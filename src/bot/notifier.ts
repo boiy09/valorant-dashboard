@@ -1,4 +1,5 @@
 import { Client, EmbedBuilder, TextChannel } from "discord.js";
+import { graduateExpiredNewbies } from "../lib/adminAutomation";
 import { prisma } from "../lib/prisma";
 import { getRankByPuuid, getRecentMatches } from "../lib/valorant";
 
@@ -6,6 +7,7 @@ const MATCH_INTERVAL = 5 * 60 * 1000;
 const RANK_INTERVAL = 30 * 60 * 1000;
 const EVENT_INTERVAL = 60 * 1000;
 const PATCH_INTERVAL = 6 * 60 * 60 * 1000;
+const NEWBIE_GRADUATION_INTERVAL = 24 * 60 * 60 * 1000;
 
 const TIER_GROUP: Record<string, string> = {
   아이언1: "아이언",
@@ -83,6 +85,7 @@ const running = {
   rank: false,
   events: false,
   patch: false,
+  newbieGraduation: false,
 };
 
 function guard<T>(key: keyof typeof running, fn: () => Promise<T>) {
@@ -100,7 +103,22 @@ export function startNotifier(client: Client) {
   setInterval(guard("rank", () => checkRankUpdates(client)), RANK_INTERVAL);
   setInterval(guard("events", () => checkScheduledEvents(client)), EVENT_INTERVAL);
   setInterval(guard("patch", () => checkPatchNotes(client)), PATCH_INTERVAL);
+  setInterval(guard("newbieGraduation", checkNewbieGraduation), NEWBIE_GRADUATION_INTERVAL);
   setTimeout(guard("patch", () => checkPatchNotes(client)), 5000);
+  setTimeout(guard("newbieGraduation", checkNewbieGraduation), 15000);
+}
+
+async function checkNewbieGraduation() {
+  try {
+    const result = await graduateExpiredNewbies();
+    if (result.ok && result.graduated > 0) {
+      console.log(`Newbie graduation completed: ${result.graduated}`);
+    } else if (!result.ok) {
+      console.warn("Newbie graduation skipped:", result.message);
+    }
+  } catch (error) {
+    console.error("Newbie graduation error:", error);
+  }
 }
 
 async function checkAllTracked(client: Client) {

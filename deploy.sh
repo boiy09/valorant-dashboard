@@ -13,7 +13,7 @@ if [ -z "${DATABASE_URL:-}" ] && [ -f .env ]; then
 fi
 
 echo "[deploy] installing dependencies..."
-npm ci --prefer-offline 2>/dev/null || npm install || (rm -rf node_modules && npm ci)
+npm ci --prefer-offline 2>/dev/null || npm install || (rm -rf node_modules && npm install)
 
 echo "[deploy] installing proxy dependencies..."
 if [ -f proxy/package-lock.json ]; then

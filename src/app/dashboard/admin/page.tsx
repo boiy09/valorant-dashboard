@@ -160,8 +160,6 @@ export default function AdminPage() {
       .catch(() => {});
   });
 
-  const roleMembers = useMemo(() => allMembers.filter(isRoleHolder), [allMembers]);
-
   const totals = useMemo(
     () => ({
       voiceSeconds: records.reduce((sum, record) => sum + record.voiceSeconds, 0),

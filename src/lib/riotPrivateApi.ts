@@ -1089,3 +1089,41 @@ export async function getPrivateCompetitiveUpdates(
     return [];
   }
 }
+
+export interface PlayerPresence {
+  inCoreGame: boolean;
+  inPreGame: boolean;
+  matchId: string | null;
+}
+
+export async function getPlayerPresence(
+  puuid: string,
+  region: string,
+  accessToken: string,
+  entitlementsToken: string
+): Promise<PlayerPresence> {
+  const shard = regionToShard(region);
+  const glzBase = `https://glz-${shard}-1.${shard}.a.pvp.net`;
+  const headers = await pvpHeaders(accessToken, entitlementsToken);
+  const signal = AbortSignal.timeout(5000);
+
+  // 코어 게임 (진행 중인 경기)
+  try {
+    const res = await fetch(`${glzBase}/core-game/v1/players/${puuid}`, { headers, signal });
+    if (res.ok) {
+      const data = await res.json() as { MatchID?: string };
+      if (data.MatchID) return { inCoreGame: true, inPreGame: false, matchId: data.MatchID };
+    }
+  } catch { /* 게임 중 아님 */ }
+
+  // 프리게임 (로딩 중인 경기)
+  try {
+    const res = await fetch(`${glzBase}/pregame/v1/players/${puuid}`, { headers, signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const data = await res.json() as { MatchID?: string };
+      if (data.MatchID) return { inCoreGame: false, inPreGame: true, matchId: data.MatchID };
+    }
+  } catch { /* 프리게임 중 아님 */ }
+
+  return { inCoreGame: false, inPreGame: false, matchId: null };
+}

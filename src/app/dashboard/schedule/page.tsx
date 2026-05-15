@@ -4,6 +4,18 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRealtime } from "@/hooks/useRealtime";
 
+interface VctMatch {
+  leagueName: string;
+  leagueCode: string;
+  tournamentName: string;
+  state: string;
+  startsAt: string;
+  teamOne: string;
+  teamTwo: string;
+  score: string;
+  vodUrl?: string | null;
+}
+
 type CalendarType = "schedule" | "scrim" | "auction";
 
 interface CalendarItem {
@@ -99,6 +111,8 @@ export default function SchedulePage() {
     scrim: true,
     auction: true,
   });
+  const [vctMatches, setVctMatches] = useState<VctMatch[]>([]);
+  const [vctLoading, setVctLoading] = useState(true);
 
   const range = useMemo(() => gridRange(cursor), [cursor]);
 
@@ -144,6 +158,14 @@ export default function SchedulePage() {
   useEffect(() => { fetchSchedule(); }, [fetchSchedule]);
 
   useRealtime("schedule", () => fetchSchedule());
+
+  useEffect(() => {
+    fetch("/api/valorant/vct", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setVctMatches(d.matches ?? []))
+      .catch(() => {})
+      .finally(() => setVctLoading(false));
+  }, []);
 
   async function deleteEvent(id: string) {
     if (!isAdmin || deletingId) return;
@@ -202,6 +224,20 @@ export default function SchedulePage() {
           ))}
         </div>
       </div>
+
+      {!vctLoading && vctMatches.length > 0 && (
+        <div className="mb-6 overflow-hidden rounded border border-[#2a3540] bg-[#111c24]">
+          <div className="flex items-center justify-between border-b border-[#2a3540] px-4 py-3">
+            <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">VCT 대회 일정</div>
+            <div className="text-xs text-[#7b8a96]">{vctMatches.length}경기</div>
+          </div>
+          <div className="divide-y divide-[#1a2830]">
+            {vctMatches.slice(0, 10).map((match, i) => (
+              <VctMatchRow key={i} match={match} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="val-card overflow-hidden">
@@ -275,6 +311,44 @@ export default function SchedulePage() {
             </div>
           )}
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function VctMatchRow({ match }: { match: VctMatch }) {
+  const date = new Date(match.startsAt);
+  const isLive = match.state === "inProgress";
+  const isDone = match.state === "completed";
+  const isUpcoming = !isLive && !isDone;
+
+  const dateStr = date.toLocaleDateString("ko-KR", { month: "short", day: "numeric", weekday: "short" });
+  const timeStr = date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+      <div className="w-28 flex-shrink-0">
+        <div className="text-[10px] font-black text-[#7b8a96]">{match.leagueName}</div>
+        <div className="text-[10px] text-[#4a5a68]">{match.tournamentName}</div>
+      </div>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate text-xs font-bold text-white">{match.teamOne}</span>
+        {match.score ? (
+          <span className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${isLive ? "bg-[#ff4655]/20 text-[#ff4655]" : "bg-[#1a2830] text-[#7b8a96]"}`}>
+            {match.score}
+          </span>
+        ) : (
+          <span className="flex-shrink-0 text-[10px] text-[#4a5a68]">vs</span>
+        )}
+        <span className="truncate text-xs font-bold text-white">{match.teamTwo}</span>
+      </div>
+      <div className="flex flex-shrink-0 items-center gap-2">
+        {isLive && <span className="rounded bg-[#ff4655] px-1.5 py-0.5 text-[10px] font-black text-white">LIVE</span>}
+        {isDone && match.vodUrl && (
+          <a href={match.vodUrl} target="_blank" rel="noopener noreferrer" className="rounded border border-[#2a3540] px-1.5 py-0.5 text-[10px] text-[#7b8a96] hover:text-white">VOD</a>
+        )}
+        {isUpcoming && <span className="text-[10px] text-[#7b8a96]">{dateStr} {timeStr}</span>}
+        {isDone && !match.vodUrl && <span className="text-[10px] text-[#4a5a68]">종료</span>}
       </div>
     </div>
   );

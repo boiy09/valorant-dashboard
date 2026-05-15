@@ -156,6 +156,91 @@ export async function getOpGgCustomMatches(
   });
 }
 
+// op.gg에서 일반 최근 매치 목록 조회 (custom 포함 전체)
+export async function getOpGgRecentMatches(
+  gameName: string,
+  tagLine: string,
+  limit = 10
+): Promise<OpGgMatch[]> {
+  const slug = `${encodeURIComponent(gameName)}-${encodeURIComponent(tagLine)}`;
+  const url = `https://op.gg/api/v1.0/internal/bypass/games/global/valorant/summoners/${slug}/games?limit=${limit}&hl=ko_KR`;
+
+  const data = await opGgFetch<{
+    data?: Array<{
+      id?: string;
+      meta?: {
+        queue_info?: { game_type?: string };
+        started_at?: string;
+        game_length_second?: number;
+        map_info?: { name?: string };
+      };
+      myData?: {
+        summoner?: { summoner_id?: string; game_name?: string; tag_line?: string };
+        stats?: { kills?: number; deaths?: number; assists?: number; combat_score?: number };
+        champion?: { name?: string };
+        is_win?: boolean;
+        team_key?: string;
+      };
+      participants?: Array<{
+        summoner?: { summoner_id?: string; game_name?: string; tag_line?: string };
+        stats?: { kills?: number; deaths?: number; assists?: number; combat_score?: number };
+        champion?: { name?: string };
+        is_win?: boolean;
+        team_key?: string;
+      }>;
+      teams?: Array<{ key?: string; game_result?: string; round_count?: number }>;
+    }>;
+  }>(url);
+
+  if (!data?.data) return [];
+
+  return data.data.map((g): OpGgMatch => {
+    const myD = g.myData;
+    const myStats = myD?.stats ?? {};
+    const totalRounds = (g.teams ?? []).reduce((s, t) => s + (t.round_count ?? 0), 0);
+    const halfRounds = totalRounds / 2;
+    return {
+      id: g.id ?? "",
+      queueId: g.meta?.queue_info?.game_type?.toLowerCase() ?? "normal",
+      gameStartedAt: g.meta?.started_at ?? "",
+      gameDuration: g.meta?.game_length_second ?? 0,
+      mapName: g.meta?.map_info?.name ?? "",
+      isWin: myD?.is_win ?? false,
+      myData: {
+        puuid: myD?.summoner?.summoner_id ?? "",
+        gameName: myD?.summoner?.game_name ?? "",
+        tagLine: myD?.summoner?.tag_line ?? "",
+        agentName: myD?.champion?.name ?? "",
+        kills: myStats.kills ?? 0,
+        deaths: myStats.deaths ?? 0,
+        assists: myStats.assists ?? 0,
+        acs: halfRounds > 0 ? Math.round((myStats.combat_score ?? 0) / halfRounds) : 0,
+        teamId: myD?.team_key ?? "",
+      },
+      participants: (g.participants ?? []).map((p) => {
+        const ps = p.stats ?? {};
+        return {
+          puuid: p.summoner?.summoner_id ?? "",
+          gameName: p.summoner?.game_name ?? "",
+          tagLine: p.summoner?.tag_line ?? "",
+          agentName: p.champion?.name ?? "",
+          kills: ps.kills ?? 0,
+          deaths: ps.deaths ?? 0,
+          assists: ps.assists ?? 0,
+          acs: halfRounds > 0 ? Math.round((ps.combat_score ?? 0) / halfRounds) : 0,
+          teamId: p.team_key ?? "",
+          isWin: p.is_win ?? false,
+        };
+      }),
+      teams: (g.teams ?? []).map((t) => ({
+        teamId: t.key ?? "",
+        isWin: t.game_result === "WIN",
+        roundsWon: t.round_count ?? 0,
+      })),
+    };
+  });
+}
+
 // op.gg에서 최근 커스텀 게임 매치 ID 목록만 추출
 export async function getOpGgCustomMatchIds(
   gameName: string,

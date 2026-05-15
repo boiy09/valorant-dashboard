@@ -65,6 +65,7 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
+  const force = req.nextUrl.searchParams.get("force") === "true";
   const guildDiscordId = req.nextUrl.searchParams.get("guildId") ?? process.env.DISCORD_GUILD_ID;
   const guild = guildDiscordId
     ? await prisma.guild.findUnique({ where: { discordId: guildDiscordId } })
@@ -154,7 +155,7 @@ export async function GET(req: NextRequest) {
     const region = toRegionLabel(account.region);
     const cacheAge = account.rankCachedAt ? now - account.rankCachedAt.getTime() : Infinity;
     const hasProfileData = account.cachedLevel !== null || account.cachedCard !== null;
-    const isFresh = cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null && hasProfileData;
+    const isFresh = !force && cacheAge < RANK_CACHE_TTL && account.cachedTierId !== null && hasProfileData;
 
     if (isFresh) {
       const rankIcon = account.cachedTierId

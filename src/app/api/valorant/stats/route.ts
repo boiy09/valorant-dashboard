@@ -5,6 +5,8 @@ import { getRankByPuuid, getRecentMatches, getRankIconByTier, getRiotOfficialRec
 import { ensureTokenState, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 import { getPrivateRankData, getPrivateRecentMatches, getPrivateCompetitiveUpdates, getPrivateProfile, type CompetitiveUpdate } from "@/lib/riotPrivateApi";
 import { apiCache, TTL } from "@/lib/apiCache";
+import { getOpGgRecentMatches } from "@/lib/opgg-valorant";
+import type { OpGgMatch } from "@/lib/opgg-valorant";
 
 function extractCardId(cardUrl: string | null | undefined): string | null {
   if (!cardUrl) return null;
@@ -129,12 +131,40 @@ async function findUser(discordId: string, email?: string | null) {
   return user;
 }
 
+function opGgMatchToMatchStats(m: OpGgMatch): MatchStats {
+  const myD = m.myData;
+  const myTeam = m.teams.find((t) => t.teamId === myD.teamId);
+  const enemyTeam = m.teams.find((t) => t.teamId !== myD.teamId);
+  return {
+    matchId: m.id,
+    map: m.mapName,
+    mode: m.queueId,
+    agent: myD.agentName,
+    agentIcon: "",
+    result: m.isWin ? "승리" : "패배",
+    kills: myD.kills,
+    deaths: myD.deaths,
+    assists: myD.assists,
+    score: myD.acs,
+    teamScore: myTeam?.roundsWon ?? null,
+    enemyScore: enemyTeam?.roundsWon ?? null,
+    headshots: 0,
+    bodyshots: 0,
+    legshots: 0,
+    adr: null,
+    playedAt: m.gameStartedAt ? new Date(m.gameStartedAt) : new Date(0),
+    scoreboard: null,
+  };
+}
+
 async function getRecentMatchesCached(
   puuid: string,
   region: "kr" | "ap",
   puuidRankMap: Map<string, PuuidRankEntry>,
   force: boolean,
-  tokens?: { accessToken: string; entitlementsToken: string } | null
+  tokens?: { accessToken: string; entitlementsToken: string } | null,
+  gameName?: string,
+  tagLine?: string
 ): Promise<RecentMatchResult> {
   const cacheKey = `valorant:recent-matches:${region}:${puuid}:10`;
   const cached = cleanMatches(apiCache.get<MatchStats[]>(cacheKey, TTL.MEDIUM));
@@ -191,16 +221,31 @@ async function getRecentMatchesCached(
       }
     }
 
-    const matches = privateMatches.length > 0 ? privateMatches : henrikMatches;
-    if (matches.length > 0) {
-      apiCache.set(cacheKey, matches);
-      recentMatchesLastGood.set(cacheKey, matches);
+    let finalMatches = privateMatches.length > 0 ? privateMatches : henrikMatches;
+    let finalSource: RecentMatchSource = privateMatches.length > 0 ? "private" : finalMatches.length > 0 ? "henrik" : "empty";
+
+    // op.gg 폴백 (private/henrik 모두 실패 시)
+    if (finalMatches.length === 0 && gameName && tagLine) {
+      try {
+        const opggMatches = await getOpGgRecentMatches(gameName, tagLine, 10);
+        if (opggMatches.length > 0) {
+          finalMatches = cleanMatches(opggMatches.map(opGgMatchToMatchStats));
+          finalSource = finalMatches.length > 0 ? "henrik" : "empty"; // op.gg를 henrik 소스로 표시
+        }
+      } catch (e) {
+        console.warn("[stats] op.gg match fallback failed:", e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    if (finalMatches.length > 0) {
+      apiCache.set(cacheKey, finalMatches);
+      recentMatchesLastGood.set(cacheKey, finalMatches);
     }
 
     return {
-      matches,
-      source: privateMatches.length > 0 ? "private" : matches.length > 0 ? "henrik" : "empty",
-      message: matches.length > 0 ? undefined : privateError ?? "PVP/Henrik 모두 최근 매치 상세 데이터를 반환하지 않았습니다.",
+      matches: finalMatches,
+      source: finalSource,
+      message: finalMatches.length > 0 ? undefined : privateError ?? "PVP/Henrik/op.gg 모두 최근 매치 데이터를 반환하지 않았습니다.",
     };
   } catch (error) {
     const stale = cleanMatches(recentMatchesLastGood.get(cacheKey));
@@ -291,7 +336,7 @@ export async function GET(req: NextRequest) {
 
       const [rank, recentMatchResult, rrHistory, privateProfile, fallbackProfile] = await Promise.all([
         getRankCached(account.puuid, region, account.gameName, account.tagLine, tokens),
-        getRecentMatchesCached(account.puuid, qRegion, puuidRankMapRaw, forceRegion === region, tokens),
+        getRecentMatchesCached(account.puuid, qRegion, puuidRankMapRaw, forceRegion === region, tokens, account.gameName, account.tagLine),
         tokens
           ? getPrivateCompetitiveUpdates(account.puuid, qRegion, tokens.accessToken, tokens.entitlementsToken, 20).catch(() => [] as CompetitiveUpdate[])
           : Promise.resolve([] as CompetitiveUpdate[]),

@@ -39,10 +39,12 @@ function parseIdList(value: string | null | undefined) {
   if (!value) return [];
   try {
     const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-  } catch {
-    return value.split(",").map((item) => item.trim()).filter(Boolean);
-  }
+    // JSON 배열이면 문자열만 필터링
+    if (Array.isArray(parsed)) return parsed.filter((item): item is string => typeof item === "string");
+    // 배열이 아닌 값(숫자 등)이면 원본 문자열로 폴백
+  } catch { /* fall through */ }
+  // JSON 배열이 아니거나 파싱 실패: 콤마 구분 또는 단일 값으로 처리
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 async function settleInBatches<T, R>(items: T[], size: number, task: (item: T) => Promise<R>) {

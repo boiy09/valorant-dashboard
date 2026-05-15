@@ -1537,6 +1537,16 @@ function AuctionScrimPage({
     setBidding(false);
   }
 
+  async function removePlayer(playerId: string) {
+    const res = await fetch(`/api/scrim/${scrim.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ removePlayerId: playerId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.scrim) onScrimUpdate(data.scrim);
+    else setMessage(data.error ?? "참가자 제거에 실패했습니다.");
+  }
+
   async function resetAuction() {
     if (!window.confirm("경매를 초기화하고 처음부터 다시 시작할까요?")) return;
     const res = await fetch(`/api/scrim/auction?sessionId=${scrim.id}`, { method: "DELETE" });
@@ -1618,7 +1628,7 @@ function AuctionScrimPage({
               <div className="mb-3 text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">참가자 목록 ({participants.length}명)</div>
               {participants.length === 0
                 ? <div className="rounded border border-dashed border-[#2a3540] py-8 text-center text-xs text-[#7b8a96]">아직 참가자가 없습니다. 디스코드 모집 글에 이모지를 달면 자동 등록됩니다.</div>
-                : <ParticipantList players={participants} guildMembers={guildMembers} onRemove={() => {}} settings={auctionSettings}
+                : <ParticipantList players={participants} guildMembers={guildMembers} onRemove={isAdmin ? removePlayer : undefined} settings={auctionSettings}
                     captainSelections={isAdmin ? captainSelections : undefined}
                     onToggleCaptain={isAdmin ? toggleCaptain : undefined}
                     onSetCaptainPoint={isAdmin ? setCaptainPoint : undefined}
@@ -2004,7 +2014,7 @@ function ParticipantList({
 }: {
   players: ScrimPlayer[];
   guildMembers: GuildMemberOption[];
-  onRemove: (playerId: string) => void;
+  onRemove?: (playerId: string) => void;
   settings?: ScrimDetailSettings;
   captainSelections?: Record<string, number>;
   onToggleCaptain?: (userId: string) => void;
@@ -2071,7 +2081,7 @@ function ParticipantList({
                 player={player}
                 guildMembers={guildMembers}
                 agentPortraits={agentPortraits}
-                onRemove={() => onRemove(player.id)}
+                onRemove={onRemove ? () => onRemove(player.id) : undefined}
                 settings={settings}
                 gridCols={gridCols}
                 captainSelections={captainSelections}
@@ -2100,7 +2110,7 @@ function ParticipantRow({
   player: ScrimPlayer;
   guildMembers: GuildMemberOption[];
   agentPortraits: Record<string, string>;
-  onRemove: () => void;
+  onRemove?: () => void;
   settings?: ScrimDetailSettings;
   gridCols?: string;
   captainSelections?: Record<string, number>;
@@ -2226,17 +2236,19 @@ function ParticipantRow({
           {isSelected ? "✓ 팀장" : "팀장"}
         </button>
       )}
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onRemove();
-        }}
-        className="flex h-6 w-6 items-center justify-center rounded text-[#7b8a96] transition hover:bg-[#ff4655]/20 hover:text-[#ff4655]"
-        title="참가자 제거"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove();
+          }}
+          className="flex h-6 w-6 items-center justify-center rounded text-[#7b8a96] transition hover:bg-[#ff4655]/20 hover:text-[#ff4655]"
+          title="참가자 제거"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      )}
     </div>
   );
 }

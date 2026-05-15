@@ -1346,3 +1346,136 @@ export async function getVctSchedule(
     };
   });
 }
+
+const TRACKER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8",
+  "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+  "sec-fetch-dest": "empty",
+  "sec-fetch-mode": "cors",
+  "sec-fetch-site": "same-origin",
+  "Origin": "https://tracker.gg",
+  "Referer": "https://tracker.gg/valorant",
+};
+
+export async function getTrackerCustomMatchIds(
+  gameName: string,
+  tagLine: string
+): Promise<string[]> {
+  try {
+    const encoded = `${encodeURIComponent(gameName)}%23${encodeURIComponent(tagLine)}`;
+    const url = `https://api.tracker.gg/api/v2/valorant/standard/matches/riot/${encoded}?type=custom`;
+    const res = await fetch(url, {
+      headers: TRACKER_HEADERS as Record<string, string>,
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json() as { data?: Array<{ attributes?: { id?: string } }> };
+    return (data.data ?? [])
+      .map((m) => m.attributes?.id)
+      .filter((id): id is string => typeof id === "string");
+  } catch {
+    return [];
+  }
+}
+
+export async function getHenrikMatchById(
+  matchId: string,
+  region: ValorantRegion
+): Promise<MatchStats | null> {
+  try {
+    const response = await henrikClient.get(`/v4/match/${region}/${matchId}`);
+    const match = response.data?.data;
+    if (!match) return null;
+
+    const players = asArray<any>(match.players);
+    const teams = asArray<any>(match.teams);
+    const meta = asRecord(match.metadata ?? {});
+
+    const modeRaw = toString(meta.queue ?? meta.mode ?? meta.game_mode ?? "", "");
+    const mapRaw = toString(meta.map ?? meta.mapName ?? "", "");
+
+    const totalRoundsAll = teams.reduce((sum: number, t: any) => {
+      return sum + toNumber(t.rounds_won ?? asRecord(t.rounds).won ?? t.roundsWon ?? 0);
+    }, 0);
+
+    const scoreboardPlayers: ScoreboardPlayer[] = players.map((p: any) => {
+      const ps = asRecord(p.stats ?? {});
+      const pk = toNumber(ps.kills);
+      const pd = toNumber(ps.deaths);
+      const pa = toNumber(ps.assists);
+      const phs = toNumber(ps.headshots);
+      const pbs = toNumber(ps.bodyshots);
+      const pls = toNumber(ps.legshots);
+      const pScore = toNumber(ps.score);
+      const totalShots = phs + pbs + pls;
+      const pPuuid = toString(p.puuid ?? p.subject ?? "", "");
+      const teamRaw = toString(p.team_id ?? p.teamId ?? p.team ?? "", "");
+      return {
+        puuid: pPuuid,
+        name: toString(p.name ?? p.gameName ?? "", ""),
+        tag: toString(p.tag ?? p.tagLine ?? "", ""),
+        isPrivate: false,
+        teamId: normalizeTeamId(teamRaw),
+        level: null,
+        cardIcon: "",
+        agent: toString(asRecord(p.agent ?? {}).name ?? p.character ?? "", ""),
+        agentIcon: toString(asRecord(asRecord(p.assets ?? {}).agent ?? {}).killfeedPortrait ?? "", "") || "",
+        tierName: "",
+        tierId: 0,
+        tierIcon: null,
+        kills: pk,
+        deaths: pd,
+        assists: pa,
+        acs: totalRoundsAll > 0 ? Math.round(pScore / totalRoundsAll) : 0,
+        hsPercent: totalShots > 0 ? Math.round((phs / totalShots) * 100) : 0,
+        adr: null,
+        plusMinus: 0,
+        kd: pd > 0 ? Math.round((pk / pd) * 100) / 100 : pk,
+      } satisfies ScoreboardPlayer;
+    });
+
+    const scoreboardTeams: ScoreboardTeam[] = teams.map((t: any) => ({
+      teamId: normalizeTeamId(toString(t.team_id ?? t.teamId ?? t.id ?? "", "")),
+      won: Boolean(t.won ?? t.has_won),
+      roundsWon: toNumber(t.rounds_won ?? asRecord(t.rounds).won ?? t.roundsWon ?? 0),
+    }));
+
+    const matchIdStr = toString(meta.match_id ?? meta.matchId ?? matchId, matchId);
+
+    return {
+      matchId: matchIdStr,
+      mode: modeRaw,
+      map: mapRaw,
+      result: "무효",
+      teamScore: 0,
+      enemyScore: 0,
+      kills: 0,
+      deaths: 0,
+      assists: 0,
+      score: 0,
+      headshots: 0,
+      bodyshots: 0,
+      legshots: 0,
+      adr: null,
+      agent: "",
+      agentIcon: "",
+      playedAt: new Date(),
+      scoreboard: {
+        map: mapRaw,
+        mode: modeRaw,
+        startedAt: toString(meta.game_start ?? meta.started_at ?? "", ""),
+        gameLengthMs: toNumber(meta.game_length ?? meta.gameLengthMs ?? 0),
+        totalRounds: totalRoundsAll,
+        players: scoreboardPlayers,
+        teams: scoreboardTeams,
+        rounds: [],
+      },
+    } satisfies MatchStats;
+  } catch {
+    return null;
+  }
+}

@@ -1449,6 +1449,9 @@ function AuctionScrimPage({
       const res = await fetch(`/api/scrim/auction?sessionId=${scrim.id}`, { cache: "no-store" });
       const data = await res.json();
       setAuction(data.auction ?? null);
+      if (data.auction?.phase === "setup" && data.auction.captainPoints) {
+        try { setCaptainSelections(JSON.parse(data.auction.captainPoints)); } catch { /* ignore */ }
+      }
       if (data.auction?.phase !== "setup") {
         const scrimRes = await fetch(`/api/scrim/${scrim.id}`, { cache: "no-store" });
         const scrimData = await scrimRes.json();
@@ -1497,18 +1500,25 @@ function AuctionScrimPage({
 
   const currentPlayer = auction?.currentUserId ? playerMap.get(auction.currentUserId) : null;
 
+  async function saveCaptains(next: Record<string, number>) {
+    setCaptainSelections(next);
+    await fetch("/api/scrim/auction", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: scrim.id, action: "setup_captains", captainPoints: next }),
+    }).catch(() => {});
+  }
+
   // 팀장 선택 토글
   function toggleCaptain(userId: string) {
-    setCaptainSelections((prev) => {
-      const next = { ...prev };
-      if (next[userId] !== undefined) { delete next[userId]; }
-      else { next[userId] = defaultPoints; }
-      return next;
-    });
+    const next = { ...captainSelections };
+    if (next[userId] !== undefined) { delete next[userId]; }
+    else { next[userId] = defaultPoints; }
+    void saveCaptains(next);
   }
 
   function setCaptainPoint(userId: string, points: number) {
-    setCaptainSelections((prev) => ({ ...prev, [userId]: points }));
+    void saveCaptains({ ...captainSelections, [userId]: points });
   }
 
   async function startAuction() {
@@ -1612,7 +1622,7 @@ function AuctionScrimPage({
                     <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">팀장 기본 포인트</label>
                     <input
                       type="number" min={100} max={9999} step={50} value={defaultPoints}
-                      onChange={(e) => { const v = parseInt(e.target.value, 10); setDefaultPoints(v); setCaptainSelections((prev) => { const next = { ...prev }; Object.keys(next).forEach((k) => { next[k] = v; }); return next; }); }}
+                      onChange={(e) => { const v = parseInt(e.target.value, 10); setDefaultPoints(v); const next = { ...captainSelections }; Object.keys(next).forEach((k) => { next[k] = v; }); void saveCaptains(next); }}
                       className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
                     />
                   </div>

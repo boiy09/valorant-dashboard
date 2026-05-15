@@ -263,6 +263,21 @@ export async function PATCH(req: NextRequest) {
 
   if (!sessionId) return Response.json({ error: "sessionId가 필요합니다." }, { status: 400 });
 
+  // 팀장 선택 저장 (setup 단계)
+  if (action === "setup_captains") {
+    if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+    const captainPoints = body.captainPoints as Record<string, number> | undefined;
+    if (!captainPoints || typeof captainPoints !== "object") {
+      return Response.json({ error: "captainPoints가 필요합니다." }, { status: 400 });
+    }
+    const auction = await upsertAuction(sessionId, {
+      phase: "setup",
+      captainPoints: JSON.stringify(captainPoints),
+    });
+    broadcast(`scrim:${sessionId}`, { action: "setup_captains" }).catch(() => {});
+    return Response.json({ auction });
+  }
+
   // 수동 낙찰/유찰 처리 (타이머 없을 때 관리자 전용)
   if (action === "resolve" || action === "pass") {
     if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });

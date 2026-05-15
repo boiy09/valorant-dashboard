@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type AdminView = "server-records" | "warnings" | "newbies";
-type AdminAction = "sync-members" | "restart-bot";
+type AdminAction = "sync-members" | "restart-bot" | "graduate-newbies";
 type RecordType = "warning" | "complaint";
 
 interface AdminRecord {
@@ -249,6 +249,14 @@ export default function AdminPage() {
             className="val-btn bg-[#1a242d] px-4 py-2 text-sm font-bold text-[#c8d3db] hover:text-white disabled:opacity-50"
           >
             {actionLoading === "restart-bot" ? "요청 중..." : "봇 재시작"}
+          </button>
+          <button
+            type="button"
+            onClick={() => runAdminAction("graduate-newbies")}
+            disabled={actionLoading !== null}
+            className="val-btn bg-[#10b981]/15 px-4 py-2 text-sm font-bold text-[#6ee7b7] hover:bg-[#10b981]/25 disabled:opacity-50"
+          >
+            {actionLoading === "graduate-newbies" ? "처리 중..." : "30일 신입 졸업"}
           </button>
         </div>
         {actionMessage && (

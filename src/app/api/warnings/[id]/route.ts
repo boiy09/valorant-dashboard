@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
+import { syncWarningAutomation } from "@/lib/adminAutomation";
 import { prisma } from "@/lib/prisma";
 
 function resolveType(type?: string) {
@@ -64,6 +65,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     id
   );
 
+  const updated = rows[0];
+  if (typeof updated?.userId === "string" && typeof updated?.guildId === "string") {
+    await syncWarningAutomation(updated.userId, updated.guildId).catch((error) => {
+      console.error("[warnings] automation sync failed:", error);
+    });
+  }
+
   return Response.json({ warning: rows[0] ?? null });
 }
 
@@ -72,7 +80,18 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
 
   const { id } = await params;
+  const rows = await prisma.$queryRawUnsafe<Array<{ userId: string; guildId: string }>>(
+    `SELECT "userId", "guildId" FROM "Warning" WHERE id = $1`,
+    id
+  );
   await prisma.$executeRawUnsafe(`DELETE FROM "Warning" WHERE id = $1`, id);
+
+  const deleted = rows[0];
+  if (deleted) {
+    await syncWarningAutomation(deleted.userId, deleted.guildId).catch((error) => {
+      console.error("[warnings] automation sync failed:", error);
+    });
+  }
 
   return Response.json({ ok: true });
 }

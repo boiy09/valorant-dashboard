@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
+import { syncWarningAutomation } from "@/lib/adminAutomation";
 import { prisma } from "@/lib/prisma";
 
 async function ensureWarningColumns() {
@@ -128,6 +129,10 @@ export async function POST(req: NextRequest) {
     resolvedType,
     now
   );
+
+  await syncWarningAutomation(user.id, guild.id).catch((error) => {
+    console.error("[warnings] automation sync failed:", error);
+  });
 
   const userWithGuilds = await prisma.user.findUnique({
     where: { id: user.id },

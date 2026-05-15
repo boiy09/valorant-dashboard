@@ -104,7 +104,33 @@ export async function DELETE(req: NextRequest) {
   const { isAdmin } = await getAdminSession();
   if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
 
+  const scrim = await prisma.scrimSession.findUnique({
+    where: { id },
+    select: { recruitmentChannelId: true, recruitmentMessageIds: true },
+  });
+
   await prisma.scrimSession.delete({ where: { id } });
 
+  // Best-effort: Discord 모집 메시지 삭제
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (token && scrim?.recruitmentChannelId && scrim.recruitmentMessageIds) {
+    const messageIds = parseMessageIds(scrim.recruitmentMessageIds);
+    for (const messageId of messageIds) {
+      await fetch(
+        `https://discord.com/api/v10/channels/${scrim.recruitmentChannelId}/messages/${messageId}`,
+        { method: "DELETE", headers: { Authorization: `Bot ${token}` } }
+      ).catch(() => { /* best-effort */ });
+    }
+  }
+
   return Response.json({ success: true });
+}
+
+function parseMessageIds(value: string): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === "string");
+  } catch { /* fall through */ }
+  return value.split(",").map((v) => v.trim()).filter(Boolean);
 }

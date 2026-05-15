@@ -6,8 +6,11 @@ function toWebSocketUrl(value: string) {
   return value;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const proto = req.headers.get("x-forwarded-proto") ?? "";
+  const wsUrl = PROXY_URL ? toWebSocketUrl(PROXY_URL) : null;
+
   return Response.json({
-    wsUrl: PROXY_URL ? toWebSocketUrl(PROXY_URL) : null,
+    wsUrl: proto === "https" && wsUrl?.startsWith("ws://") ? null : wsUrl,
   });
 }

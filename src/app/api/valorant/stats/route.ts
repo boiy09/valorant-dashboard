@@ -196,34 +196,34 @@ async function getRecentMatchesCached(
       }
     }
     let henrikMatches: MatchStats[] = [];
+    let henrik429RemainSec = 0;
     if (privateMatches.length === 0) {
       const cooldownUntil = henrik429Until.get(cacheKey) ?? 0;
       if (Date.now() < cooldownUntil) {
-        const remainSec = Math.ceil((cooldownUntil - Date.now()) / 1000);
-        const stale = cleanMatches(recentMatchesLastGood.get(cacheKey) ?? apiCache.getStale<MatchStats[]>(cacheKey)?.data);
-        if (stale.length > 0) return { matches: stale, source: "stale", message: `요청 횟수 초과로 ${remainSec}초 후 재시도됩니다. 이전 데이터를 표시합니다.` };
-        return { matches: [], source: "empty", message: `요청 횟수가 너무 많습니다. ${remainSec}초 후 다시 시도해 주세요.` };
-      }
-      try {
-        henrikMatches = cleanMatches(await getRecentMatches(puuid, 10, region, "pc", {
-          puuidRankMap,
-          skipAccountFallback: true,
-        }));
-      } catch (err) {
-        const status = (err as { response?: { status?: number; headers?: Record<string, string> } }).response?.status;
-        if (status === 429) {
-          const retryAfter = parseInt((err as { response?: { headers?: Record<string, string> } }).response?.headers?.["retry-after"] ?? "60", 10);
-          henrik429Until.set(cacheKey, Date.now() + retryAfter * 1000);
-          const stale = cleanMatches(recentMatchesLastGood.get(cacheKey) ?? apiCache.getStale<MatchStats[]>(cacheKey)?.data);
-          if (stale.length > 0) return { matches: stale, source: "stale", message: `요청 횟수가 너무 많습니다. ${retryAfter}초 후 자동 재시도됩니다. 이전 데이터를 표시합니다.` };
-          return { matches: [], source: "empty", message: `요청 횟수가 너무 많습니다. ${retryAfter}초 후 다시 시도해 주세요. (429)` };
+        henrik429RemainSec = Math.ceil((cooldownUntil - Date.now()) / 1000);
+        // 쿨다운 중이면 Henrik 건너뜀 — tracker.gg/op.gg 폴백은 계속 시도
+      } else {
+        try {
+          henrikMatches = cleanMatches(await getRecentMatches(puuid, 10, region, "pc", {
+            puuidRankMap,
+            skipAccountFallback: true,
+          }));
+        } catch (err) {
+          const status = (err as { response?: { status?: number; headers?: Record<string, string> } }).response?.status;
+          if (status === 429) {
+            const retryAfter = parseInt((err as { response?: { headers?: Record<string, string> } }).response?.headers?.["retry-after"] ?? "60", 10);
+            henrik429Until.set(cacheKey, Date.now() + retryAfter * 1000);
+            henrik429RemainSec = retryAfter;
+            // Henrik 429여도 tracker.gg/op.gg 폴백 계속 시도
+          } else {
+            console.warn("[stats] henrik matches failed:", err);
+          }
         }
-        console.warn("[stats] henrik matches failed:", err);
       }
     }
 
     let finalMatches = privateMatches.length > 0 ? privateMatches : henrikMatches;
-    let finalSource: RecentMatchSource = privateMatches.length > 0 ? "private" : finalMatches.length > 0 ? "henrik" : "empty";
+    let finalSource: RecentMatchSource = privateMatches.length > 0 ? "private" : henrikMatches.length > 0 ? "henrik" : "empty";
 
     // tracker.gg → Henrik by ID 폴백 (Henrik 히스토리 한도 초과 또는 실패 시)
     if (finalMatches.length === 0 && gameName && tagLine) {
@@ -262,10 +262,25 @@ async function getRecentMatchesCached(
       recentMatchesLastGood.set(cacheKey, finalMatches);
     }
 
+    // stale 캐시 마지막 보험
+    if (finalMatches.length === 0) {
+      const stale = cleanMatches(recentMatchesLastGood.get(cacheKey) ?? apiCache.getStale<MatchStats[]>(cacheKey)?.data);
+      if (stale.length > 0) {
+        const msg = henrik429RemainSec > 0
+          ? `요청 횟수 초과로 ${henrik429RemainSec}초 후 재시도됩니다. 이전 데이터를 표시합니다.`
+          : "최근 매치 조회 실패로 이전 데이터를 표시합니다.";
+        return { matches: stale, source: "stale", message: msg };
+      }
+    }
+
+    const emptyMessage = henrik429RemainSec > 0
+      ? `요청 횟수가 너무 많습니다. ${henrik429RemainSec}초 후 다시 시도해 주세요. (429)`
+      : privateError ?? "Private/Riot/Henrik/tracker.gg/op.gg 모두 매치 데이터를 반환하지 않았습니다.";
+
     return {
       matches: finalMatches,
       source: finalSource,
-      message: finalMatches.length > 0 ? undefined : privateError ?? "Private/Riot/Henrik/tracker.gg/op.gg 모두 매치 데이터를 반환하지 않았습니다.",
+      message: finalMatches.length > 0 ? undefined : emptyMessage,
     };
   } catch (error) {
     const stale = cleanMatches(recentMatchesLastGood.get(cacheKey));

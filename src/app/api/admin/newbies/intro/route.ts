@@ -78,16 +78,13 @@ export async function GET(req: Request) {
 
     const messages = await fetchChannelMessages(token, targetIds);
 
-    const byAuthor = new Map<string, { content: string; timestamp: string; hasAttachments: boolean }>();
-    for (const msg of messages) {
+    // discordId → 메시지 목록 (오래된 순)
+    const byAuthor = new Map<string, Array<{ content: string; timestamp: string; hasAttachments: boolean }>>();
+    for (const msg of [...messages].reverse()) {
+      const entry = { content: msg.content, timestamp: msg.timestamp, hasAttachments: msg.attachments.length > 0 };
       const existing = byAuthor.get(msg.author.id);
-      if (!existing || msg.timestamp > existing.timestamp) {
-        byAuthor.set(msg.author.id, {
-          content: msg.content,
-          timestamp: msg.timestamp,
-          hasAttachments: msg.attachments.length > 0,
-        });
-      }
+      if (existing) existing.push(entry);
+      else byAuthor.set(msg.author.id, [entry]);
     }
 
     const debug = url.searchParams.get("debug") === "1";

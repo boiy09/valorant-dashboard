@@ -48,11 +48,12 @@ interface AdminNote {
   updatedAt?: string;
 }
 
-interface IntroEntry {
+interface IntroMessage {
   content: string;
   timestamp: string;
   hasAttachments: boolean;
 }
+type IntroEntry = IntroMessage[];
 
 const TABS: Array<[AdminView, string]> = [
   ["server-records", "서버 기록"],
@@ -836,7 +837,7 @@ function NewbieCard({
   intro: IntroEntry | undefined;
   introsLoading: boolean;
 }) {
-  const hasIntro = Boolean(intro?.content?.trim() || intro?.hasAttachments);
+  const hasIntro = Array.isArray(intro) && intro.some((m) => m.content?.trim() || m.hasAttachments);
 
   return (
     <details className="rounded border border-[#263442] bg-[#0f1923]/70">
@@ -889,21 +890,33 @@ function IntroSection({ intro, loading }: { intro: IntroEntry | undefined; loadi
     );
   }
 
-  const hasContent = intro?.content?.trim();
-  const date = intro?.timestamp ? new Date(intro.timestamp).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : null;
+  const messages = intro ?? [];
+  const hasAny = messages.some((m) => m.content?.trim() || m.hasAttachments);
 
   return (
     <div className="rounded border border-[#263442] bg-[#07131e] p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="text-xs font-bold uppercase tracking-widest text-[#7b8a96]">닉네임작성-자소서</div>
-        {date && <div className="text-[11px] text-[#7b8a96]">{date}</div>}
+      <div className="mb-2 text-xs font-bold uppercase tracking-widest text-[#7b8a96]">
+        닉네임작성-자소서 {messages.length > 1 && <span className="ml-1 text-[#7b8a96]">({messages.length}개)</span>}
       </div>
-      {hasContent ? (
-        <div className="whitespace-pre-wrap break-words text-sm text-[#c8d3db]">{intro!.content}</div>
-      ) : intro?.hasAttachments ? (
-        <div className="text-sm text-[#8da0ad]">첨부파일만 있습니다.</div>
-      ) : (
+      {!hasAny ? (
         <div className="text-sm text-[#ff8b95]">아직 작성하지 않았습니다.</div>
+      ) : (
+        <div className="space-y-2">
+          {messages.map((msg, i) => {
+            const date = new Date(msg.timestamp).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+            return (
+              <div key={i} className={`${messages.length > 1 ? "rounded border border-[#263442] bg-[#0f1923] p-2" : ""}`}>
+                {messages.length > 1 && <div className="mb-1 text-[11px] text-[#7b8a96]">{i + 1}번째 · {date}</div>}
+                {msg.content?.trim() ? (
+                  <div className="whitespace-pre-wrap break-words text-sm text-[#c8d3db]">{msg.content}</div>
+                ) : (
+                  <div className="text-sm text-[#8da0ad]">첨부파일만 있습니다.</div>
+                )}
+                {messages.length === 1 && <div className="mt-1 text-[11px] text-[#7b8a96]">{date}</div>}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

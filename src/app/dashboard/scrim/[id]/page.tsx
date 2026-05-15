@@ -104,6 +104,20 @@ interface AuctionState {
   auctionStartAt: string | null;
   auctionDuration: number;
   failedQueue: string; // JSON: userId[]
+  pausedPhase?: string | null;
+  bidLog?: string;
+  auditLog?: string;
+}
+
+interface AuctionLogEntry {
+  id: string;
+  ts: string;
+  actorId?: string;
+  action: string;
+  message: string;
+  captainId?: string;
+  targetUserId?: string;
+  amount?: number;
 }
 
 // ─── 전적탭 동일 헬퍼 함수 ────────────────────────────────────────────────────
@@ -1490,6 +1504,8 @@ function AuctionScrimPage({
   const currentBids = parseJson<Record<string, number>>(auction?.currentBids, {});
   const failedQueue = parseJson<string[]>(auction?.failedQueue, []);
   const queue = parseJson<string[]>(auction?.queue, []);
+  const bidLog = parseJson<AuctionLogEntry[]>(auction?.bidLog, []);
+  const auditLog = parseJson<AuctionLogEntry[]>(auction?.auditLog, []);
   const captainIds = Object.keys(captainPoints);
 
   const playerMap = useMemo(() => {
@@ -1556,6 +1572,23 @@ function AuctionScrimPage({
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setMessage(data.error ?? "처리에 실패했습니다."); return; }
     setAuction(data.auction);
+  }
+
+  async function auctionAdminAction(action: string, extra: Record<string, unknown> = {}) {
+    setBidding(true);
+    setMessage(null);
+    const res = await fetch("/api/scrim/auction", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: scrim.id, action, ...extra }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(data.error ?? "경매 조작에 실패했습니다.");
+    } else {
+      setAuction(data.auction);
+    }
+    setBidding(false);
   }
 
   async function submitBid(captainId: string) {
@@ -1781,8 +1814,8 @@ function AuctionScrimPage({
   }
 
   // ── 경매 진행 / 재경매 / 완료 단계 ──
-  const phaseLabel = auction.phase === "reauction" ? "재경매" : auction.phase === "done" ? "경매 완료" : "경매 진행 중";
-  const phaseColor = auction.phase === "done" ? "#00e7c2" : "#f6c945";
+  const phaseLabel = auction.phase === "paused" ? "일시정지" : auction.phase === "reauction" ? "재경매" : auction.phase === "done" ? "경매 완료" : "경매 진행 중";
+  const phaseColor = auction.phase === "done" ? "#00e7c2" : auction.phase === "paused" ? "#7b8a96" : "#f6c945";
 
   // 팀별 배정 결과
   const teamAssignments: Record<string, ScrimPlayer[]> = {};
@@ -1804,12 +1837,27 @@ function AuctionScrimPage({
         </div>
         {isAdmin && (
           <div className="flex gap-2">
+            {auction.phase === "paused" ? (
+              <button type="button" onClick={() => void auctionAdminAction("resume")} disabled={bidding} className="rounded border border-[#00e7c2]/45 bg-[#00e7c2]/10 px-4 py-2 text-xs font-black text-[#7fffe6] hover:border-[#00e7c2] disabled:opacity-50">경매 재개</button>
+            ) : (
+              (auction.phase === "auction" || auction.phase === "reauction") && (
+                <button type="button" onClick={() => void auctionAdminAction("pause")} disabled={bidding} className="rounded border border-[#7b8a96]/45 bg-[#7b8a96]/10 px-4 py-2 text-xs font-black text-[#c8d3db] hover:border-[#9aa8b3] disabled:opacity-50">일시정지</button>
+              )
+            )}
             <button type="button" onClick={resetAuction} className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-4 py-2 text-xs font-black text-[#ff8a95] hover:border-[#ff4655]">경매 초기화</button>
           </div>
         )}
       </div>
 
       {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
+
+      {auction.phase === "paused" && (
+        <div className="mb-5 val-card p-5">
+          <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">PAUSED</div>
+          <div className="mt-2 text-2xl font-black text-white">경매가 일시정지되었습니다.</div>
+          <p className="mt-1 text-sm font-bold text-[#9aa8b3]">관리자가 재개하면 현재 매물부터 타이머가 다시 시작됩니다.</p>
+        </div>
+      )}
 
       {/* 현재 경매 중인 참가자 */}
       {(auction.phase === "auction" || auction.phase === "reauction") && (
@@ -1925,6 +1973,15 @@ function AuctionScrimPage({
                           className="min-w-0 flex-1 rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
                         />
                         <button type="button" onClick={() => void submitBid(cId)} disabled={bidding} className="rounded bg-[#f6c945] px-3 py-2 text-xs font-black text-black disabled:opacity-50">입찰</button>
+                        <button
+                          type="button"
+                          onClick={() => void auctionAdminAction("forceAssign", { captainId: cId, bidAmount: parseInt(bidAmounts[cId] ?? "0", 10) || 0 })}
+                          disabled={bidding}
+                          className="rounded border border-[#00e7c2]/35 bg-[#00e7c2]/10 px-3 py-2 text-xs font-black text-[#7fffe6] hover:border-[#00e7c2] disabled:opacity-50"
+                          title="입력한 금액으로 즉시 낙찰합니다. 금액이 비어 있으면 0P 처리됩니다."
+                        >
+                          강제낙찰
+                        </button>
                       </div>
                     )}
                   </div>
@@ -2006,7 +2063,62 @@ function AuctionScrimPage({
           </div>
         </div>
       )}
+
+      {(bidLog.length > 0 || auditLog.length > 0) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <AuctionLogPanel title="입찰 로그" logs={bidLog} guildMembers={guildMembers} playerMap={playerMap} emptyText="아직 입찰 기록이 없습니다." />
+          <AuctionLogPanel title="운영 로그" logs={auditLog} guildMembers={guildMembers} playerMap={playerMap} emptyText="아직 운영 기록이 없습니다." />
+        </div>
+      )}
     </div>
+  );
+}
+
+function AuctionLogPanel({
+  title,
+  logs,
+  guildMembers,
+  playerMap,
+  emptyText,
+}: {
+  title: string;
+  logs: AuctionLogEntry[];
+  guildMembers: GuildMemberOption[];
+  playerMap: Map<string, ScrimPlayer>;
+  emptyText: string;
+}) {
+  function name(userId?: string) {
+    if (!userId) return "-";
+    const player = playerMap.get(userId);
+    return resolveServerNick(userId, guildMembers, player?.user.name);
+  }
+
+  return (
+    <section className="val-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">{title}</div>
+        <div className="text-[11px] font-bold text-[#56636f]">{logs.length}건</div>
+      </div>
+      {logs.length === 0 ? (
+        <div className="rounded border border-dashed border-[#2a3540] py-6 text-center text-xs font-bold text-[#7b8a96]">{emptyText}</div>
+      ) : (
+        <div className="max-h-60 space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+          {logs.slice().reverse().map((log) => (
+            <div key={log.id} className="rounded border border-[#2a3540] bg-[#0b141c]/70 px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-black text-white">{log.message}</span>
+                <span className="text-[10px] font-bold text-[#56636f]">{new Date(log.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div className="mt-1 text-[11px] font-bold text-[#7b8a96]">
+                {log.captainId && <span>팀장 {name(log.captainId)} </span>}
+                {log.targetUserId && <span>대상 {name(log.targetUserId)} </span>}
+                {typeof log.amount === "number" && <span>{log.amount}P</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -252,7 +252,8 @@ model ScrimGame {
 model AuctionState {
   id              String   @id @default(cuid())
   sessionId       String   @unique
-  phase           String   @default("setup") // setup | auction | reauction | done
+  phase           String   @default("setup") // setup | auction | reauction | paused | done
+  pausedPhase     String?
   captainPoints   String   @default("{}")   // JSON: { userId: points }
   queue           String   @default("[]")   // JSON: userId[] 남은 경매 순서
   currentUserId   String?                   // 현재 경매 중인 참가자 userId
@@ -260,6 +261,8 @@ model AuctionState {
   auctionStartAt  DateTime?
   auctionDuration Int      @default(30)     // 초 단위 타이머
   failedQueue     String   @default("[]")   // JSON: userId[] 유찰된 참가자
+  bidLog          String   @default("[]")
+  auditLog        String   @default("[]")
   updatedAt       DateTime @updatedAt
   createdAt       DateTime @default(now())
 }

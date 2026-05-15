@@ -110,8 +110,7 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.findUnique({ where: { discordId } });
   if (!user) return Response.json({ error: "해당 멤버를 찾을 수 없습니다." }, { status: 404 });
 
-  const { v4: uuidv4 } = await import("uuid");
-  const id = uuidv4();
+  const id = `wrn_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const now = new Date();
 
   await prisma.$executeRawUnsafe(

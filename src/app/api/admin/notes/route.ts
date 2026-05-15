@@ -62,8 +62,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "discordId와 내용을 입력해주세요." }, { status: 400 });
   }
 
-  const { v4: uuidv4 } = await import("uuid");
-  const id = uuidv4();
+  const id = `note_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const now = new Date();
   const resolvedIssuedBy = issuedBy?.trim() || "관리자 (웹)";
 

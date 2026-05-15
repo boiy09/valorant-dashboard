@@ -419,6 +419,17 @@ export default function RiotConnectPage() {
                   <li>④ 왼쪽 요청 목록에서 <span className="font-black text-white">check-session-iframe</span> 을 클릭합니다.</li>
                   <li>⑤ 오른쪽 <span className="font-black text-white">Headers → Request Headers → Cookie</span> 값 전체를 복사합니다.</li>
                 </ol>
+                <div className="mt-3 rounded border border-[#f6c945]/30 bg-[#f6c945]/8 px-3 py-2.5">
+                  <div className="mb-1 text-xs font-black text-[#f6c945]">⚠ Cookie 항목이 보이지 않는다면</div>
+                  <p className="break-keep text-xs leading-relaxed text-[#c8b86a]">
+                    Chrome 설정에서 <span className="font-black text-white">제3자 쿠키가 차단</span>되어 있을 수 있습니다.
+                  </p>
+                  <ol className="mt-1.5 space-y-0.5 break-keep text-xs leading-relaxed text-[#c8b86a]">
+                    <li>① Chrome 주소창에 <span className="font-mono font-black text-white">chrome://settings/cookies</span> 입력</li>
+                    <li>② <span className="font-black text-white">&quot;제3자 쿠키 허용&quot;</span> 또는 <span className="font-black text-white">&quot;사이트가 쿠키 데이터를 저장·읽을 수 있음&quot;</span> 선택</li>
+                    <li>③ 브라우저를 <span className="font-black text-white">새로고침</span>하고 다시 시도</li>
+                  </ol>
+                </div>
               </li>
               <li className="rounded border border-[#2a3540] bg-[#0f1923] p-4">
                 <div className="text-xs font-black uppercase tracking-widest text-[#7fffe6]">Step 3</div>

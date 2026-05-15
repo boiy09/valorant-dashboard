@@ -84,23 +84,28 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   }
 
   // 여러 대표 계정으로 최근 커스텀 매치 조회 (스코어보드 포함)
-  const representative = playerPuuids[0];
-  const qRegion = representative.region === "AP" ? "ap" : "kr";
+  const qRegion = playerPuuids[0].region === "AP" ? "ap" : "kr";
 
-  // 대표 1명으로 최대 50경기 조회, 실패 시 다음 계정으로 순차 시도
+  // Henrik API size 최대 25 — 실패 시 다음 계정으로 순차 시도
   let recentMatches: MatchStats[] = [];
+  let lastFetchError = "";
   for (const candidate of playerPuuids.slice(0, 3)) {
     try {
-      recentMatches = await getRecentMatches(candidate.puuid, 50, qRegion, "pc", {
+      recentMatches = await getRecentMatches(candidate.puuid, 25, qRegion, "pc", {
         skipAccountFallback: true,
         skipRankFallback: true,
       });
       if (recentMatches.length > 0) break;
-    } catch { /* 다음 계정 시도 */ }
+    } catch (e) {
+      lastFetchError = e instanceof Error ? e.message : String(e);
+      console.warn("[sync-match] 전적 조회 실패:", candidate.puuid, lastFetchError);
+    }
   }
 
   if (recentMatches.length === 0) {
-    return Response.json({ error: "전적 데이터를 가져오는 데 실패했습니다. 라이엇 계정이 연동된 참가자를 확인해 주세요." }, { status: 500 });
+    return Response.json({
+      error: `전적 데이터를 가져오는 데 실패했습니다.${lastFetchError ? ` (${lastFetchError})` : " 라이엇 계정이 연동된 참가자를 확인해 주세요."}`,
+    }, { status: 500 });
   }
 
   // 커스텀 매치만 필터링

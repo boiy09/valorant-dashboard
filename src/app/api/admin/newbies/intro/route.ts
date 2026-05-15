@@ -60,7 +60,13 @@ async function fetchChannelMessages(
 
 export async function GET(req: Request) {
   try {
-    const { isAdmin } = await getAdminSession();
+    let isAdmin = false;
+    try {
+      const session = await getAdminSession();
+      isAdmin = session.isAdmin;
+    } catch {
+      return Response.json({ error: "DB unavailable" }, { status: 503 });
+    }
     if (!isAdmin) return Response.json({ error: "Forbidden" }, { status: 403 });
 
     const token = process.env.DISCORD_BOT_TOKEN;

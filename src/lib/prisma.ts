@@ -13,9 +13,9 @@ function createPrisma() {
 
   const pool = new Pool({
     connectionString,
-    max: 3,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    max: 1,                      // 서버리스: 인스턴스당 최대 1개
+    idleTimeoutMillis: 10000,    // 10초 미사용 시 즉시 반환
+    connectionTimeoutMillis: 4000,
   });
 
   const adapter = new PrismaPg(pool);
@@ -23,5 +23,14 @@ function createPrisma() {
 }
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
-export const prisma = globalForPrisma.prisma ?? createPrisma();
-globalForPrisma.prisma = prisma;
+
+// 빌드 타임에는 Prisma 인스턴스를 생성하지 않음
+export const prisma: PrismaClient = (() => {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return {} as PrismaClient;
+  }
+  if (globalForPrisma.prisma) return globalForPrisma.prisma;
+  const client = createPrisma();
+  globalForPrisma.prisma = client;
+  return client;
+})();

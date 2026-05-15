@@ -216,15 +216,21 @@ async function fetchDiscordJson<T>(url: string): Promise<T | null> {
   return (await response.json().catch(() => null)) as T | null;
 }
 
-async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<typeof findScrim>>>) {
-  if (!scrim.recruitmentChannelId) return;
+async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<typeof findScrim>>>, force = false) {
+  if (!scrim.recruitmentChannelId) return 0;
 
   const messageIds = parseIdList(scrim.recruitmentMessageIds);
-  if (messageIds.length === 0) return;
+  if (messageIds.length === 0) return 0;
 
-  const lastSynced = reactionSyncCache.get(scrim.id) ?? 0;
-  if (Date.now() - lastSynced < 15_000) return;
+  if (!force) {
+    const lastSynced = reactionSyncCache.get(scrim.id) ?? 0;
+    if (Date.now() - lastSynced < 15_000) return 0;
+  }
   reactionSyncCache.set(scrim.id, Date.now());
+
+  const excludedUserIds: string[] = (() => {
+    try { const s = JSON.parse(scrim.settings || "{}"); return Array.isArray(s.excludedUserIds) ? s.excludedUserIds : []; } catch { return []; }
+  })();
 
   const dbGuild = await prisma.guild.findUnique({ where: { id: scrim.guildId }, select: { discordId: true } });
 
@@ -245,6 +251,10 @@ async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<ty
 
       for (const discordUser of users ?? []) {
         if (!discordUser.id || discordUser.bot) continue;
+
+        // 수동 제거된 유저는 재로드 스킵 (excludedUserIds 체크는 appUser 조회 후)
+        const existingUser = await prisma.user.findUnique({ where: { discordId: discordUser.id }, select: { id: true } });
+        if (existingUser && excludedUserIds.includes(existingUser.id)) continue;
 
         const avatarUrl = discordUser.avatar
           ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
@@ -292,6 +302,36 @@ async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<ty
       }
     }
   }
+  return 0;
+}
+
+export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { session, isAdmin, guild } = await getAdminSession();
+  if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+
+  const { id } = await context.params;
+  const body = await req.json().catch(() => ({}));
+
+  if (body.action !== "sync-reactions") {
+    return Response.json({ error: "알 수 없는 액션입니다." }, { status: 400 });
+  }
+
+  const scrim = await findScrim(id, guild?.id);
+  if (!scrim) return Response.json({ error: "내전을 찾을 수 없습니다." }, { status: 404 });
+
+  const currentManagers = parseIdList(scrim.managers || scrim.createdBy);
+  if (!isAdmin && !currentManagers.includes(session.user.id)) {
+    return Response.json({ error: "내전 관리자 권한이 필요합니다." }, { status: 403 });
+  }
+
+  try {
+    await syncRecruitmentReactions(scrim, true);
+  } catch (e) {
+    return Response.json({ error: e instanceof Error ? e.message : "참가자 로드에 실패했습니다." }, { status: 500 });
+  }
+
+  const updated = await findScrim(id, guild?.id);
+  return Response.json({ success: true, scrim: updated });
 }
 
 export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -303,13 +343,6 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
   const scrim = await findScrim(id, guild?.id);
   if (!scrim) return Response.json({ error: "내전을 찾을 수 없습니다." }, { status: 404 });
 
-  await syncRecruitmentReactions(scrim).catch((error) => {
-    console.error("내전 모집 반응 동기화 오류:", error);
-  });
-
-  const syncedScrim = await findScrim(id, guild?.id);
-  if (!syncedScrim) return Response.json({ error: "내전을 찾을 수 없습니다." }, { status: 404 });
-
   const guildMembers = guild
     ? await prisma.guildMember.findMany({
         where: { guildId: guild.id },
@@ -319,8 +352,8 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
         orderBy: { nickname: "asc" },
       })
     : [];
-  const scrimKdSummaries = await getScrimKdSummaries(syncedScrim.guildId);
-  const missingRankPlayers = syncedScrim.players.filter((player) => !scrimKdSummaries.has(player.userId));
+  const scrimKdSummaries = await getScrimKdSummaries(scrim.guildId);
+  const missingRankPlayers = scrim.players.filter((player) => !scrimKdSummaries.has(player.userId));
   const rankKdSummaries = new Map<string, KdSummary>();
 
   await settleInBatches(missingRankPlayers, 3, async (player) => {
@@ -330,13 +363,16 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
 
   return Response.json({
     scrim: {
-      ...syncedScrim,
-      players: syncedScrim.players.map((player) => ({
+      ...scrim,
+      players: scrim.players.map((player) => ({
         ...player,
         kdSummary: scrimKdSummaries.get(player.userId) ?? rankKdSummaries.get(player.userId) ?? null,
       })),
     },
-    managerIds: parseIdList(syncedScrim.managers || syncedScrim.createdBy),
+    managerIds: parseIdList(scrim.managers || scrim.createdBy),
+    excludedUserIds: (() => {
+      try { const s = JSON.parse(scrim.settings || "{}"); return Array.isArray(s.excludedUserIds) ? s.excludedUserIds : []; } catch { return []; }
+    })(),
     guildMembers: (guildMembers as GuildMemberRow[]).map((member) => ({
       userId: member.userId,
       discordId: member.user.discordId,
@@ -390,11 +426,27 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     });
   }
 
-  // 참가자 제거
+  // 참가자 제거 + excludedUserIds에 등록 (수동 제거 = 재로드 방지)
   if (typeof body.removePlayerId === "string" && body.removePlayerId) {
+    const removedPlayer = await prisma.scrimPlayer.findFirst({
+      where: { id: body.removePlayerId, sessionId: scrim.id },
+      select: { userId: true },
+    });
     await prisma.scrimPlayer.deleteMany({
       where: { id: body.removePlayerId, sessionId: scrim.id },
     });
+    if (removedPlayer?.userId) {
+      const currentSettings = parseSettings(scrim.settings);
+      const excluded: string[] = Array.isArray((currentSettings as Record<string, unknown>).excludedUserIds)
+        ? ((currentSettings as Record<string, unknown>).excludedUserIds as string[])
+        : [];
+      if (!excluded.includes(removedPlayer.userId)) {
+        await prisma.scrimSession.update({
+          where: { id: scrim.id },
+          data: { settings: JSON.stringify({ ...currentSettings, excludedUserIds: [...excluded, removedPlayer.userId] }) },
+        });
+      }
+    }
   }
 
   // 매니저 업데이트

@@ -548,6 +548,22 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     void patchScrim({ players: next });
   }
 
+  async function loadReactions() {
+    if (!scrim?.recruitmentChannelId) return;
+    setSaving(true); setMessage(null);
+    try {
+      const res = await fetch(`/api/scrim/${id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync-reactions" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "참가자 로드에 실패했습니다.");
+      if (data.scrim) setScrim(data.scrim);
+      setMessage("이모지 반응자를 참가자로 로드했습니다.");
+    } catch (e) { setMessage(e instanceof Error ? e.message : "참가자 로드에 실패했습니다."); }
+    finally { setSaving(false); }
+  }
+
   async function addRecruitment() {
     setSaving(true); setMessage(null);
     try {
@@ -788,6 +804,11 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           <button type="button" onClick={balanceAssign} disabled={saving || participantPlayers.length < 2} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-40" title="티어 기반 밸런스 배정">⚖️ 밸런스</button>
           <button type="button" onClick={addTeam} disabled={saving} className="val-btn border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-white disabled:opacity-50">팀 추가</button>
           <button type="button" onClick={addRecruitment} disabled={saving} className="val-btn border border-[#ff4655]/40 bg-[#ff4655]/10 px-3 py-2 text-xs font-black text-[#ff4655] disabled:opacity-50">추가 모집</button>
+          {scrim.recruitmentChannelId && (
+            <button type="button" onClick={() => void loadReactions()} disabled={saving} className="val-btn border border-[#00e7c2]/40 bg-[#00e7c2]/10 px-3 py-2 text-xs font-black text-[#00e7c2] disabled:opacity-50" title="Discord 이모지 반응자를 참가자로 불러옵니다">
+              👥 참가자 로드
+            </button>
+          )}
           {(scrim.status === 'waiting' || scrim.status === 'recruiting') && (
             <button type="button" onClick={() => handleStatusChange('playing')} className="val-btn bg-[#f6c945] px-3 py-2 text-xs font-black text-[#0b141c]">내전 시작</button>
           )}

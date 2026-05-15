@@ -93,6 +93,11 @@ function recordColor(type: RecordType) {
     : "border-[#ff4655]/40 bg-[#ff4655]/10 text-[#ff4655]";
 }
 
+function visibleRecordNote(note: string | null) {
+  if (!note || note === "[AUTO_COMPLAINT_WARNING]") return null;
+  return note;
+}
+
 export default function AdminPage() {
   const [view, setView] = useState<AdminView>("server-records");
   const [records, setRecords] = useState<ServerRecord[]>([]);
@@ -509,7 +514,6 @@ function WarningsTab({
   return (
     <div className="space-y-4">
       <RoleHoldersCard members={roleMembers} records={records} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} />
-      <AdminRecordsList records={records} onEdit={onEdit} onDelete={onDelete} title="경고 내역" />
     </div>
   );
 }
@@ -660,6 +664,8 @@ function RecordItem({
   onEdit: (record: AdminRecord) => void;
   onDelete: (record: AdminRecord) => void;
 }) {
+  const note = visibleRecordNote(record.note);
+
   return (
     <div className={`rounded border border-[#263442] bg-[#0a1520]/70 ${compact ? "p-3" : "p-4"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -670,7 +676,7 @@ function RecordItem({
             {!record.active && <span className="rounded bg-[#263442] px-2 py-0.5 text-[11px] text-[#8da0ad]">비활성</span>}
           </div>
           <div className="break-keep text-sm text-[#c8d3db]">{record.reason}</div>
-          {record.note && <div className="mt-2 rounded bg-[#0f1923] px-3 py-2 text-xs text-[#9aa8b3]">{record.note}</div>}
+          {note && <div className="mt-2 rounded bg-[#0f1923] px-3 py-2 text-xs text-[#9aa8b3]">{note}</div>}
           <div className="mt-2 text-[11px] text-[#7b8a96]">
             작성자 {record.issuedBy || "관리자"} / {new Date(record.createdAt).toLocaleDateString("ko-KR")}
           </div>

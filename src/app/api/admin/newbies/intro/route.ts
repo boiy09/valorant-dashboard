@@ -1,6 +1,6 @@
 import { getAdminSession } from "@/lib/admin";
 
-export const maxDuration = 60;
+export const maxDuration = 30;
 
 const INTRO_CHANNEL_ID = "1343592307164844115";
 const DISCORD_API = "https://discord.com/api/v10";
@@ -59,21 +59,19 @@ async function fetchChannelMessages(
 }
 
 export async function GET(req: Request) {
-  const { isAdmin } = await getAdminSession();
-  if (!isAdmin) return Response.json({ error: "Forbidden" }, { status: 403 });
-
-  const token = process.env.DISCORD_BOT_TOKEN;
-  if (!token) return Response.json({ error: "Bot token not configured" }, { status: 500 });
-
-  // 쿼리로 신입 멤버 Discord ID 목록 받아서 조기 종료에 활용
-  const url = new URL(req.url);
-  const idsParam = url.searchParams.get("ids");
-  const targetIds = new Set<string>(idsParam ? idsParam.split(",").filter(Boolean) : []);
-
   try {
+    const { isAdmin } = await getAdminSession();
+    if (!isAdmin) return Response.json({ error: "Forbidden" }, { status: 403 });
+
+    const token = process.env.DISCORD_BOT_TOKEN;
+    if (!token) return Response.json({ error: "Bot token not configured" }, { status: 500 });
+
+    const url = new URL(req.url);
+    const idsParam = url.searchParams.get("ids");
+    const targetIds = new Set<string>(idsParam ? idsParam.split(",").filter(Boolean) : []);
+
     const messages = await fetchChannelMessages(token, targetIds);
 
-    // discordId → 가장 최근 메시지 매핑
     const byAuthor = new Map<string, { content: string; timestamp: string; hasAttachments: boolean }>();
     for (const msg of messages) {
       const existing = byAuthor.get(msg.author.id);
@@ -99,6 +97,6 @@ export async function GET(req: Request) {
     });
   } catch (e) {
     console.error("[intro] failed:", e);
-    return Response.json({ error: "Failed to fetch messages" }, { status: 500 });
+    return Response.json({ error: String(e) }, { status: 500 });
   }
 }

@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
-import { getRecentMatches, type MatchStats } from "@/lib/valorant";
+import { getRecentMatches, getRiotOfficialRecentMatches, type MatchStats } from "@/lib/valorant";
+import { getPrivateRecentMatches } from "@/lib/riotPrivateApi";
+import { ensureValidTokens } from "@/lib/rankFetcher";
 
 /**
  * POST /api/scrim/[id]/sync-match
@@ -9,6 +11,16 @@ import { getRecentMatches, type MatchStats } from "@/lib/valorant";
  * 참가자 전원이 포함된 매치를 찾아 승패/맵/KDA를 자동으로 기록한다.
  */
 export async function POST(_: NextRequest, context: { params: Promise<{ id: string }> }) {
+  try {
+    return await handleSyncMatch(context);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[sync-match] 예상치 못한 오류:", msg);
+    return Response.json({ error: `서버 오류: ${msg}` }, { status: 500 });
+  }
+}
+
+async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
   const { session, isAdmin, guild } = await getAdminSession();
   if (!session?.user?.id) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
   if (!guild) return Response.json({ error: "서버 정보를 찾을 수 없습니다." }, { status: 404 });
@@ -25,7 +37,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
             select: {
               id: true,
               riotAccounts: {
-                select: { puuid: true, region: true },
+                select: { puuid: true, region: true, accessToken: true, entitlementsToken: true, ssid: true, authCookie: true, tokenExpiresAt: true },
               },
             },
           },
@@ -63,6 +75,11 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     team: string;
     puuid: string;
     region: string;
+    accessToken?: string | null;
+    entitlementsToken?: string | null;
+    ssid?: string | null;
+    authCookie?: string | null;
+    tokenExpiresAt?: Date | null;
   };
   const playerPuuids: PlayerPuuidEntry[] = [];
   for (const p of targetPlayers) {
@@ -74,6 +91,11 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
           team: p.team,
           puuid: acc.puuid,
           region: acc.region ?? "KR",
+          accessToken: acc.accessToken,
+          entitlementsToken: acc.entitlementsToken,
+          ssid: acc.ssid,
+          authCookie: acc.authCookie,
+          tokenExpiresAt: acc.tokenExpiresAt,
         });
       }
     }
@@ -83,18 +105,129 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     return Response.json({ error: "라이엇 계정이 연동된 참가자가 없습니다." }, { status: 400 });
   }
 
-  // 대표 계정 1개로 최근 커스텀 매치 조회 (스코어보드 포함)
-  const representative = playerPuuids[0];
-  const qRegion = representative.region === "AP" ? "ap" : "kr";
+  // 버튼 누른 사람(현재 세션 유저)의 계정을 후보 맨 앞에 배치 — 토큰이 가장 신선할 가능성이 높음
+  const sessionUserId = session.user!.id;
+  const sessionUserAccounts = await prisma.riotAccount.findMany({
+    where: { user: { id: sessionUserId } },
+    select: { puuid: true, region: true, accessToken: true, entitlementsToken: true, ssid: true, authCookie: true, tokenExpiresAt: true },
+  });
+  const extraCandidates = sessionUserAccounts
+    .filter((acc) => acc.puuid && !playerPuuids.some((p) => p.puuid === acc.puuid))
+    .map((acc) => ({
+      playerId: "",
+      userId: sessionUserId,
+      team: "",
+      puuid: acc.puuid,
+      region: acc.region ?? "KR",
+      accessToken: acc.accessToken,
+      entitlementsToken: acc.entitlementsToken,
+      ssid: acc.ssid,
+      authCookie: acc.authCookie,
+      tokenExpiresAt: acc.tokenExpiresAt,
+    }));
 
-  let recentMatches: MatchStats[];
-  try {
-    recentMatches = await getRecentMatches(representative.puuid, 20, qRegion, "pc", {
-      skipAccountFallback: true,
-      skipRankFallback: true,
-    });
-  } catch {
-    return Response.json({ error: "전적 데이터를 가져오는 데 실패했습니다." }, { status: 500 });
+  // 현재 유저가 참가자에 이미 있으면 맨 앞으로, 없으면 extraCandidates를 앞에 추가
+  const sessionInPlayers = playerPuuids.find((p) => p.userId === sessionUserId);
+  const orderedCandidates = sessionInPlayers
+    ? [sessionInPlayers, ...playerPuuids.filter((p) => p.userId !== sessionUserId), ...extraCandidates]
+    : [...extraCandidates, ...playerPuuids];
+
+  const qRegion = (playerPuuids[0]?.region ?? "KR") === "AP" ? "ap" : "kr";
+
+  // 유효한 Private API 토큰 확보 (관리자/세션유저 우선, 참가자 순)
+  // 토큰을 가진 누구의 것이든 참가자 PUUID 조회에 사용 가능
+  let sharedTokens: { accessToken: string; entitlementsToken: string } | null = null;
+  let tokenDebug = "";
+  for (const candidate of orderedCandidates.slice(0, 5)) {
+    try {
+      const hasSsid = !!candidate.ssid;
+      const hasAuthCookie = !!candidate.authCookie;
+      const hasAccessToken = !!candidate.accessToken;
+      tokenDebug += `[${candidate.puuid.slice(0, 8)} ssid=${hasSsid} cookie=${hasAuthCookie} at=${hasAccessToken}] `;
+      const t = await ensureValidTokens(
+        candidate.puuid,
+        candidate.accessToken ?? null,
+        candidate.entitlementsToken ?? null,
+        candidate.ssid ?? null,
+        candidate.authCookie ?? null,
+        candidate.tokenExpiresAt ?? null,
+      );
+      if (t) { sharedTokens = t; tokenDebug += "→ OK"; break; }
+      else tokenDebug += "→ null ";
+    } catch (e) {
+      tokenDebug += `→ throw(${e instanceof Error ? e.message : String(e)}) `;
+    }
+  }
+
+  // API 폴백 체인: Private Riot API → Riot Official API → Henrik API
+  // Private API는 sharedTokens로 참가자 PUUID를 조회 (토큰 소유자와 PUUID 불일치 허용)
+  // Henrik 429는 API 키 단위 제한이므로 감지 시 즉시 중단
+  let recentMatches: MatchStats[] = [];
+  let lastFetchError = "";
+  let rateLimited = false;
+
+  outer: for (const candidate of playerPuuids.slice(0, 3)) {
+    // 1) Private Riot API — 유효 토큰으로 참가자 PUUID 조회
+    if (sharedTokens) {
+      try {
+        const privateMatches = await getPrivateRecentMatches(
+          candidate.puuid,
+          candidate.region,
+          sharedTokens.accessToken,
+          sharedTokens.entitlementsToken,
+          { count: 20 }
+        );
+        if (privateMatches.length > 0) {
+          recentMatches = privateMatches;
+          break outer;
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn("[sync-match] Private API 실패:", candidate.puuid, msg);
+        lastFetchError = msg;
+      }
+    }
+
+    // 2) Riot Official API (RIOT_API_KEY 환경변수 있을 때)
+    try {
+      const officialMatches = await getRiotOfficialRecentMatches(candidate.puuid, qRegion, 10);
+      if (officialMatches.length > 0) {
+        recentMatches = officialMatches;
+        break outer;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[sync-match] Official API 실패:", candidate.puuid, msg);
+      lastFetchError = msg;
+    }
+
+    // 3) Henrik API (폴백) — 429 시 즉시 중단 (API 키 단위 제한)
+    try {
+      const henrikMatches = await getRecentMatches(candidate.puuid, 25, qRegion, "pc", {
+        skipAccountFallback: true,
+        skipRankFallback: true,
+      });
+      if (henrikMatches.length > 0) {
+        recentMatches = henrikMatches;
+        break outer;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[sync-match] Henrik API 실패:", candidate.puuid, msg);
+      lastFetchError = msg;
+      if (msg.includes("429")) {
+        rateLimited = true;
+        break outer;
+      }
+    }
+  }
+
+  if (recentMatches.length === 0) {
+    const debugSuffix = tokenDebug ? ` [토큰 진단: ${tokenDebug}]` : "";
+    const errorMsg = rateLimited
+      ? `Henrik API 요청 한도 초과입니다. 잠시 후 다시 시도하거나 라이엇 계정을 재연동해 주세요.${debugSuffix}`
+      : `전적 데이터를 가져오는 데 실패했습니다.${lastFetchError ? ` (${lastFetchError})` : " 라이엇 계정이 연동된 참가자를 확인해 주세요."}${debugSuffix}`;
+    return Response.json({ error: errorMsg }, { status: rateLimited ? 429 : 500 });
   }
 
   // 커스텀 매치만 필터링
@@ -104,30 +237,32 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   });
 
   if (customMatches.length === 0) {
-    return Response.json({ error: "최근 커스텀 매치를 찾을 수 없습니다." }, { status: 404 });
+    return Response.json({ error: "최근 경기 중 커스텀 매치를 찾을 수 없습니다." }, { status: 404 });
   }
 
   // 내전 참가자 PUUID 전체 Set
   const allParticipantPuuids = new Set(playerPuuids.map((p) => p.puuid));
+  const minRequired = Math.max(4, Math.ceil(allParticipantPuuids.size * 0.25));
 
-  // 매칭되는 커스텀 매치 탐색
+  // 가장 많이 겹치는 커스텀 매치 탐색 (참가자 25% 이상 포함이면 채택)
   let matchedMatch: MatchStats | null = null;
+  let bestOverlap = 0;
   for (const match of customMatches) {
     const matchPuuids = (match.scoreboard?.players ?? [])
       .map((p) => p.puuid)
       .filter(Boolean);
     if (matchPuuids.length === 0) continue;
     const matchSet = new Set(matchPuuids);
-    const allPresent = [...allParticipantPuuids].every((puuid) => matchSet.has(puuid));
-    if (allPresent) {
+    const overlap = [...allParticipantPuuids].filter((puuid) => matchSet.has(puuid)).length;
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
       matchedMatch = match;
-      break;
     }
   }
 
-  if (!matchedMatch) {
+  if (!matchedMatch || bestOverlap < minRequired) {
     return Response.json({
-      error: "참가자 전원이 포함된 커스텀 매치를 찾을 수 없습니다. 아직 전적이 업데이트되지 않았을 수 있습니다.",
+      error: `참가자와 겹치는 커스텀 매치를 찾을 수 없습니다. (최대 겹침: ${bestOverlap}/${allParticipantPuuids.size}명, 필요: ${minRequired}명 이상) 전적이 아직 업데이트되지 않았을 수 있습니다.`,
     }, { status: 404 });
   }
 
@@ -194,7 +329,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
 
   // KDA + score 추출
   const kdaUpdates: { id: string; kills: number; deaths: number; assists: number }[] = [];
-  // ScrimGame.kdaSnapshot용: acs 포함 (ScoreboardPlayer.acs는 이미 계산된 값)
   const kdaSnapshot: {
     userId: string; kills: number; deaths: number; assists: number;
     acs: number; team: string;
@@ -223,7 +357,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
 
   // DB 저장
   await prisma.$transaction(async (tx) => {
-    // 승패 + 맵 + 상태 업데이트
     const sessionData: Record<string, unknown> = {
       status: "done",
       endedAt: new Date(),
@@ -236,7 +369,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
       data: sessionData,
     });
 
-    // participant 모드: Valorant 팀 컬러 기반으로 팀 배정 저장
     if (usingParticipants) {
       for (const entry of playerPuuids) {
         await tx.scrimPlayer.updateMany({
@@ -246,7 +378,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
       }
     }
 
-    // ScrimPlayer KDA 업데이트
     for (const kda of kdaUpdates) {
       await tx.scrimPlayer.updateMany({
         where: { id: kda.id, sessionId: scrim.id },
@@ -255,8 +386,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     }
   });
 
-  // ScrimGame.kdaSnapshot 업데이트 (score 포함)
-  // 이 세션의 가장 최근 ScrimGame을 찾아 업데이트, 없으면 새로 생성
   if (kdaSnapshot.length > 0) {
     const existingGames = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
       `SELECT "id" FROM "ScrimGame" WHERE "sessionId" = $1 ORDER BY "gameNumber" DESC LIMIT 1`,

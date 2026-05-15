@@ -96,6 +96,10 @@ function appendLog(raw: string | null | undefined, entry: Omit<AuctionLogEntry, 
   return JSON.stringify([...rows, next].slice(-200));
 }
 
+function broadcastAuction(sessionId: string, action: string, auction: AuctionRow | null) {
+  broadcast(`scrim:${sessionId}`, { action, auction }).catch(() => {});
+}
+
 function getTeamIdByCaptain(captainIds: string[], captainId: string) {
   const index = captainIds.indexOf(captainId);
   if (index < 0) return null;
@@ -316,7 +320,7 @@ export async function POST(req: NextRequest) {
     }),
   });
 
-  broadcast(`scrim:${sessionId}`, { action: "auction_started" }).catch(() => {});
+  broadcastAuction(sessionId, "auction_started", auction);
   return Response.json({ success: true, auction });
 }
 
@@ -344,7 +348,7 @@ export async function PATCH(req: NextRequest) {
       captainPoints: JSON.stringify(captainPoints),
       currentBids: "{}",
     });
-    broadcast(`scrim:${sessionId}`, { action: "setup_captains" }).catch(() => {});
+    broadcastAuction(sessionId, "setup_captains", auction);
     return Response.json({ auction });
   }
 
@@ -362,7 +366,7 @@ export async function PATCH(req: NextRequest) {
         return Response.json({ error: "처리할 현재 매물이 없습니다." }, { status: 400 });
       }
       const updated = await finalizeCurrentLot(auction, session.user.id);
-      broadcast(`scrim:${sessionId}`, { action: "auction_resolved" }).catch(() => {});
+      broadcastAuction(sessionId, "auction_resolved", updated);
       return Response.json({ success: true, auction: updated });
     }
 
@@ -380,7 +384,7 @@ export async function PATCH(req: NextRequest) {
           message: "경매를 일시정지했습니다.",
         }),
       });
-      broadcast(`scrim:${sessionId}`, { action: "auction_paused" }).catch(() => {});
+      broadcastAuction(sessionId, "auction_paused", updated);
       return Response.json({ success: true, auction: updated });
     }
 
@@ -398,7 +402,7 @@ export async function PATCH(req: NextRequest) {
           message: "경매를 재개했습니다.",
         }),
       });
-      broadcast(`scrim:${sessionId}`, { action: "auction_resumed" }).catch(() => {});
+      broadcastAuction(sessionId, "auction_resumed", updated);
       return Response.json({ success: true, auction: updated });
     }
 
@@ -416,7 +420,7 @@ export async function PATCH(req: NextRequest) {
           message: "관리자가 현재 매물을 유찰 처리했습니다.",
         }),
       });
-      broadcast(`scrim:${sessionId}`, { action: "auction_passed" }).catch(() => {});
+      broadcastAuction(sessionId, "auction_passed", updated);
       return Response.json({ success: true, auction: updated });
     }
 
@@ -462,7 +466,7 @@ export async function PATCH(req: NextRequest) {
           message: "관리자가 현재 매물을 강제 낙찰 처리했습니다.",
         }),
       });
-      broadcast(`scrim:${sessionId}`, { action: "auction_force_assigned" }).catch(() => {});
+      broadcastAuction(sessionId, "auction_force_assigned", updated);
       return Response.json({ success: true, auction: updated });
     }
 
@@ -513,7 +517,7 @@ export async function PATCH(req: NextRequest) {
     }),
   });
 
-  broadcast(`scrim:${sessionId}`, { action: "auction_bid" }).catch(() => {});
+  broadcastAuction(sessionId, "auction_bid", updated);
   return Response.json({ success: true, auction: updated });
 }
 
@@ -532,6 +536,6 @@ export async function DELETE(req: NextRequest) {
     data: { team: "participant", role: "participant" },
   });
 
-  broadcast(`scrim:${sessionId}`, { action: "auction_reset" }).catch(() => {});
+  broadcastAuction(sessionId, "auction_reset", null);
   return Response.json({ success: true });
 }

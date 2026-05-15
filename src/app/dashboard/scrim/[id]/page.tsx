@@ -120,6 +120,12 @@ interface AuctionLogEntry {
   amount?: number;
 }
 
+interface AuctionInviteLink {
+  label: string;
+  href: string;
+  tone?: string;
+}
+
 // ─── 전적탭 동일 헬퍼 함수 ────────────────────────────────────────────────────
 function tierColor(tierId: number) {
   if (tierId >= 24) return "text-[#ff4655]";
@@ -1359,6 +1365,8 @@ function AuctionScrimPage({
   const [auction, setAuction] = useState<AuctionState | null>(null);
   const [auctionLoading, setAuctionLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState<string | null>(null);
 
   const auctionSettings = useMemo(() => parseSettings(scrim.settings), [scrim.settings]);
 
@@ -1477,11 +1485,34 @@ function AuctionScrimPage({
   useEffect(() => {
     let cancelled = false;
     pollAuction().catch(() => {});
-    const t = window.setInterval(() => { if (!cancelled) pollAuction(true).catch(() => {}); }, 1500);
+    const t = window.setInterval(() => { if (!cancelled) pollAuction(true).catch(() => {}); }, 10000);
     return () => { cancelled = true; window.clearInterval(t); };
   }, [pollAuction]);
 
-  useRealtime(`scrim:${scrim.id}`, () => { pollAuction(true).catch(() => {}); });
+  useRealtime(`scrim:${scrim.id}`, (event) => {
+    if (event.auction === null && event.action === "auction_reset") {
+      setAuction(null);
+      setCaptainSelections({});
+      return;
+    }
+
+    if (event.auction && typeof event.auction === "object") {
+      const nextAuction = event.auction as AuctionState;
+      setAuction(nextAuction);
+      if (nextAuction.phase === "setup" && nextAuction.captainPoints) {
+        try { setCaptainSelections(JSON.parse(nextAuction.captainPoints)); } catch { /* ignore */ }
+      }
+      if (event.action !== "auction_bid" && event.action !== "setup_captains") {
+        fetch(`/api/scrim/${scrim.id}`, { cache: "no-store" })
+          .then((res) => res.json())
+          .then((data) => { if (data.scrim) onScrimUpdate(data.scrim); })
+          .catch(() => {});
+      }
+      return;
+    }
+
+    pollAuction(true).catch(() => {});
+  });
 
   // 타이머 카운트다운
   useEffect(() => {
@@ -1507,12 +1538,30 @@ function AuctionScrimPage({
   const bidLog = parseJson<AuctionLogEntry[]>(auction?.bidLog, []);
   const auditLog = parseJson<AuctionLogEntry[]>(auction?.auditLog, []);
   const captainIds = Object.keys(captainPoints);
+  const inviteCaptainIds = captainIds.length > 0 ? captainIds : Object.keys(captainSelections);
 
   const playerMap = useMemo(() => {
     const m = new Map<string, ScrimPlayer>();
     scrim.players.forEach((p) => m.set(p.user.id, p));
     return m;
   }, [scrim.players]);
+
+  const inviteLinks = useMemo<AuctionInviteLink[]>(() => {
+    const origin = typeof window === "undefined" ? "" : window.location.origin;
+    const base = `${origin}/dashboard/scrim/${scrim.id}`;
+    return [
+      { label: "주최자 링크", href: `${base}?auctionRole=host`, tone: "#f6c945" },
+      ...inviteCaptainIds.map((captainId, index) => {
+        const captain = playerMap.get(captainId);
+        return {
+          label: `${captain?.user.name ?? `팀장 ${index + 1}`} 링크`,
+          href: `${base}?auctionRole=captain&captainId=${encodeURIComponent(captainId)}`,
+          tone: ["#ff4655", "#f59e0b", "#f6c945", "#10b981", "#3b82f6"][index % 5],
+        };
+      }),
+      { label: "옵저버 링크", href: `${base}?auctionRole=observer`, tone: "#9aa8b3" },
+    ];
+  }, [scrim.id, inviteCaptainIds, playerMap]);
 
   const currentPlayer = auction?.currentUserId ? playerMap.get(auction.currentUserId) : null;
 
@@ -1549,6 +1598,7 @@ function AuctionScrimPage({
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setMessage(data.error ?? "경매 시작에 실패했습니다."); return; }
     setAuction(data.auction);
+    setInviteOpen(true);
   }
 
   async function manualResolve() {
@@ -1623,14 +1673,56 @@ function AuctionScrimPage({
     setAuction(null); setCaptainSelections({});
   }
 
+  async function copyInviteLink(link: AuctionInviteLink) {
+    await navigator.clipboard.writeText(link.href);
+    setInviteCopied(link.label);
+    window.setTimeout(() => setInviteCopied((current) => (current === link.label ? null : current)), 1200);
+  }
+
   const timerPct = auction?.auctionDuration ? (timeLeft / auction.auctionDuration) * 100 : 0;
   const timerColor = timerPct > 50 ? "#00e7c2" : timerPct > 25 ? "#f6c945" : "#ff4655";
+  const inviteModal = inviteOpen ? (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-[640px] rounded-lg border border-[#2a3540] bg-[#101826] p-6 shadow-2xl shadow-black/60">
+        <div className="text-center">
+          <div className="text-3xl">🎉</div>
+          <div className="mt-3 text-2xl font-black text-white">경매방이 생성되었습니다!</div>
+          <div className="mt-1 text-sm font-bold text-[#9aa8b3]">{scrim.title}</div>
+        </div>
+        <div className="mt-5 space-y-3">
+          {inviteLinks.map((link) => (
+            <div key={link.href} className="rounded border border-[#2a3540] bg-[#162232] p-4">
+              <div className="mb-2 flex items-center gap-2 text-sm font-black" style={{ color: link.tone ?? "#f6c945" }}>
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: link.tone ?? "#f6c945" }} />
+                {link.label}
+              </div>
+              <div className="flex gap-2">
+                <input readOnly value={link.href} className="min-w-0 flex-1 rounded border border-[#314255] bg-[#0b1420] px-3 py-2 text-sm font-bold text-[#dce7ef]" />
+                <button type="button" onClick={() => void copyInviteLink(link)} className="rounded bg-[#314255] px-4 py-2 text-sm font-black text-white hover:bg-[#3f5269]">
+                  {inviteCopied === link.label ? "완료" : "복사"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button type="button" onClick={() => setInviteOpen(false)} className="flex-1 rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black hover:bg-[#ffd85a]">
+            바로 입장하기
+          </button>
+          <button type="button" onClick={() => setInviteOpen(false)} className="rounded border border-[#314255] px-4 py-3 text-sm font-black text-[#c8d3db] hover:border-[#4b6078]">
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   // ── 설정 단계 ──
   if (!auction || auction.phase === "setup") {
     const participants = scrim.players.filter((p) => p.team === "participant" || p.role === "participant");
     return (
       <div className="mx-auto max-w-[1100px]">
+        {inviteModal}
         <div className="mb-6">
           <Link href="/dashboard/scrim" className="text-xs font-bold text-[#7b8a96] hover:text-white">← 내전 목록</Link>
           <div className="mt-4 text-[10px] uppercase tracking-[0.32em] text-[#f6c945]">AUCTION SCRIM</div>
@@ -1826,6 +1918,7 @@ function AuctionScrimPage({
 
   return (
     <div className="mx-auto max-w-[1200px]">
+      {inviteModal}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/dashboard/scrim" className="text-xs font-bold text-[#7b8a96] hover:text-white">← 내전 목록</Link>
@@ -1837,6 +1930,7 @@ function AuctionScrimPage({
         </div>
         {isAdmin && (
           <div className="flex gap-2">
+            <button type="button" onClick={() => setInviteOpen(true)} className="rounded border border-[#f6c945]/45 bg-[#f6c945]/10 px-4 py-2 text-xs font-black text-[#ffe089] hover:border-[#f6c945]">초대 링크</button>
             {auction.phase === "paused" ? (
               <button type="button" onClick={() => void auctionAdminAction("resume")} disabled={bidding} className="rounded border border-[#00e7c2]/45 bg-[#00e7c2]/10 px-4 py-2 text-xs font-black text-[#7fffe6] hover:border-[#00e7c2] disabled:opacity-50">경매 재개</button>
             ) : (

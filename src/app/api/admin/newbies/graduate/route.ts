@@ -101,6 +101,6 @@ export async function POST(req: Request) {
   return Response.json({
     ok: true,
     removedRole: targetRoleName,
-    message: `${member?.user.name ?? "대상자"}님의 ${targetRoleName} 역할을 제거했습니다.`,
+    message: `${member?.nickname ?? member?.user.name ?? "대상자"}님의 ${targetRoleName} 역할을 제거했습니다.`,
   });
 }

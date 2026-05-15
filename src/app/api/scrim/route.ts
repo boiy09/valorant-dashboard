@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
           `\n🗓 내전 날짜: ${scrim.scheduledAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`
         );
       }
-      lines.push("\n✅ 이 메시지에 반응을 남기면 참가자로 등록됩니다.");
+      lines.push("\n이 메시지에 반응을 남기면 참가자로 등록됩니다.");
 
       const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
         method: "POST",
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
         if (msg.id) {
           await prisma.scrimSession.update({
             where: { id: scrim.id },
-            data: { recruitmentMessageIds: msg.id },
+            data: { recruitmentMessageIds: JSON.stringify([msg.id]) },
           });
         }
       }

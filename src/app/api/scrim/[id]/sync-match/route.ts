@@ -45,12 +45,15 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     return Response.json({ error: "내전 관리자 권한이 필요합니다." }, { status: 403 });
   }
 
-  // 팀에 배정된 참가자만 대상 (captain + member)
+  // 팀에 배정된 참가자 우선, 없으면 participant 전원으로 폴백
   const assignedPlayers = scrim.players.filter(
     (p) => p.team.startsWith("team_") && (p.role === "captain" || p.role === "member")
   );
-  if (assignedPlayers.length < 2) {
-    return Response.json({ error: "팀에 배정된 참가자가 2명 이상이어야 합니다." }, { status: 400 });
+  const targetPlayers = assignedPlayers.length >= 2 ? assignedPlayers : scrim.players;
+  const usingParticipants = assignedPlayers.length < 2;
+
+  if (targetPlayers.length < 2) {
+    return Response.json({ error: "참가자가 2명 이상이어야 합니다." }, { status: 400 });
   }
 
   // 참가자별 PUUID 수집 (팀 정보 포함)
@@ -62,9 +65,9 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     region: string;
   };
   const playerPuuids: PlayerPuuidEntry[] = [];
-  for (const p of assignedPlayers) {
+  for (const p of targetPlayers) {
     for (const acc of p.user.riotAccounts) {
-      if (acc.puuid) {
+      if (acc.puuid && !acc.puuid.startsWith("dummy-puuid-")) {
         playerPuuids.push({
           playerId: p.id,
           userId: p.user.id,
@@ -136,14 +139,23 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     winnerTeamColor = winnerTeam?.teamId?.toLowerCase() ?? null; // "red" | "blue"
   }
 
+  const scoreboardPlayers = matchedMatch.scoreboard?.players ?? [];
+
+  // participant 모드: Valorant 팀 컬러 기반으로 자동 team_a/team_b 배정
+  if (usingParticipants) {
+    for (const entry of playerPuuids) {
+      const sbPlayer = scoreboardPlayers.find((p) => p.puuid === entry.puuid);
+      const color = sbPlayer?.teamId?.toLowerCase();
+      entry.team = color === "blue" ? "team_a" : color === "red" ? "team_b" : "team_a";
+    }
+  }
+
   // 발로란트 팀 컬러(red/blue)를 내전 팀 ID에 매핑
-  // 내전 팀A의 팀장 PUUID가 어느 팀 컬러에 속하는지 확인
   const teamAPlayers = playerPuuids.filter((p) => p.team === "team_a");
   const teamBPlayers = playerPuuids.filter((p) => p.team === "team_b");
 
   let winnerId: string | null = null;
   if (winnerTeamColor && teamAPlayers.length > 0 && teamBPlayers.length > 0) {
-    const scoreboardPlayers = matchedMatch.scoreboard?.players ?? [];
     const teamAFirstPuuid = teamAPlayers[0].puuid;
     const teamAScoreboardPlayer = scoreboardPlayers.find((p) => p.puuid === teamAFirstPuuid);
     const teamAColor = teamAScoreboardPlayer?.teamId?.toLowerCase();
@@ -153,7 +165,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     } else if (teamAColor) {
       winnerId = "team_b";
     }
-    // 팀이 3개 이상이면 draw 처리
     if (!teamAColor) winnerId = "draw";
   } else if (winnerTeamColor === null && teams.length >= 2) {
     winnerId = "draw";
@@ -182,7 +193,6 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   }
 
   // KDA + score 추출
-  const scoreboardPlayers = matchedMatch.scoreboard?.players ?? [];
   const kdaUpdates: { id: string; kills: number; deaths: number; assists: number }[] = [];
   // ScrimGame.kdaSnapshot용: acs 포함 (ScoreboardPlayer.acs는 이미 계산된 값)
   const kdaSnapshot: {
@@ -225,6 +235,16 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
       where: { id: scrim.id },
       data: sessionData,
     });
+
+    // participant 모드: Valorant 팀 컬러 기반으로 팀 배정 저장
+    if (usingParticipants) {
+      for (const entry of playerPuuids) {
+        await tx.scrimPlayer.updateMany({
+          where: { id: entry.playerId, sessionId: scrim.id },
+          data: { team: entry.team, role: "member" },
+        });
+      }
+    }
 
     // ScrimPlayer KDA 업데이트
     for (const kda of kdaUpdates) {

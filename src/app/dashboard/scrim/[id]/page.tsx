@@ -6,7 +6,6 @@ import { useRealtime } from "@/hooks/useRealtime";
 
 // ─── 인터페이스 ────────────────────────────────────────────────────────────────
 interface RiotAccount {
-  puuid: string;
   gameName: string;
   tagLine: string;
   region: string;
@@ -523,24 +522,6 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     refreshGames().catch(() => {});
   });
 
-  // 인게임 현황
-  const [presences, setPresences] = useState<Record<string, { inGame: boolean; inPreGame: boolean }>>({});
-  useEffect(() => {
-    if (!scrim?.players?.length) return;
-    const puuids = scrim.players.flatMap((p) => p.user.riotAccounts.map((a) => a.puuid)).filter(Boolean);
-    if (!puuids.length) return;
-    let cancelled = false;
-    const fetchPresence = () => {
-      fetch(`/api/valorant/presence?puuids=${puuids.join(",")}`, { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => { if (!cancelled) setPresences(d.presences ?? {}); })
-        .catch(() => {});
-    };
-    fetchPresence();
-    const timer = window.setInterval(fetchPresence, 60000);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, [scrim?.players]);
-
   async function patchScrim(payload: {
     players?: ScrimPlayer[];
     managerIds?: string[];
@@ -647,7 +628,6 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
         setMessage={setMessage}
         onScrimUpdate={setScrim}
         addRecruitment={addRecruitment}
-        presences={presences}
       />
     );
   }
@@ -917,7 +897,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           <DropArea title={`${settings.useTeamBoard ? "참가자 목록" : "전체 참가자"} (${participantPlayers.length}명)`} 
             subtitle={settings.useTeamBoard ? "드래그해서 팀장 또는 팀원 슬롯으로 바로 배치하세요." : "내전에 참여 중인 플레이어 목록입니다."} 
             onDrop={(pId) => movePlayer(pId, "participant", "participant")}>
-            <ParticipantList players={participantPlayers} guildMembers={guildMembers} onRemove={removePlayer} settings={settings} presences={presences} />
+            <ParticipantList players={participantPlayers} guildMembers={guildMembers} onRemove={removePlayer} settings={settings} />
           </DropArea>
           
           {settings.useTeamBoard && (
@@ -1348,7 +1328,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
 // ─── 경매 내전 전용 페이지 ─────────────────────────────────────────────────────
 function AuctionScrimPage({
   scrim, guildMembers, managerIds, newManagerId, setNewManagerId, addManager,
-  saving, message, setMessage, onScrimUpdate, addRecruitment, presences,
+  saving, message, setMessage, onScrimUpdate, addRecruitment,
 }: {
   scrim: ScrimDetail;
   guildMembers: GuildMemberOption[];
@@ -1361,7 +1341,6 @@ function AuctionScrimPage({
   setMessage: (v: string | null) => void;
   onScrimUpdate: (s: ScrimDetail) => void;
   addRecruitment: () => void;
-  presences?: Record<string, { inGame: boolean; inPreGame: boolean }>;
 }) {
   const [auction, setAuction] = useState<AuctionState | null>(null);
   const [auctionLoading, setAuctionLoading] = useState(true);
@@ -1689,7 +1668,6 @@ function AuctionScrimPage({
                     onToggleCaptain={isAdmin ? toggleCaptain : undefined}
                     onSetCaptainPoint={isAdmin ? setCaptainPoint : undefined}
                     defaultPoints={defaultPoints}
-                    presences={presences}
                   />
               }
             </section>
@@ -2068,7 +2046,6 @@ function ParticipantList({
   onToggleCaptain,
   onSetCaptainPoint,
   defaultPoints,
-  presences,
 }: {
   players: ScrimPlayer[];
   guildMembers: GuildMemberOption[];
@@ -2078,7 +2055,6 @@ function ParticipantList({
   onToggleCaptain?: (userId: string) => void;
   onSetCaptainPoint?: (userId: string, points: number) => void;
   defaultPoints?: number;
-  presences?: Record<string, { inGame: boolean; inPreGame: boolean }>;
 }) {
   const [agentPortraits, setAgentPortraits] = useState<Record<string, string>>({});
 
@@ -2146,8 +2122,6 @@ function ParticipantList({
                 captainSelections={captainSelections}
                 onToggleCaptain={onToggleCaptain}
                 onSetCaptainPoint={onSetCaptainPoint}
-                inGame={player.user.riotAccounts.some((a) => presences?.[a.puuid]?.inGame)}
-                inPreGame={player.user.riotAccounts.some((a) => presences?.[a.puuid]?.inPreGame)}
               />
             ))}
           </div>
@@ -2167,8 +2141,6 @@ function ParticipantRow({
   captainSelections,
   onToggleCaptain,
   onSetCaptainPoint,
-  inGame,
-  inPreGame,
 }: {
   player: ScrimPlayer;
   guildMembers: GuildMemberOption[];
@@ -2179,8 +2151,6 @@ function ParticipantRow({
   captainSelections?: Record<string, number>;
   onToggleCaptain?: (userId: string) => void;
   onSetCaptainPoint?: (userId: string, points: number) => void;
-  inGame?: boolean;
-  inPreGame?: boolean;
 }) {
   const isSelected = captainSelections ? captainSelections[player.user.id] !== undefined : false;
   const displayName = resolveServerNick(player.user.id, guildMembers, player.user.name) || "이름 없음";
@@ -2212,11 +2182,7 @@ function ParticipantRow({
           <div className="h-6 w-6 flex-shrink-0 rounded bg-[#24313c]" />
         )}
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <div className="truncate text-sm font-black text-white">{displayName}</div>
-            {inGame && <span className="flex-shrink-0 rounded bg-[#ff4655] px-1 py-0.5 text-[9px] font-black text-white">게임 중</span>}
-            {!inGame && inPreGame && <span className="flex-shrink-0 rounded bg-[#f59e0b] px-1 py-0.5 text-[9px] font-black text-white">대기 중</span>}
-          </div>
+          <div className="truncate text-sm font-black text-white">{displayName}</div>
           {isSelected ? (
             <div className="flex items-center gap-1 mt-0.5">
               <input

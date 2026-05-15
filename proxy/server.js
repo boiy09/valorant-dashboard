@@ -920,10 +920,16 @@ const httpServer = app.listen(PORT, () => {
   console.log(`[proxy] Riot 인증 프록시 서버 실행 중 - 포트 ${PORT}`);
 });
 
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({ noServer: true });
 const wsClients = new Set();
 
-wss.on('connection', (ws, req) => {
+httpServer.on('upgrade', (request, socket, head) => {
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request);
+  });
+});
+
+wss.on('connection', (ws) => {
   wsClients.add(ws);
   console.log(`[ws] 클라이언트 연결 (총 ${wsClients.size}명)`);
 
@@ -933,8 +939,6 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('error', () => wsClients.delete(ws));
-
-  // 연결 확인용 ping
   ws.send(JSON.stringify({ type: 'connected' }));
 });
 

@@ -1388,27 +1388,110 @@ const TRACKER_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   "Accept": "application/json, text/plain, */*",
   "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8",
-  "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-  "sec-ch-ua-mobile": "?0",
-  "sec-ch-ua-platform": '"Windows"',
-  "sec-fetch-dest": "empty",
-  "sec-fetch-mode": "cors",
-  "sec-fetch-site": "same-origin",
-  "Origin": "https://tracker.gg",
   "Referer": "https://tracker.gg/valorant",
 };
 
-async function fetchTrackerMatchIds(gameName: string, tagLine: string, typeFilter?: string): Promise<string[]> {
+export interface TrackerWebMatch {
+  matchId: string;
+  map: string;
+  mode: string;
+  startedAt: string;
+  isWin: boolean;
+  kills: number;
+  deaths: number;
+  assists: number;
+  acs: number;
+  headshotPct: number;
+  damagePerRound: number;
+  teamRoundsWon: number | null;
+  enemyRoundsWon: number | null;
+  agentName: string;
+  agentIcon: string | null;
+}
+
+function parseTrackerItem(item: Record<string, unknown>): TrackerWebMatch | null {
+  const attrs = (item.attributes ?? {}) as Record<string, unknown>;
+  const meta = (item.metadata ?? {}) as Record<string, unknown>;
+  const segments = Array.isArray(item.segments) ? item.segments as Record<string, unknown>[] : [];
+  const seg = segments.find((s) => s.type === "overview" || s.type === "player") ?? segments[0];
+  if (!seg) return null;
+
+  const stats = (seg.stats ?? {}) as Record<string, unknown>;
+  const segMeta = (seg.metadata ?? {}) as Record<string, unknown>;
+
+  const sv = (s: unknown) => {
+    if (s && typeof s === "object" && "value" in s) return Number((s as { value: unknown }).value) || 0;
+    return Number(s) || 0;
+  };
+
+  const kills = Math.round(sv(stats.kills));
+  const deaths = Math.round(sv(stats.deaths));
+  const assists = Math.round(sv(stats.assists));
+  const roundsPlayed = Math.round(sv(stats.roundsPlayed));
+  const roundsWon = Math.round(sv(stats.roundsWon));
+  const totalScore = sv(stats.score);
+  const acs = roundsPlayed > 0 ? Math.round(totalScore / roundsPlayed) : Math.round(sv(stats.scorePerRound ?? stats.acs));
+  const hsPct = Math.round(sv(stats.headshotsPercentage) * 10) / 10;
+  const dpr = Math.round(sv(stats.damagePerRound));
+  const roundsLost = roundsPlayed > roundsWon ? roundsPlayed - roundsWon : null;
+
+  const resultRaw = String(meta.result ?? segMeta.result ?? attrs.result ?? "").toLowerCase();
+  const isWin = resultRaw === "victory" || resultRaw === "win";
+
+  const matchId = String(attrs.id ?? item.id ?? "");
+  if (!matchId) return null;
+
+  return {
+    matchId,
+    map: String(meta.map ?? attrs.mapName ?? ""),
+    mode: String(meta.queue ?? attrs.modeKey ?? ""),
+    startedAt: String(meta.timestamp ?? ""),
+    isWin,
+    kills,
+    deaths,
+    assists,
+    acs,
+    headshotPct: hsPct,
+    damagePerRound: dpr,
+    teamRoundsWon: roundsWon > 0 ? roundsWon : null,
+    enemyRoundsWon: roundsLost,
+    agentName: String(segMeta.agentName ?? ""),
+    agentIcon: typeof segMeta.agentImageUrl === "string" ? segMeta.agentImageUrl : null,
+  };
+}
+
+// tracker.gg 웹 API 스크래핑 (API key 불필요)
+export async function getTrackerWebMatches(
+  gameName: string,
+  tagLine: string,
+  typeFilter?: string,
+  limit = 10
+): Promise<TrackerWebMatch[]> {
   try {
     const encoded = `${encodeURIComponent(gameName)}%23${encodeURIComponent(tagLine)}`;
-    const url = `https://api.tracker.gg/api/v2/valorant/standard/matches/riot/${encoded}${typeFilter ? `?type=${typeFilter}` : ""}`;
-    const res = await fetch(url, { headers: TRACKER_HEADERS as Record<string, string>, signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return [];
-    const data = await res.json() as { data?: Array<{ attributes?: { id?: string } }> };
-    return (data.data ?? []).map((m) => m.attributes?.id).filter((id): id is string => typeof id === "string");
-  } catch {
+    const qs = typeFilter ? `?type=${typeFilter}` : "";
+    const url = `https://api.tracker.gg/api/v2/valorant/standard/matches/riot/${encoded}${qs}`;
+    const res = await fetch(url, { headers: TRACKER_HEADERS as Record<string, string>, signal: AbortSignal.timeout(12000) });
+    if (!res.ok) {
+      console.warn(`[tracker.gg] matches ${res.status} for ${gameName}#${tagLine}`);
+      return [];
+    }
+    const json = await res.json() as { data?: unknown };
+    const raw = json?.data;
+    const items: Record<string, unknown>[] = Array.isArray(raw) ? raw : [];
+    return items.slice(0, limit).flatMap((item) => {
+      const parsed = parseTrackerItem(item);
+      return parsed ? [parsed] : [];
+    });
+  } catch (e) {
+    console.warn("[tracker.gg] web match fetch failed:", e instanceof Error ? e.message : String(e));
     return [];
   }
+}
+
+async function fetchTrackerMatchIds(gameName: string, tagLine: string, typeFilter?: string): Promise<string[]> {
+  const matches = await getTrackerWebMatches(gameName, tagLine, typeFilter, 20);
+  return matches.map((m) => m.matchId).filter(Boolean);
 }
 
 export async function getTrackerCustomMatchIds(gameName: string, tagLine: string): Promise<string[]> {

@@ -229,14 +229,12 @@ export async function getTrackerMatchHistory(
     });
     if (!res.ok) return [];
 
-    const json = await res.json() as {
-      data?: {
-        items?: unknown[];
-        matches?: unknown[];
-      };
-    };
-
-    const items: unknown[] = json?.data?.items ?? json?.data?.matches ?? [];
+    const json = await res.json() as { data?: unknown };
+    const rawData = json?.data;
+    // public-api 응답은 { data: { items: [...] } } 또는 { data: [...] } 형태
+    const items: unknown[] = Array.isArray(rawData)
+      ? rawData
+      : ((rawData as Record<string, unknown>)?.items as unknown[] ?? (rawData as Record<string, unknown>)?.matches as unknown[] ?? []);
 
     return items.slice(0, limit).flatMap((item): TggMatchStats[] => {
       if (!item || typeof item !== "object") return [];

@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export const maxDuration = 60;
-import { getRankByPuuid, getRecentMatches, getRecentMatchesByRiotId, getRankIconByTier, getRiotOfficialRecentMatches, getTrackerRecentMatchIds, getHenrikMatchById, type MatchStats, type RankData } from "@/lib/valorant";
+import { getRankByPuuid, getRecentMatches, getRecentMatchesByRiotId, getRankIconByTier, getRiotOfficialRecentMatches, getTrackerWebMatches, getHenrikMatchById, type TrackerWebMatch, type MatchStats, type RankData } from "@/lib/valorant";
 import { getTrackerMatchHistory, type TggMatchStats } from "@/lib/trackergg";
 import { ensureTokenState, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 import { getPrivateRankData, getPrivateRecentMatches, getPrivateCompetitiveUpdates, getPrivateProfile, type CompetitiveUpdate } from "@/lib/riotPrivateApi";
@@ -132,6 +132,29 @@ async function findUser(discordId: string, email?: string | null) {
     });
   }
   return user;
+}
+
+function trackerWebMatchToMatchStats(m: TrackerWebMatch): MatchStats {
+  return {
+    matchId: m.matchId,
+    map: m.map || "Unknown",
+    mode: m.mode,
+    agent: m.agentName || "Unknown",
+    agentIcon: m.agentIcon ?? "",
+    result: m.isWin ? "승리" : "패배",
+    kills: m.kills,
+    deaths: m.deaths,
+    assists: m.assists,
+    score: m.acs,
+    teamScore: m.teamRoundsWon,
+    enemyScore: m.enemyRoundsWon,
+    headshots: 0,
+    bodyshots: 0,
+    legshots: 0,
+    adr: m.damagePerRound > 0 ? m.damagePerRound : null,
+    playedAt: m.startedAt ? new Date(m.startedAt) : new Date(0),
+    scoreboard: null,
+  };
 }
 
 function tggMatchToMatchStats(m: TggMatchStats): MatchStats {
@@ -266,7 +289,20 @@ async function getRecentMatchesCached(
     let finalMatches = privateMatches.length > 0 ? privateMatches : henrikMatches;
     let finalSource: RecentMatchSource = privateMatches.length > 0 ? "private" : henrikMatches.length > 0 ? "henrik" : "empty";
 
-    // tracker.gg 매치 히스토리 직접 조회 (API key 사용, Henrik 불필요)
+    // tracker.gg 웹 스크래핑 (API key 불필요, 이름+태그로 직접 검색)
+    if (finalMatches.length === 0 && gameName && tagLine) {
+      try {
+        const webMatches = await getTrackerWebMatches(gameName, tagLine, undefined, 10);
+        if (webMatches.length > 0) {
+          const cleaned = cleanMatches(webMatches.map(trackerWebMatchToMatchStats));
+          if (cleaned.length > 0) { finalMatches = cleaned; finalSource = "tracker"; }
+        }
+      } catch (e) {
+        console.warn("[stats] tracker.gg web scrape failed:", e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    // tracker.gg 공식 API (API key 있을 때)
     if (finalMatches.length === 0 && gameName && tagLine) {
       try {
         const tggMatches = await getTrackerMatchHistory(gameName, tagLine, 10);
@@ -275,26 +311,7 @@ async function getRecentMatchesCached(
           if (cleaned.length > 0) { finalMatches = cleaned; finalSource = "tracker"; }
         }
       } catch (e) {
-        console.warn("[stats] tracker.gg match history failed:", e instanceof Error ? e.message : String(e));
-      }
-    }
-
-    // tracker.gg ID → Henrik by ID (tracker.gg API key 없을 때 백업)
-    if (finalMatches.length === 0 && gameName && tagLine && henrik429RemainSec === 0) {
-      try {
-        const trackerIds = await getTrackerRecentMatchIds(gameName, tagLine);
-        if (trackerIds.length > 0) {
-          const fetched: MatchStats[] = [];
-          for (const mId of trackerIds.slice(0, 10)) {
-            const m = await getHenrikMatchById(mId, region as "kr" | "ap");
-            if (m) fetched.push(m);
-            if (fetched.length >= 5) break;
-          }
-          const cleaned = cleanMatches(fetched);
-          if (cleaned.length > 0) { finalMatches = cleaned; finalSource = "tracker"; }
-        }
-      } catch (e) {
-        console.warn("[stats] tracker.gg ID→Henrik fallback failed:", e instanceof Error ? e.message : String(e));
+        console.warn("[stats] tracker.gg API failed:", e instanceof Error ? e.message : String(e));
       }
     }
 

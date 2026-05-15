@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
-import { getRecentMatches, type MatchStats } from "@/lib/valorant";
+import { getRecentMatches, getRiotOfficialRecentMatches, type MatchStats } from "@/lib/valorant";
+import { getPrivateRecentMatches } from "@/lib/riotPrivateApi";
 
 /**
  * POST /api/scrim/[id]/sync-match
@@ -25,7 +26,7 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
             select: {
               id: true,
               riotAccounts: {
-                select: { puuid: true, region: true },
+                select: { puuid: true, region: true, accessToken: true, entitlementsToken: true },
               },
             },
           },
@@ -63,6 +64,8 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
     team: string;
     puuid: string;
     region: string;
+    accessToken?: string | null;
+    entitlementsToken?: string | null;
   };
   const playerPuuids: PlayerPuuidEntry[] = [];
   for (const p of targetPlayers) {
@@ -74,6 +77,8 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
           team: p.team,
           puuid: acc.puuid,
           region: acc.region ?? "KR",
+          accessToken: acc.accessToken,
+          entitlementsToken: acc.entitlementsToken,
         });
       }
     }
@@ -86,19 +91,61 @@ export async function POST(_: NextRequest, context: { params: Promise<{ id: stri
   // 여러 대표 계정으로 최근 커스텀 매치 조회 (스코어보드 포함)
   const qRegion = playerPuuids[0].region === "AP" ? "ap" : "kr";
 
-  // Henrik API size 최대 25 — 실패 시 다음 계정으로 순차 시도
+  // API 폴백 체인: Private Riot API → Riot Official API → Henrik API
   let recentMatches: MatchStats[] = [];
   let lastFetchError = "";
-  for (const candidate of playerPuuids.slice(0, 3)) {
+
+  const candidates = playerPuuids.slice(0, 3);
+
+  for (const candidate of candidates) {
+    // 1) Private Riot API (토큰이 있을 때 우선 시도)
+    if (candidate.accessToken && candidate.entitlementsToken) {
+      try {
+        const privateMatches = await getPrivateRecentMatches(
+          candidate.puuid,
+          candidate.region,
+          candidate.accessToken,
+          candidate.entitlementsToken,
+          { count: 20 }
+        );
+        if (privateMatches.length > 0) {
+          recentMatches = privateMatches;
+          break;
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn("[sync-match] Private API 실패:", candidate.puuid, msg);
+        lastFetchError = msg;
+      }
+    }
+
+    // 2) Riot Official API (RIOT_API_KEY 환경변수 있을 때)
     try {
-      recentMatches = await getRecentMatches(candidate.puuid, 25, qRegion, "pc", {
+      const officialMatches = await getRiotOfficialRecentMatches(candidate.puuid, qRegion, 10);
+      if (officialMatches.length > 0) {
+        recentMatches = officialMatches;
+        break;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[sync-match] Official API 실패:", candidate.puuid, msg);
+      lastFetchError = msg;
+    }
+
+    // 3) Henrik API (폴백)
+    try {
+      const henrikMatches = await getRecentMatches(candidate.puuid, 25, qRegion, "pc", {
         skipAccountFallback: true,
         skipRankFallback: true,
       });
-      if (recentMatches.length > 0) break;
+      if (henrikMatches.length > 0) {
+        recentMatches = henrikMatches;
+        break;
+      }
     } catch (e) {
-      lastFetchError = e instanceof Error ? e.message : String(e);
-      console.warn("[sync-match] 전적 조회 실패:", candidate.puuid, lastFetchError);
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[sync-match] Henrik API 실패:", candidate.puuid, msg);
+      lastFetchError = msg;
     }
   }
 

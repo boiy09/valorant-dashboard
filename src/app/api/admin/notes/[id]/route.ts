@@ -8,38 +8,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
-  const { note, reason, issuedBy, active, type } = body as {
-    note?: string;
-    reason?: string;
-    issuedBy?: string;
-    active?: boolean;
-    type?: string;
-  };
+  const { content, issuedBy } = body as { content?: string; issuedBy?: string };
 
-  // Build dynamic update fields
   const setClauses: string[] = [];
   const values: unknown[] = [];
   let idx = 1;
 
-  if (typeof note === "string") {
-    setClauses.push(`note = $${idx++}`);
-    values.push(note.trim() || null);
-  }
-  if (typeof reason === "string") {
-    setClauses.push(`reason = $${idx++}`);
-    values.push(reason.trim());
+  if (typeof content === "string") {
+    setClauses.push(`content = $${idx++}`);
+    values.push(content.trim());
   }
   if (typeof issuedBy === "string") {
     setClauses.push(`"issuedBy" = $${idx++}`);
     values.push(issuedBy.trim() || "관리자 (웹)");
-  }
-  if (typeof active === "boolean") {
-    setClauses.push(`active = $${idx++}`);
-    values.push(active);
-  }
-  if (typeof type === "string") {
-    setClauses.push(`type = $${idx++}`);
-    values.push(type === "complaint" ? "complaint" : "warning");
   }
 
   if (setClauses.length === 0) {
@@ -51,16 +32,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   values.push(id);
 
   await prisma.$executeRawUnsafe(
-    `UPDATE "Warning" SET ${setClauses.join(", ")} WHERE id = $${idx}`,
+    `UPDATE "AdminNote" SET ${setClauses.join(", ")} WHERE id = $${idx}`,
     ...values
   );
 
   const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT id, "userId", "guildId", reason, "issuedBy", active, note, COALESCE(type, 'warning') AS type, "createdAt", "updatedAt" FROM "Warning" WHERE id = $1`,
+    `SELECT id, "targetDiscordId", content, "issuedBy", "createdAt", "updatedAt" FROM "AdminNote" WHERE id = $1`,
     id
   );
 
-  return Response.json({ warning: rows[0] ?? null });
+  return Response.json({ note: rows[0] ?? null });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -69,7 +50,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params;
 
-  await prisma.$executeRawUnsafe(`DELETE FROM "Warning" WHERE id = $1`, id);
+  await prisma.$executeRawUnsafe(`DELETE FROM "AdminNote" WHERE id = $1`, id);
 
   return Response.json({ ok: true });
 }

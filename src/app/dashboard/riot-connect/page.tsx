@@ -15,6 +15,7 @@ const RIOT_LOGIN_URL =
 type FormState = "idle" | "loading" | "success" | "error";
 type RiotRegion = "KR" | "AP";
 type AuthMethod = "url" | "ssid";
+type GuidePreview = { image: string; title: string; desc: string; step: number } | null;
 
 const guideSteps = [
   {
@@ -125,6 +126,7 @@ export default function RiotConnectPage() {
   // 공통 성공 상태
   const [riotId, setRiotId] = useState("");
   const [connectedRegion, setConnectedRegion] = useState<RiotRegion | "">("");
+  const [preview, setPreview] = useState<GuidePreview>(null);
 
   async function handleUrlSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -496,12 +498,16 @@ export default function RiotConnectPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {cookieGuideSteps.map((step, index) => (
               <article key={step.image} className="overflow-hidden rounded border border-[#263746] bg-[#0f1923]">
-                <div className="relative aspect-[16/9] overflow-hidden border-b border-[#263746] bg-black/30">
-                  <img src={step.image} alt={step.title} className="h-full w-full object-cover" loading="lazy" />
+                <button
+                  type="button"
+                  onClick={() => setPreview({ ...step, step: index + 1 })}
+                  className="relative block aspect-[16/9] w-full overflow-hidden border-b border-[#263746] bg-black/30 text-left"
+                >
+                  <img src={step.image} alt={step.title} className="h-full w-full object-cover transition-transform hover:scale-[1.02]" loading="lazy" />
                   <div className="absolute left-3 top-3 rounded bg-[#7fffe6] px-2 py-1 text-xs font-black text-black">
                     STEP {index + 1}
                   </div>
-                </div>
+                </button>
                 <div className="p-4">
                   <h3 className="break-keep text-base font-black text-white">{step.title}</h3>
                   <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">{step.desc}</p>
@@ -526,12 +532,16 @@ export default function RiotConnectPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {guideSteps.map((step, index) => (
               <article key={step.image} className="overflow-hidden rounded border border-[#263746] bg-[#0f1923]">
-                <div className="relative aspect-[16/9] overflow-hidden border-b border-[#263746] bg-black/30">
-                  <img src={step.image} alt={step.title} className="h-full w-full object-cover" loading="lazy" />
+                <button
+                  type="button"
+                  onClick={() => setPreview({ ...step, step: index + 1 })}
+                  className="relative block aspect-[16/9] w-full overflow-hidden border-b border-[#263746] bg-black/30 text-left"
+                >
+                  <img src={step.image} alt={step.title} className="h-full w-full object-cover transition-transform hover:scale-[1.02]" loading="lazy" />
                   <div className="absolute left-3 top-3 rounded bg-[#ff4655] px-2 py-1 text-xs font-black text-white">
                     STEP {index + 1}
                   </div>
-                </div>
+                </button>
                 <div className="p-4">
                   <h3 className="break-keep text-base font-black text-white">{step.title}</h3>
                   <p className="mt-2 break-keep text-sm leading-relaxed text-[#9aa8b3]">{step.desc}</p>
@@ -540,6 +550,40 @@ export default function RiotConnectPage() {
             ))}
           </div>
         </section>
+      )}
+
+      {preview && (
+        <div
+          className="fixed inset-0 z-[160] flex items-center justify-center bg-black/80 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPreview(null)}
+        >
+          <div
+            className="w-full max-w-6xl overflow-hidden rounded border border-[#2a3540] bg-[#0f1923] shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-[#2a3540] px-4 py-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ff4655]">STEP {preview.step}</div>
+                <div className="truncate text-sm font-black text-white">{preview.title}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreview(null)}
+                className="rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-[#9aa8b3] hover:border-[#ff4655]/60 hover:text-white"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="max-h-[78vh] overflow-auto bg-black">
+              <img src={preview.image} alt={preview.title} className="mx-auto h-auto w-full object-contain" />
+            </div>
+            <div className="border-t border-[#2a3540] px-4 py-3 text-sm leading-relaxed text-[#9aa8b3]">
+              {preview.desc}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

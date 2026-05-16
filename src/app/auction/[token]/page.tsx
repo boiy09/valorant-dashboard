@@ -256,7 +256,7 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
     ...failedQueue.map((userId, index) => ({ userId, label: `유찰 ${index + 1}`, muted: true })),
   ].filter((lot, index, lots) => lots.findIndex((item) => item.userId === lot.userId && item.label === lot.label) === index);
   const allCaptainsJoined = captainIds.length > 0 && joinedCaptains.length >= captainIds.length;
-  const canBeginAuction = auction.phase === "setup" && queue.length > 0 && allCaptainsJoined;
+  const canBeginAuction = auction.phase === "setup" && queue.length > 0;
 
   return (
     <main className="min-h-screen bg-[#07111d] text-white">
@@ -426,9 +426,9 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
                       type="button"
                       disabled={submitting || room.viewer?.matchesCaptain !== true || joinedCaptains.includes(myCaptainId)}
                       onClick={() => void sendAction("confirmJoin")}
-                      className="mt-5 w-full rounded bg-[#00e7c2] px-4 py-3 text-sm font-black text-black disabled:opacity-40"
+                      className="mt-5 w-full rounded-lg border border-[#7fffe6]/50 bg-[#00e7c2] px-5 py-4 text-base font-black text-[#02110f] shadow-lg shadow-[#00e7c2]/20 transition hover:bg-[#42ffe2] disabled:border-[#263442] disabled:bg-[#263442] disabled:text-[#7b8a96] disabled:shadow-none"
                     >
-                      {joinedCaptains.includes(myCaptainId) ? "입장 확인 완료" : "본인 확인 후 입장 완료"}
+                      {joinedCaptains.includes(myCaptainId) ? "경매 준비 완료" : "경매 준비하기"}
                     </button>
                   )}
                   <div className="mt-5 grid grid-cols-3 gap-2">
@@ -474,7 +474,7 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
                       <button
                         type="button"
                         disabled={submitting || !canBeginAuction}
-                        title={!allCaptainsJoined ? "모든 팀장이 입장 확인을 완료해야 합니다." : queue.length === 0 ? "경매 매물이 없습니다." : undefined}
+                        title={queue.length === 0 ? "경매 매물이 없습니다." : !allCaptainsJoined ? "테스트 모드: 팀장 대기 상태여도 시작할 수 있습니다." : undefined}
                         onClick={() => void sendAction("begin")}
                         className="w-full rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black disabled:opacity-40"
                       >

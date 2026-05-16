@@ -201,11 +201,6 @@ async function beginAuction(auction: AuctionRow) {
   if (queue.length === 0) {
     throw new Error("경매 매물이 없습니다. 참가자를 로드하거나 팀장이 아닌 참가자를 남겨둔 뒤 시작해 주세요.");
   }
-  const captainIds = Object.keys(parseJson<Record<string, number>>(auction.captainPoints, {}));
-  const joinedCaptains = parseJson<string[]>(auction.joinedCaptains, []);
-  if (captainIds.length > 0 && joinedCaptains.length < captainIds.length) {
-    throw new Error("모든 팀장이 링크에서 본인 확인을 완료한 뒤 시작할 수 있습니다.");
-  }
   const nextUserId = queue[0] ?? null;
   const updated = await updateAuction(auction.sessionId, {
     phase: nextUserId ? "auction" : "done",

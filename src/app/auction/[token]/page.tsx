@@ -19,6 +19,7 @@ interface AuctionPlayer {
     image: string | null;
     valorantRole: string | null;
     favoriteAgents: string;
+    guilds?: { guildId: string; nickname: string | null }[];
     riotAccounts: RiotAccount[];
   };
 }
@@ -27,6 +28,7 @@ interface ScrimRoom {
   id: string;
   title: string;
   description: string | null;
+  guildId: string;
   mode: string | null;
   players: AuctionPlayer[];
 }
@@ -56,6 +58,8 @@ interface AuctionState {
   queue: string;
   currentUserId: string | null;
   currentBids: string;
+  joinedCaptains?: string;
+  pausedPhase?: string | null;
   auctionStartAt: string | null;
   auctionDuration: number;
   failedQueue: string;
@@ -69,6 +73,7 @@ interface RoomPayload {
   access: { role: "host" | "captain" | "observer"; captainId: string | null };
   scrim: ScrimRoom;
   auction: AuctionState | null;
+  viewer: { id: string; name: string | null; image: string | null; matchesCaptain: boolean | null } | null;
 }
 
 const TEAM_COLORS = ["#ff4655", "#f6c945", "#00e7c2", "#7c9cff", "#b884ff", "#ff9f43"];
@@ -86,8 +91,9 @@ function teamId(index: number) {
   return `team_${String.fromCharCode(97 + index)}`;
 }
 
-function playerName(player?: AuctionPlayer | null) {
-  return player?.user.name ?? "이름 없음";
+function playerName(player?: AuctionPlayer | null, guildId?: string) {
+  const serverNick = guildId ? player?.user.guilds?.find((guild) => guild.guildId === guildId)?.nickname : null;
+  return serverNick || player?.user.name || "이름 없음";
 }
 
 function teamName(index: number) {
@@ -114,6 +120,8 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [bidAmount, setBidAmount] = useState("");
+  const [hostCaptainId, setHostCaptainId] = useState("");
+  const [hostBidAmount, setHostBidAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const auctionForTimer = room?.auction;
@@ -162,6 +170,7 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
     const currentBids = parseJson<Record<string, number>>(auction?.currentBids, {});
     const queue = parseJson<string[]>(auction?.queue, []);
     const failedQueue = parseJson<string[]>(auction?.failedQueue, []);
+    const joinedCaptains = parseJson<string[]>(auction?.joinedCaptains, []);
     const captainIds = Object.keys(captainPoints);
     const currentPlayer = auction?.currentUserId ? playerMap.get(auction.currentUserId) : null;
     const picks = auction?.picks ?? [];
@@ -170,7 +179,7 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
       .map(([captainId, amount]) => ({ captainId, amount }))
       .filter((row) => row.amount > 0)
       .sort((a, b) => b.amount - a.amount);
-    return { players, playerMap, captainPoints, currentBids, queue, failedQueue, captainIds, currentPlayer, picks, bidHistory, currentBidRows };
+    return { players, playerMap, captainPoints, currentBids, queue, failedQueue, joinedCaptains, captainIds, currentPlayer, picks, bidHistory, currentBidRows };
   }, [room]);
 
   async function sendAction(action: string, extra: Record<string, unknown> = {}) {
@@ -209,8 +218,10 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
   }
 
   const { access, scrim, auction } = room;
-  const { captainPoints, currentBids, queue, failedQueue, captainIds, currentPlayer, playerMap, picks, bidHistory, currentBidRows } = derived;
+  const { captainPoints, currentBids, queue, failedQueue, joinedCaptains, captainIds, currentPlayer, playerMap, picks, bidHistory, currentBidRows } = derived;
   const myCaptainId = access.captainId;
+  const myCaptain = myCaptainId ? playerMap.get(myCaptainId) : null;
+  const roomRoleLabel = access.role === "captain" && myCaptain ? `${playerName(myCaptain, scrim.guildId)} 팀` : formatRole(access.role);
   const myPoints = myCaptainId ? captainPoints[myCaptainId] ?? 0 : 0;
   const myBid = myCaptainId ? currentBids[myCaptainId] ?? 0 : 0;
   const highestBid = currentBidRows[0]?.amount ?? 0;
@@ -229,7 +240,7 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
             <h1 className="mt-1 text-2xl font-black sm:text-3xl">{scrim.title}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded border border-[#2f4052] bg-[#111f2e] px-3 py-2 text-xs font-black text-[#c8d3db]">{formatRole(access.role)}</span>
+            <span className="rounded border border-[#2f4052] bg-[#111f2e] px-3 py-2 text-xs font-black text-[#c8d3db]">{roomRoleLabel}</span>
             <span className="rounded border border-[#f6c945]/45 bg-[#f6c945]/10 px-3 py-2 text-xs font-black text-[#ffe089]">{phaseLabel(auction.phase)}</span>
           </div>
         </div>
@@ -237,6 +248,19 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
 
       <div className="mx-auto max-w-7xl px-4 py-5">
         {message && <div className="mb-4 rounded border border-[#314255] bg-[#162232] px-4 py-3 text-sm font-bold text-[#dce7ef]">{message}</div>}
+
+        {access.role === "captain" && (
+          <div className={`mb-4 rounded-lg border px-4 py-3 ${room.viewer?.matchesCaptain === false ? "border-[#ff4655]/50 bg-[#ff4655]/10" : "border-[#00e7c2]/35 bg-[#00e7c2]/10"}`}>
+            <div className="text-sm font-black text-white">{roomRoleLabel} 전용 링크</div>
+            <div className="mt-1 text-xs font-bold text-[#c8d3db]">
+              {room.viewer
+                ? room.viewer.matchesCaptain
+                  ? `현재 Discord 로그인: ${room.viewer.name ?? "이름 없음"} · 본인 확인 완료`
+                  : `현재 Discord 로그인: ${room.viewer.name ?? "이름 없음"} · 이 링크의 팀장과 다릅니다`
+                : "Discord 로그인 상태를 확인할 수 없습니다. 로그인하면 본인 여부가 표시됩니다."}
+            </div>
+          </div>
+        )}
 
         {auction.auctionDuration > 0 && (auction.phase === "auction" || auction.phase === "reauction") && (
           <div className="mb-5 overflow-hidden rounded-full bg-[#1d2732]" style={{ height: 10 }}>
@@ -301,7 +325,30 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
               )}
             </div>
 
-            {currentPlayer ? (
+            {auction.phase === "setup" ? (
+              <div className="mt-8 rounded-lg border border-[#263442] bg-[#0a1320] p-6">
+                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-[#00e7c2]">CAPTAIN CHECK-IN</div>
+                <h2 className="mt-2 text-3xl font-black text-white">팀장 입장 확인 중</h2>
+                <p className="mt-2 text-sm font-bold text-[#9aa8b3]">팀장 링크 접속 여부를 확인한 뒤 주최자 링크에서 경매를 시작하세요.</p>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {captainIds.map((captainId, index) => {
+                    const captain = playerMap.get(captainId);
+                    const joined = joinedCaptains.includes(captainId);
+                    return (
+                      <div key={captainId} className="flex items-center justify-between gap-3 rounded border border-[#263442] bg-[#101925] px-3 py-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-black text-[#7b8a96]">{teamName(index)}</div>
+                          <div className="truncate text-sm font-black text-white">{playerName(captain, scrim.guildId)} 팀</div>
+                        </div>
+                        <span className={`rounded px-2 py-1 text-[11px] font-black ${joined ? "bg-[#00e7c2]/15 text-[#7fffe6]" : "bg-[#263442] text-[#9aa8b3]"}`}>
+                          {joined ? "입장 완료" : "대기"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : currentPlayer ? (
               <div className="mt-8 grid gap-6 lg:grid-cols-[160px_minmax(0,1fr)]">
                 {currentPlayer.user.image ? (
                   <img src={currentPlayer.user.image} alt="" className="h-40 w-40 rounded-xl object-cover ring-1 ring-white/10" />
@@ -382,14 +429,65 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
               ) : access.role === "host" ? (
                 <>
                   <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">HOST CONTROLS</div>
+                  {auction.phase === "setup" && (
+                    <div className="mt-4">
+                      <div className="mb-3 rounded border border-[#263442] bg-[#0a1320] px-3 py-2 text-xs font-bold text-[#c8d3db]">
+                        팀장 입장 {joinedCaptains.length}/{captainIds.length}명
+                      </div>
+                      <button type="button" disabled={submitting || captainIds.length === 0} onClick={() => void sendAction("begin")} className="w-full rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black disabled:opacity-40">
+                        경매 시작
+                      </button>
+                    </div>
+                  )}
+                  {auction.phase !== "setup" && (
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      {auction.phase === "paused" ? (
+                        <button type="button" disabled={submitting} onClick={() => void sendAction("resume")} className="rounded bg-[#00e7c2] px-4 py-3 text-sm font-black text-black disabled:opacity-40">
+                          재개
+                        </button>
+                      ) : (
+                        <button type="button" disabled={submitting || !currentPlayer} onClick={() => void sendAction("pause")} className="rounded border border-[#314255] bg-[#162232] px-4 py-3 text-sm font-black text-[#dce7ef] disabled:opacity-40">
+                          일시정지
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button type="button" disabled={submitting} onClick={() => void sendAction("resolve")} className="rounded bg-[#00e7c2] px-4 py-3 text-sm font-black text-black disabled:opacity-40">
+                    <button type="button" disabled={submitting || !currentPlayer || auction.phase === "setup" || auction.phase === "paused"} onClick={() => void sendAction("resolve")} className="rounded bg-[#00e7c2] px-4 py-3 text-sm font-black text-black disabled:opacity-40">
                       낙찰 처리
                     </button>
-                    <button type="button" disabled={submitting} onClick={() => void sendAction("pass")} className="rounded border border-[#ff4655]/45 bg-[#ff4655]/10 px-4 py-3 text-sm font-black text-[#ff8a95] disabled:opacity-40">
+                    <button type="button" disabled={submitting || !currentPlayer || auction.phase === "setup" || auction.phase === "paused"} onClick={() => void sendAction("pass")} className="rounded border border-[#ff4655]/45 bg-[#ff4655]/10 px-4 py-3 text-sm font-black text-[#ff8a95] disabled:opacity-40">
                       유찰
                     </button>
                   </div>
+                  {auction.phase !== "setup" && (
+                    <div className="mt-4 space-y-2 border-t border-[#263442] pt-4">
+                      <select value={hostCaptainId} onChange={(event) => setHostCaptainId(event.target.value)} className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-3 py-3 text-sm font-bold text-white outline-none focus:border-[#f6c945]">
+                        <option value="">낙찰 팀장 선택</option>
+                        {captainIds.map((captainId) => (
+                          <option key={captainId} value={captainId}>{playerName(playerMap.get(captainId), scrim.guildId)} 팀</option>
+                        ))}
+                      </select>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          value={hostBidAmount}
+                          onChange={(event) => setHostBidAmount(event.target.value)}
+                          placeholder="낙찰 금액"
+                          className="min-w-0 flex-1 rounded border border-[#2a3540] bg-[#0b141c] px-3 py-3 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
+                        />
+                        <button
+                          type="button"
+                          disabled={submitting || !currentPlayer || auction.phase === "paused" || !hostCaptainId}
+                          onClick={() => void sendAction("forceAssign", { captainId: hostCaptainId, bidAmount: parseInt(hostBidAmount, 10) || 0 })}
+                          className="rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black disabled:opacity-40"
+                        >
+                          선택 낙찰
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="text-sm font-bold text-[#9aa8b3]">옵저버 링크입니다. 경매 현황만 볼 수 있습니다.</div>

@@ -101,6 +101,7 @@ interface AuctionState {
   queue: string; // JSON: userId[]
   currentUserId: string | null;
   currentBids: string; // JSON: { captainUserId: bidAmount }
+  joinedCaptains?: string; // JSON: captain userId[]
   auctionStartAt: string | null;
   auctionDuration: number;
   failedQueue: string; // JSON: userId[]
@@ -1597,6 +1598,7 @@ function AuctionScrimPage({
   const currentBids = parseJson<Record<string, number>>(auction?.currentBids, {});
   const failedQueue = parseJson<string[]>(auction?.failedQueue, []);
   const queue = parseJson<string[]>(auction?.queue, []);
+  const joinedCaptains = parseJson<string[]>(auction?.joinedCaptains, []);
   const bidLog = parseJson<AuctionLogEntry[]>(auction?.bidLog, []);
   const auditLog = parseJson<AuctionLogEntry[]>(auction?.auditLog, []);
   const auctionPicks = useMemo(() => auction?.picks ?? [], [auction?.picks]);
@@ -1789,6 +1791,23 @@ function AuctionScrimPage({
             </div>
           ))}
         </div>
+        {inviteCaptainIds.length > 0 && (
+          <div className="mt-5 rounded border border-[#2a3540] bg-[#0b1420] p-4">
+            <div className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-[#7b8a96]">팀장 입장 확인</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {inviteCaptainIds.map((captainId, index) => {
+                const player = playerMap.get(captainId);
+                const joined = joinedCaptains.includes(captainId);
+                return (
+                  <div key={captainId} className="flex items-center justify-between gap-2 rounded bg-[#162232] px-3 py-2">
+                    <span className="min-w-0 truncate text-xs font-black text-white">{player ? resolveServerNick(player.user.id, guildMembers, player.user.name) : `${getDefaultTeamName(index)} 팀`}</span>
+                    <span className={`rounded px-2 py-0.5 text-[10px] font-black ${joined ? "bg-[#00e7c2]/15 text-[#7fffe6]" : "bg-[#24313c] text-[#9aa8b3]"}`}>{joined ? "입장" : "대기"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="mt-5 flex gap-2">
           <button type="button" onClick={() => setInviteOpen(false)} className="flex-1 rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black hover:bg-[#ffd85a]">
             바로 입장하기
@@ -1819,6 +1838,36 @@ function AuctionScrimPage({
           )}
         </div>
         {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
+
+        {auction?.phase === "setup" && (
+          <section className="val-card mb-5 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#00e7c2]">CAPTAIN CHECK-IN</div>
+                <h2 className="mt-1 text-2xl font-black text-white">팀장 입장 대기 중</h2>
+                <p className="mt-1 text-sm font-bold text-[#9aa8b3]">공유 링크로 팀장들이 들어온 뒤 주최자 링크에서 실제 경매를 시작하세요.</p>
+              </div>
+              <button type="button" onClick={() => setInviteOpen(true)} className="rounded bg-[#f6c945] px-4 py-2 text-sm font-black text-black">초대 링크 보기</button>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {inviteCaptainIds.map((captainId, index) => {
+                const player = playerMap.get(captainId);
+                const joined = joinedCaptains.includes(captainId);
+                return (
+                  <div key={captainId} className="flex items-center justify-between gap-3 rounded border border-[#2a3540] bg-[#111c24] px-3 py-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-black text-[#7b8a96]">{getDefaultTeamName(index)}</div>
+                      <div className="truncate text-sm font-black text-white">{player ? resolveServerNick(player.user.id, guildMembers, player.user.name) : captainId} 팀</div>
+                    </div>
+                    <span className={`rounded px-2 py-1 text-[11px] font-black ${joined ? "bg-[#00e7c2]/15 text-[#7fffe6]" : "bg-[#24313c] text-[#9aa8b3]"}`}>
+                      {joined ? "입장 완료" : "대기"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
           <div className="space-y-5">
@@ -1861,7 +1910,7 @@ function AuctionScrimPage({
                   <button type="button" onClick={addRecruitment} disabled={saving} className="rounded border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
                   <button type="button" onClick={() => { setDummyRows([auctionEmptyRow()]); setDummyOpen(true); }} className="val-btn border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-2 text-xs font-black text-[#f6c945]" title="테스트용 더미 참가자 추가">🧪 더미 데이터</button>
                   <button type="button" onClick={startAuction} disabled={Object.keys(captainSelections).length < 2} className="val-btn bg-[#f6c945] px-5 py-2 text-sm font-black text-black disabled:opacity-40">
-                    🏷 경매 시작
+                    🏷 링크 생성
                   </button>
                 </div>
               </section>
@@ -2034,10 +2083,10 @@ function AuctionScrimPage({
         {isAdmin && (
           <div className="flex gap-2">
             <button type="button" onClick={() => setInviteOpen(true)} className="rounded border border-[#f6c945]/45 bg-[#f6c945]/10 px-4 py-2 text-xs font-black text-[#ffe089] hover:border-[#f6c945]">초대 링크</button>
-            {auction.phase === "paused" ? (
+            {false && auction?.phase === "paused" ? (
               <button type="button" onClick={() => void auctionAdminAction("resume")} disabled={bidding} className="rounded border border-[#00e7c2]/45 bg-[#00e7c2]/10 px-4 py-2 text-xs font-black text-[#7fffe6] hover:border-[#00e7c2] disabled:opacity-50">경매 재개</button>
             ) : (
-              (auction.phase === "auction" || auction.phase === "reauction") && (
+              false && (auction?.phase === "auction" || auction?.phase === "reauction") && (
                 <button type="button" onClick={() => void auctionAdminAction("pause")} disabled={bidding} className="rounded border border-[#7b8a96]/45 bg-[#7b8a96]/10 px-4 py-2 text-xs font-black text-[#c8d3db] hover:border-[#9aa8b3] disabled:opacity-50">일시정지</button>
               )
             )}
@@ -2142,14 +2191,14 @@ function AuctionScrimPage({
                   )}
                 </div>
               </div>
-              {isAdmin && (
+              {false && isAdmin && (
                 <div className="grid grid-cols-2 gap-2">
-                  {auction.phase === "paused" ? (
+                  {auction?.phase === "paused" ? (
                     <button type="button" onClick={() => void auctionAdminAction("resume")} disabled={bidding} className="rounded bg-[#00e7c2] px-4 py-3 text-sm font-black text-black disabled:opacity-50">타이머 재개</button>
                   ) : (
                     <button type="button" onClick={() => void auctionAdminAction("pause")} disabled={bidding} className="rounded border border-[#7b8a96]/45 bg-[#7b8a96]/10 px-4 py-3 text-sm font-black text-[#c8d3db] disabled:opacity-50">타이머 일시정지</button>
                   )}
-                  <button type="button" onClick={() => void manualResolve()} disabled={bidding || auction.phase === "paused"} className="rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black disabled:opacity-50">낙찰 처리</button>
+                  <button type="button" onClick={() => void manualResolve()} disabled={bidding || auction?.phase === "paused"} className="rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black disabled:opacity-50">낙찰 처리</button>
                 </div>
               )}
             </section>
@@ -2449,7 +2498,7 @@ function AuctionScrimPage({
                       </div>
                     </div>
                     <div className="mb-2 text-[11px] text-[#7b8a96]">팀원 {teamMembers.length - 1}명 배정됨</div>
-                    {isAdmin && (
+                    {false && isAdmin && (
                       <div className="flex gap-2">
                         <input
                           type="number" min={1} max={myPoints} placeholder="입찰 금액"

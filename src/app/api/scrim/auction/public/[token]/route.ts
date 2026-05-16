@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { broadcast } from "@/lib/broadcast";
 import { verifyAuctionAccessToken } from "@/lib/auctionAccess";
+import { auth } from "@/lib/auth";
 
 type AuctionPhase = "setup" | "auction" | "reauction" | "paused" | "done";
 
@@ -14,6 +15,7 @@ interface AuctionRow {
   queue: string;
   currentUserId: string | null;
   currentBids: string;
+  joinedCaptains: string;
   auctionStartAt: Date | string | null;
   auctionDuration: number;
   failedQueue: string;
@@ -191,6 +193,29 @@ async function updateAuction(sessionId: string, data: Record<string, unknown>) {
   return getAuction(sessionId);
 }
 
+async function beginAuction(auction: AuctionRow) {
+  if (auction.phase !== "setup") {
+    throw new Error("경매 대기 상태에서만 시작할 수 있습니다.");
+  }
+  const queue = parseJson<string[]>(auction.queue, []);
+  const nextUserId = queue[0] ?? null;
+  const updated = await updateAuction(auction.sessionId, {
+    phase: nextUserId ? "auction" : "done",
+    pausedPhase: null,
+    queue: JSON.stringify(queue.slice(1)),
+    currentUserId: nextUserId,
+    currentBids: "{}",
+    auctionStartAt: nextUserId ? new Date() : null,
+    auditLog: appendLog(auction.auditLog, {
+      actorId: "host-link",
+      action: "start",
+      message: "주최자 링크에서 경매를 시작했습니다.",
+    }),
+  });
+  if (updated?.phase === "done") await applyFinalAssignments(auction.sessionId);
+  return updated;
+}
+
 async function finalizeCurrentLot(auction: AuctionRow, actorId = "public-room") {
   if (!auction.currentUserId) return auction;
 
@@ -278,6 +303,12 @@ async function getRoom(sessionId: string) {
               image: true,
               valorantRole: true,
               favoriteAgents: true,
+              guilds: {
+                select: {
+                  guildId: true,
+                  nickname: true,
+                },
+              },
               riotAccounts: {
                 select: {
                   gameName: true,
@@ -308,10 +339,38 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ token:
   if (!scrim) return Response.json({ error: "경매방을 찾을 수 없습니다." }, { status: 404 });
   if (scrim.mode !== "auction") return Response.json({ error: "경매 내전이 아닙니다." }, { status: 400 });
 
+  let currentAuction = auction;
+  if (currentAuction && access.role === "captain" && access.captainId) {
+    const joinedCaptains = parseJson<string[]>(currentAuction.joinedCaptains, []);
+    if (!joinedCaptains.includes(access.captainId)) {
+      currentAuction = await updateAuction(access.sessionId, {
+        joinedCaptains: JSON.stringify([...joinedCaptains, access.captainId]),
+        auditLog: appendLog(currentAuction.auditLog, {
+          actorId: access.captainId,
+          action: "captain_joined",
+          captainId: access.captainId,
+          message: "팀장 링크로 입장했습니다.",
+        }),
+      });
+      broadcast(`scrim:${access.sessionId}`, { action: "auction_captain_joined", auction: currentAuction }).catch(() => {});
+    }
+  }
+
+  const session = await auth().catch(() => null);
+  const viewer = session?.user
+    ? {
+        id: session.user.id,
+        name: session.user.name ?? null,
+        image: session.user.image ?? null,
+        matchesCaptain: access.role === "captain" && access.captainId ? session.user.id === access.captainId : null,
+      }
+    : null;
+
   return Response.json({
     access: { role: access.role, captainId: access.captainId ?? null },
     scrim,
-    auction,
+    auction: currentAuction,
+    viewer,
   });
 }
 
@@ -329,6 +388,101 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
 
   if (action !== "bid") {
     if (access.role !== "host") return Response.json({ error: "주최자 링크가 필요합니다." }, { status: 403 });
+
+    if (action === "begin") {
+      try {
+        const updated = await beginAuction(auction);
+        broadcast(`scrim:${access.sessionId}`, { action: "auction_started", auction: updated }).catch(() => {});
+        return Response.json({ success: true, auction: updated });
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "경매를 시작할 수 없습니다." }, { status: 400 });
+      }
+    }
+
+    if (action === "pause") {
+      if (auction.phase !== "auction" && auction.phase !== "reauction") {
+        return Response.json({ error: "진행 중인 경매만 일시정지할 수 있습니다." }, { status: 400 });
+      }
+      const elapsed = auction.auctionStartAt ? (Date.now() - new Date(auction.auctionStartAt).getTime()) / 1000 : 0;
+      const remaining = auction.auctionDuration > 0 ? Math.max(1, Math.ceil(auction.auctionDuration - elapsed)) : 0;
+      const updated = await updateAuction(access.sessionId, {
+        phase: "paused",
+        pausedPhase: auction.phase,
+        auctionStartAt: null,
+        auctionDuration: remaining,
+        auditLog: appendLog(auction.auditLog, {
+          actorId: "host-link",
+          action: "pause",
+          message: "주최자 링크에서 경매를 일시정지했습니다.",
+        }),
+      });
+      broadcast(`scrim:${access.sessionId}`, { action: "auction_paused", auction: updated }).catch(() => {});
+      return Response.json({ success: true, auction: updated });
+    }
+
+    if (action === "resume") {
+      if (auction.phase !== "paused") {
+        return Response.json({ error: "일시정지 상태가 아닙니다." }, { status: 400 });
+      }
+      const updated = await updateAuction(access.sessionId, {
+        phase: auction.pausedPhase ?? "auction",
+        pausedPhase: null,
+        auctionStartAt: auction.currentUserId ? new Date() : null,
+        auditLog: appendLog(auction.auditLog, {
+          actorId: "host-link",
+          action: "resume",
+          message: "주최자 링크에서 경매를 재개했습니다.",
+        }),
+      });
+      broadcast(`scrim:${access.sessionId}`, { action: "auction_resumed", auction: updated }).catch(() => {});
+      return Response.json({ success: true, auction: updated });
+    }
+
+    if (action === "forceAssign") {
+      if ((auction.phase !== "auction" && auction.phase !== "reauction") || !auction.currentUserId) {
+        return Response.json({ error: "낙찰 처리할 현재 매물이 없습니다." }, { status: 400 });
+      }
+      const captainPoints = parseJson<Record<string, number>>(auction.captainPoints, {});
+      const captainIds = Object.keys(captainPoints);
+      const captainId = typeof body.captainId === "string" ? body.captainId : "";
+      if (!captainIds.includes(captainId)) {
+        return Response.json({ error: "유효한 팀장을 선택해야 합니다." }, { status: 400 });
+      }
+      const amount = Math.max(0, bidAmount);
+      const available = captainPoints[captainId] ?? 0;
+      if (amount > available) {
+        return Response.json({ error: `보유 포인트(${available}P)를 초과할 수 없습니다.` }, { status: 400 });
+      }
+      const teamId = getTeamIdByCaptain(captainIds, captainId);
+      if (!teamId) return Response.json({ error: "팀 정보를 찾을 수 없습니다." }, { status: 400 });
+
+      captainPoints[captainId] = available - amount;
+      await recordPick(access.sessionId, auction.currentUserId, captainId, teamId, amount);
+      const nextState = getNextAuctionState(auction, "sold");
+      const updated = await updateAuction(access.sessionId, {
+        ...nextState,
+        captainPoints: JSON.stringify(captainPoints),
+        bidLog: appendLog(auction.bidLog, {
+          actorId: "host-link",
+          action: "force_sold",
+          captainId,
+          targetUserId: auction.currentUserId,
+          amount,
+          message: `주최자 낙찰: ${amount}P`,
+        }),
+        auditLog: appendLog(auction.auditLog, {
+          actorId: "host-link",
+          action: "force_sold",
+          captainId,
+          targetUserId: auction.currentUserId,
+          amount,
+          message: "주최자 링크에서 현재 매물을 낙찰 처리했습니다.",
+        }),
+      });
+      if (updated?.phase === "done") await applyFinalAssignments(access.sessionId);
+      broadcast(`scrim:${access.sessionId}`, { action: "auction_force_assigned", auction: updated }).catch(() => {});
+      return Response.json({ success: true, auction: updated });
+    }
 
     if (action === "resolve") {
       if ((auction.phase !== "auction" && auction.phase !== "reauction") || !auction.currentUserId) {

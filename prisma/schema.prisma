@@ -258,6 +258,7 @@ model AuctionState {
   queue           String   @default("[]")   // JSON: userId[] 남은 경매 순서
   currentUserId   String?                   // 현재 경매 중인 참가자 userId
   currentBids     String   @default("{}")   // JSON: { captainUserId: bidAmount }
+  joinedCaptains  String   @default("[]")   // JSON: captain userId[] 공개 링크 입장 확인
   auctionStartAt  DateTime?
   auctionDuration Int      @default(30)     // 초 단위 타이머
   failedQueue     String   @default("[]")   // JSON: userId[] 유찰된 참가자

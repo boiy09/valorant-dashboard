@@ -14,6 +14,7 @@ interface AuctionRow {
   queue: string;
   currentUserId: string | null;
   currentBids: string;
+  joinedCaptains: string;
   auctionStartAt: Date | null;
   auctionDuration: number;
   failedQueue: string;
@@ -67,6 +68,7 @@ function ensureAuctionTable() {
           "queue"           TEXT NOT NULL DEFAULT '[]',
           "currentUserId"   TEXT,
           "currentBids"     TEXT NOT NULL DEFAULT '{}',
+          "joinedCaptains"  TEXT NOT NULL DEFAULT '[]',
           "auctionStartAt"  TIMESTAMP(3),
           "auctionDuration" INTEGER NOT NULL DEFAULT 30,
           "failedQueue"     TEXT NOT NULL DEFAULT '[]',
@@ -80,6 +82,7 @@ function ensureAuctionTable() {
         await prisma.$executeRawUnsafe(`ALTER TABLE "AuctionState" ADD COLUMN IF NOT EXISTS "pausedPhase" TEXT`);
         await prisma.$executeRawUnsafe(`ALTER TABLE "AuctionState" ADD COLUMN IF NOT EXISTS "bidLog" TEXT NOT NULL DEFAULT '[]'`);
         await prisma.$executeRawUnsafe(`ALTER TABLE "AuctionState" ADD COLUMN IF NOT EXISTS "auditLog" TEXT NOT NULL DEFAULT '[]'`);
+        await prisma.$executeRawUnsafe(`ALTER TABLE "AuctionState" ADD COLUMN IF NOT EXISTS "joinedCaptains" TEXT NOT NULL DEFAULT '[]'`);
         await prisma.$executeRawUnsafe(`
           CREATE TABLE IF NOT EXISTS "AuctionBid" (
             "id" TEXT NOT NULL PRIMARY KEY,
@@ -252,8 +255,8 @@ async function upsertAuction(sessionId: string, data: Record<string, unknown>) {
   if (!existing) {
     const id = `auction_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     await prisma.$executeRawUnsafe(
-      `INSERT INTO "AuctionState" ("id","sessionId","phase","pausedPhase","captainPoints","queue","currentUserId","currentBids","auctionStartAt","auctionDuration","failedQueue","bidLog","auditLog","updatedAt","createdAt")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW())`,
+      `INSERT INTO "AuctionState" ("id","sessionId","phase","pausedPhase","captainPoints","queue","currentUserId","currentBids","joinedCaptains","auctionStartAt","auctionDuration","failedQueue","bidLog","auditLog","updatedAt","createdAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW())`,
       id,
       sessionId,
       (data.phase as string) ?? "setup",
@@ -262,6 +265,7 @@ async function upsertAuction(sessionId: string, data: Record<string, unknown>) {
       (data.queue as string) ?? "[]",
       (data.currentUserId as string | null) ?? null,
       (data.currentBids as string) ?? "{}",
+      (data.joinedCaptains as string) ?? "[]",
       (data.auctionStartAt as Date | null) ?? null,
       (data.auctionDuration as number) ?? 30,
       (data.failedQueue as string) ?? "[]",
@@ -285,6 +289,29 @@ async function upsertAuction(sessionId: string, data: Record<string, unknown>) {
     );
   }
   return getAuction(sessionId);
+}
+
+async function beginAuction(auction: AuctionRow, actorId: string) {
+  if (auction.phase !== "setup") {
+    throw new Error("경매 대기 상태에서만 시작할 수 있습니다.");
+  }
+  const queue = parseJson<string[]>(auction.queue, []);
+  const nextUserId = queue[0] ?? null;
+  const updated = await upsertAuction(auction.sessionId, {
+    phase: nextUserId ? "auction" : "done",
+    pausedPhase: null,
+    queue: JSON.stringify(queue.slice(1)),
+    currentUserId: nextUserId,
+    currentBids: "{}",
+    auctionStartAt: nextUserId ? new Date() : null,
+    auditLog: appendLog(auction.auditLog, {
+      actorId,
+      action: "start",
+      message: "주최자 링크에서 경매를 시작했습니다.",
+    }),
+  });
+  if (updated?.phase === "done") await applyFinalAssignments(auction.sessionId);
+  return updated;
 }
 
 async function finalizeCurrentLot(auction: AuctionRow, actorId = "system") {
@@ -402,13 +429,14 @@ export async function POST(req: NextRequest) {
   const queue = shuffle(nonCaptains);
 
   const auction = await upsertAuction(sessionId, {
-    phase: "auction",
+    phase: "setup",
     pausedPhase: null,
     captainPoints: JSON.stringify(captainPoints),
-    queue: JSON.stringify(queue.slice(1)),
-    currentUserId: queue[0] ?? null,
+    queue: JSON.stringify(queue),
+    currentUserId: null,
     currentBids: "{}",
-    auctionStartAt: queue.length > 0 ? new Date() : null,
+    joinedCaptains: "[]",
+    auctionStartAt: null,
     auctionDuration,
     failedQueue: "[]",
     bidLog: "[]",
@@ -419,7 +447,7 @@ export async function POST(req: NextRequest) {
     }),
   });
 
-  broadcastAuction(sessionId, "auction_started", auction);
+  broadcastAuction(sessionId, "auction_setup", auction);
   return Response.json({ success: true, auction });
 }
 
@@ -459,6 +487,16 @@ export async function PATCH(req: NextRequest) {
 
   if (action !== "bid") {
     if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+
+    if (action === "begin") {
+      try {
+        const updated = await beginAuction(auction, session.user.id);
+        broadcastAuction(sessionId, "auction_started", updated);
+        return Response.json({ success: true, auction: updated });
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "경매를 시작할 수 없습니다." }, { status: 400 });
+      }
+    }
 
     if (action === "resolve") {
       if ((auction.phase !== "auction" && auction.phase !== "reauction") || !auction.currentUserId) {

@@ -37,7 +37,14 @@ export async function GET(req: NextRequest) {
     include: {
       players: {
         include: {
-          user: { select: { id: true, name: true, image: true } },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+              guilds: { select: { guildId: true, nickname: true } },
+            },
+          },
         },
       },
     },
@@ -52,6 +59,7 @@ export async function GET(req: NextRequest) {
 
   const captains = captainIds.map((captainId, index) => {
     const player = scrim.players.find((item) => item.userId === captainId);
+    const serverNick = player?.user.guilds.find((guild) => guild.guildId === scrim.guildId)?.nickname;
     const token = createAuctionAccessToken({ sessionId, role: "captain", captainId });
     return {
       role: "captain" as const,

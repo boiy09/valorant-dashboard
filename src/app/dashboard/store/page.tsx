@@ -91,9 +91,9 @@ function SkinCard({ offer }: { offer: StoreOffer }) {
   );
 }
 
-function BundleCard({ bundle }: { bundle: StoreBundle }) {
+function BundleCard({ bundle, onOpen }: { bundle: StoreBundle; onOpen: () => void }) {
   return (
-    <div className="val-card overflow-hidden">
+    <button type="button" onClick={onOpen} className="val-card block w-full overflow-hidden text-left transition-colors hover:border-[#ff4655]/60">
       <div className="relative flex h-44 items-center justify-center bg-[#0a1520]">
         {bundle.displayIcon ? (
           <img
@@ -118,7 +118,63 @@ function BundleCard({ bundle }: { bundle: StoreBundle }) {
               </span>
             )}
           </div>
+          {bundle.items?.length > 0 && (
+            <div className="mt-1 text-[10px] font-bold text-[#9aa8b3]">구성품 {bundle.items.length}개 보기</div>
+          )}
         </div>
+      </div>
+    </button>
+  );
+}
+
+function BundleDetailModal({ bundle, onClose }: { bundle: StoreBundle; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/80 px-4 py-6" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="w-full max-w-5xl overflow-hidden rounded border border-[#2a3540] bg-[#0f1923] shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-[#2a3540] px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ff4655]">Bundle Details</div>
+            <div className="truncate text-lg font-black text-white">{bundle.name}</div>
+            <div className="mt-1 flex items-center gap-1.5 text-sm font-bold text-[#0bc4b4]">
+              <VpIcon />
+              {bundle.cost.toLocaleString()}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-[#9aa8b3] hover:border-[#ff4655]/60 hover:text-white">
+            닫기
+          </button>
+        </div>
+
+        {bundle.items?.length ? (
+          <div className="grid max-h-[72vh] gap-3 overflow-auto p-4 sm:grid-cols-2 lg:grid-cols-3">
+            {bundle.items.map((item, index) => (
+              <article key={`${item.name}-${index}`} className="overflow-hidden rounded border border-[#263442] bg-[#0b141c]">
+                <div className="flex h-32 items-center justify-center bg-[#08131d]">
+                  {item.displayIcon ? (
+                    <img src={item.displayIcon} alt={item.name} className="h-full w-full object-contain p-3" loading="lazy" />
+                  ) : (
+                    <span className="text-xs font-black text-[#4a5a68]">{item.type}</span>
+                  )}
+                </div>
+                <div className="border-t border-[#263442] p-3">
+                  <div className="truncate text-sm font-black text-white" title={item.name}>{item.name}</div>
+                  <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-[#7b8a96]">{item.type}</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="flex items-center gap-1 font-black text-[#0bc4b4]">
+                      <VpIcon />
+                      {item.discountedPrice.toLocaleString()}
+                    </span>
+                    {item.basePrice !== item.discountedPrice && (
+                      <span className="text-[#7b8a96] line-through">{item.basePrice.toLocaleString()}</span>
+                    )}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-sm text-[#7b8a96]">구성품 정보를 불러오지 못했습니다.</div>
+        )}
       </div>
     </div>
   );
@@ -243,6 +299,7 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
   const [tick, setTick] = useState(0);
   const [sharing, setSharing] = useState(false);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const [selectedBundle, setSelectedBundle] = useState<StoreBundle | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60000);
@@ -355,7 +412,7 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
               </div>
               <div className={`grid gap-3 ${data.store!.bundles.length === 1 ? "grid-cols-1" : data.store!.bundles.length === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
                 {data.store!.bundles.map((bundle, i) => (
-                  <BundleCard key={i} bundle={bundle} />
+                  <BundleCard key={i} bundle={bundle} onOpen={() => setSelectedBundle(bundle)} />
                 ))}
               </div>
             </div>
@@ -365,6 +422,7 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
           {data.battlepass && <BattlepassBar bp={data.battlepass} />}
         </>
       )}
+      {selectedBundle && <BundleDetailModal bundle={selectedBundle} onClose={() => setSelectedBundle(null)} />}
     </section>
   );
 }

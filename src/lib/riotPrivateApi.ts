@@ -290,6 +290,15 @@ export interface StoreBundle {
   displayIcon: string;
   cost: number;
   remainingSeconds: number;
+  items: StoreBundleItem[];
+}
+
+export interface StoreBundleItem {
+  name: string;
+  displayIcon: string;
+  type: string;
+  basePrice: number;
+  discountedPrice: number;
 }
 
 export interface StoreData {
@@ -732,6 +741,60 @@ export async function getStore(
     "d5f120f8-ff8c-4aac-92ea-f2b5acbe9475": "sprays",
   };
 
+  async function resolveBundleItem(item: BundleItem): Promise<StoreBundleItem> {
+    const itemId = item.Item?.ItemID ?? "";
+    const itemTypeId = item.Item?.ItemTypeID?.toLowerCase() ?? "";
+    const endpoint = ITEM_TYPE_ENDPOINTS[itemTypeId];
+    const fallback = {
+      name: itemId || "구성품",
+      displayIcon: "",
+      type: endpoint ?? "item",
+      basePrice: item.BasePrice ?? 0,
+      discountedPrice: item.DiscountedPrice ?? item.BasePrice ?? 0,
+    };
+
+    if (!itemId) return fallback;
+
+    if (endpoint === "weapons/skinlevels") {
+      const skin = await resolveSkinLevel(itemId).catch(() => null);
+      if (skin) {
+        return {
+          ...fallback,
+          name: skin.name || fallback.name,
+          displayIcon: skin.displayIcon || fallback.displayIcon,
+          type: "스킨",
+        };
+      }
+    }
+
+    if (!endpoint) return fallback;
+
+    try {
+      const response = await fetch(`${VALORANT_API_BASE}/${endpoint}/${itemId}?language=ko-KR`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!response.ok) return fallback;
+
+      const data = await response.json() as {
+        data?: {
+          displayName?: string;
+          titleText?: string;
+          displayIcon?: string;
+          largeArt?: string;
+          smallIcon?: string;
+        };
+      };
+      return {
+        ...fallback,
+        name: data.data?.displayName ?? data.data?.titleText ?? fallback.name,
+        displayIcon: data.data?.displayIcon ?? data.data?.largeArt ?? data.data?.smallIcon ?? "",
+        type: endpoint,
+      };
+    } catch {
+      return fallback;
+    }
+  }
+
   async function processBundleRaw(bundleRaw: BundlePayload): Promise<StoreBundle | null> {
     const candidates = [bundleRaw.DataAssetID, bundleRaw.ID].filter(Boolean) as string[];
     let bundleInfo: BundleInfo | null = null;
@@ -778,12 +841,14 @@ export async function getStore(
       bundleRaw.TotalDiscountedCost?.[VP_CURRENCY] ??
       bundleInfo?.price ??
       (bundleRaw.Items ?? []).reduce((sum, item) => sum + (item.DiscountedPrice ?? item.BasePrice ?? 0), 0);
+    const items = await Promise.all((bundleRaw.Items ?? []).map(resolveBundleItem));
 
     return {
       name: bundleInfo?.name || fallbackName || "번들",
       displayIcon: proxyBundleImage(bundleInfo?.displayIcon || fallbackIcon),
       cost: totalCost,
       remainingSeconds: bundleRaw.DurationRemainingInSeconds ?? 0,
+      items,
     };
   }
 

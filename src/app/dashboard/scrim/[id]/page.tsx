@@ -2768,7 +2768,7 @@ function ParticipantList({
     showRiot ? "minmax(170px,1.05fr)" : null,
     showTier ? "86px" : null,
     "66px",
-    showRole ? "86px" : null,
+    showRole ? "minmax(130px,0.8fr)" : null,
     showAgents ? "minmax(86px,0.65fr)" : null,
     captainMode ? "60px" : null,
     "28px",
@@ -2908,7 +2908,7 @@ function ParticipantRow({
       {showRole && (
         <div className="flex min-w-0 flex-wrap gap-1">
           {roleLabels.length > 0 ? (
-            roleLabels.slice(0, 2).map((role) => (
+            roleLabels.map((role) => (
               <span key={role} className="rounded bg-[#24313c] px-1.5 py-0.5 text-[10px] font-bold text-[#c8d3db]">
                 {role}
               </span>

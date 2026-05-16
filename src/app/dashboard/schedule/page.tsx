@@ -239,10 +239,10 @@ export default function SchedulePage() {
             <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">VCT 대회 일정</div>
             <div className="text-xs text-[#7b8a96]">{vctMatches.length}경기</div>
           </div>
-          <div className="divide-y divide-[#1a2830]">
+          <div className="grid gap-3 p-3 lg:grid-cols-3">
             {groupedVctMatches.map((group) => (
-              <section key={group.leagueName}>
-                <div className="flex items-center justify-between bg-[#0b141c] px-4 py-2">
+              <section key={group.leagueName} className="overflow-hidden rounded border border-[#263442] bg-[#0b141c]">
+                <div className="flex items-center justify-between border-b border-[#263442] bg-[#111c24] px-4 py-2">
                   <div className="text-xs font-black text-white">{group.leagueName}</div>
                   <div className="text-[10px] font-bold text-[#7b8a96]">{group.matches.length}경기</div>
                 </div>

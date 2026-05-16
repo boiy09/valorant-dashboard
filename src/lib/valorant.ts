@@ -1363,7 +1363,7 @@ export async function getVctSchedule(
   });
   const matches = asArray<any>(raw);
 
-  return matches.map((item) => {
+  const normalized = matches.map((item) => {
     const teams = asArray<any>(item?.match?.teams);
     const teamOne = teams[0]?.name ?? "TBD";
     const teamTwo = teams[1]?.name ?? "TBD";
@@ -1381,7 +1381,19 @@ export async function getVctSchedule(
       score: `${winsOne}-${winsTwo}`,
       vodUrl: item?.vod ?? null,
     };
-  }).slice(0, limit);
+  });
+
+  const now = Date.now();
+  return normalized
+    .sort((a, b) => {
+      const aTime = a.startsAt.getTime();
+      const bTime = b.startsAt.getTime();
+      const aFuture = aTime >= now;
+      const bFuture = bTime >= now;
+      if (aFuture !== bFuture) return aFuture ? -1 : 1;
+      return aFuture ? aTime - bTime : bTime - aTime;
+    })
+    .slice(0, limit);
 }
 
 const TRACKER_HEADERS = {

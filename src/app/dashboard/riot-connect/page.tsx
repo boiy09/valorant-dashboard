@@ -283,7 +283,7 @@ export default function RiotConnectPage() {
           <ul className="mt-3 space-y-1.5">
             <li className="flex items-start gap-1.5 text-xs text-[#c8d3db]">
               <span className="mt-px font-black">준비물</span>
-              <span>Chrome 또는 Chromium 기반 브라우저(Edge, Whale 등)</span>
+              <span>Chrome</span>
             </li>
             <li className="flex items-start gap-1.5 text-xs text-[#7fffe6]">
               <span className="mt-px font-black">+</span>

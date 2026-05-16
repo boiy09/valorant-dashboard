@@ -514,6 +514,28 @@ export async function getStore(
     Items?: BundleItem[];
   };
 
+  function isBundlePayload(value: unknown): value is BundlePayload {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as BundlePayload;
+    return Array.isArray(candidate.Items) && Boolean(candidate.DataAssetID || candidate.ID || candidate.TotalDiscountedCost);
+  }
+
+  function collectBundlePayloads(value: unknown, output: BundlePayload[] = []): BundlePayload[] {
+    if (!value || typeof value !== "object") return output;
+    if (isBundlePayload(value)) {
+      output.push(value);
+      return output;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) collectBundlePayloads(item, output);
+      return output;
+    }
+    for (const item of Object.values(value as Record<string, unknown>)) {
+      collectBundlePayloads(item, output);
+    }
+    return output;
+  }
+
   const data = await response.json() as {
     SkinsPanelLayout?: {
       SingleItemOffers?: string[];
@@ -618,10 +640,7 @@ export async function getStore(
 
   // 번들: v3 FeaturedBundles(복수) → v2 FeaturedBundle(단일) 순으로 모든 번들 처리
   const seenBundleIds = new Set<string>();
-  const allBundlesRaw: BundlePayload[] = [
-    ...(data.FeaturedBundles?.Bundles ?? []),
-    ...(data.FeaturedBundle?.Bundle ? [data.FeaturedBundle.Bundle] : []),
-  ].filter((bundle) => {
+  const allBundlesRaw = collectBundlePayloads(data).filter((bundle) => {
     const id = (bundle.DataAssetID || bundle.ID || JSON.stringify(bundle)).toLowerCase();
     if (seenBundleIds.has(id)) return false;
     seenBundleIds.add(id);

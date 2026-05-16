@@ -108,6 +108,26 @@ function phaseLabel(phase?: string) {
   return "준비 중";
 }
 
+function LotNameCard({ player, label, muted = false }: { player?: AuctionPlayer | null; label: string; muted?: boolean }) {
+  return (
+    <div className={`flex min-w-0 items-center gap-3 rounded-lg border px-3 py-3 ${muted ? "border-[#263442] bg-[#0b141c]/70 opacity-80" : "border-[#314255] bg-[#101925]"}`}>
+      {player?.user.image ? (
+        <img src={player.user.image} alt="" className="h-11 w-11 flex-shrink-0 rounded-lg object-cover ring-1 ring-white/10" />
+      ) : (
+        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-[#24313c] text-xs font-black text-[#7b8a96]">?</div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-black text-white">{playerName(player)}</div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-[#8fa0ad]">
+          <span>{label}</span>
+          {player?.user.valorantRole && <span className="rounded bg-[#263442] px-1.5 py-0.5 text-[#c8d3db]">{player.user.valorantRole}</span>}
+          {player?.user.riotAccounts[0]?.cachedTierName && <span className="text-[#ff8a95]">{player.user.riotAccounts[0].cachedTierName}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function formatRole(role: RoomPayload["access"]["role"]) {
   if (role === "host") return "주최자";
   if (role === "captain") return "팀장";
@@ -230,6 +250,13 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
   const timerPct = auction.auctionDuration > 0 ? Math.max(0, Math.min(100, (timeLeft / auction.auctionDuration) * 100)) : 0;
   const timerColor = timerPct > 45 ? "#00e7c2" : timerPct > 20 ? "#f6c945" : "#ff4655";
   const currentLotBids = bidHistory.filter((bid) => bid.lotUserId === auction.currentUserId).slice(-8).reverse();
+  const lotCards = [
+    ...(currentPlayer ? [{ userId: currentPlayer.user.id, label: "현재 매물", muted: false }] : []),
+    ...queue.map((userId, index) => ({ userId, label: `대기 ${index + 1}`, muted: false })),
+    ...failedQueue.map((userId, index) => ({ userId, label: `유찰 ${index + 1}`, muted: true })),
+  ].filter((lot, index, lots) => lots.findIndex((item) => item.userId === lot.userId && item.label === lot.label) === index);
+  const allCaptainsJoined = captainIds.length > 0 && joinedCaptains.length >= captainIds.length;
+  const canBeginAuction = auction.phase === "setup" && queue.length > 0 && allCaptainsJoined;
 
   return (
     <main className="min-h-screen bg-[#07111d] text-white">
@@ -444,7 +471,13 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
                       <div className="mb-3 rounded border border-[#263442] bg-[#0a1320] px-3 py-2 text-xs font-bold text-[#c8d3db]">
                         팀장 입장 {joinedCaptains.length}/{captainIds.length}명
                       </div>
-                      <button type="button" disabled={submitting || captainIds.length === 0} onClick={() => void sendAction("begin")} className="w-full rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black disabled:opacity-40">
+                      <button
+                        type="button"
+                        disabled={submitting || !canBeginAuction}
+                        title={!allCaptainsJoined ? "모든 팀장이 입장 확인을 완료해야 합니다." : queue.length === 0 ? "경매 매물이 없습니다." : undefined}
+                        onClick={() => void sendAction("begin")}
+                        className="w-full rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black disabled:opacity-40"
+                      >
                         경매 시작
                       </button>
                     </div>
@@ -518,6 +551,24 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
               </div>
             </div>
           </aside>
+        </section>
+
+        <section className="mt-5 rounded-lg border border-[#263442] bg-[#101925] p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">AUCTION LOTS</div>
+            <div className="text-xs font-bold text-[#7b8a96]">매물 {lotCards.length}명</div>
+          </div>
+          {lotCards.length === 0 ? (
+            <div className="rounded border border-dashed border-[#263442] py-8 text-center text-xs font-bold text-[#7b8a96]">
+              경매 매물이 없습니다. 참가자 로드 후 팀장이 아닌 참가자를 남겨 주세요.
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {lotCards.map((lot) => (
+                <LotNameCard key={`${lot.label}-${lot.userId}`} player={playerMap.get(lot.userId)} label={lot.label} muted={lot.muted} />
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </main>

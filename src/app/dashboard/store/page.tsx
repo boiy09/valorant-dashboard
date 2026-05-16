@@ -125,26 +125,68 @@ function BundleCard({ bundle }: { bundle: StoreBundle }) {
 }
 
 function BattlepassBar({ bp }: { bp: BattlepassData }) {
+  const objectiveXp = Math.max(1, bp.objectiveXp ?? 2000);
+  const currentXp = Math.min(bp.progressionTowardsObjective, objectiveXp);
+  const percent = Math.min(100, Math.round((currentXp / objectiveXp) * 1000) / 10);
+
   return (
     <div className="val-card p-4">
       <div className="mb-3 flex items-center justify-between">
-        <div className="text-xs uppercase tracking-widest text-[#7b8a96]">배틀패스</div>
-        <div className="text-sm font-black text-white">레벨 {bp.totalLevelsCompleted}</div>
+        <div>
+          <div className="text-xs uppercase tracking-widest text-[#7b8a96]">배틀패스</div>
+          {bp.displayName && <div className="mt-1 text-sm font-black text-white">{bp.displayName}</div>}
+        </div>
+        <div className="rounded border border-[#2a3540] bg-[#0f1923] px-3 py-1 text-sm font-black text-white">
+          {bp.currentTier}티어 진행 중
+        </div>
       </div>
 
       {/* 현재 레벨 진행도 */}
       <div className="mb-3">
         <div className="mb-1 flex items-center justify-between text-[11px] text-[#7b8a96]">
-          <span>현재 레벨 진행도</span>
-          <span className="font-bold text-[#ece8e1]">{bp.progressionTowardsObjective.toLocaleString()} XP</span>
+          <span>현재 티어 진행도</span>
+          <span className="font-bold text-[#ece8e1]">
+            {currentXp.toLocaleString()} / {objectiveXp.toLocaleString()} XP
+          </span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#1a2d3e]">
           <div
             className="h-full rounded-full bg-[#ff4655] transition-all"
-            style={{ width: `${Math.min(100, (bp.progressionTowardsObjective / 2000) * 100)}%` }}
+            style={{ width: `${percent}%` }}
           />
         </div>
+        <div className="mt-1 text-right text-[10px] font-bold text-[#7b8a96]">{percent}%</div>
       </div>
+
+      {bp.rewards?.length > 0 && (
+        <div className="mb-3 border-t border-[#1a2d3e] pt-3">
+          <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-[#7b8a96]">보상 미리보기</div>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+            {bp.rewards.map((reward) => (
+              <div
+                key={`${reward.tier}-${reward.type}-${reward.name}`}
+                className={`overflow-hidden rounded border bg-[#0f1923] ${
+                  reward.isCurrent ? "border-[#f6c945]" : "border-[#2a3540]"
+                }`}
+              >
+                <div className="flex aspect-square items-center justify-center bg-[#0a1520]">
+                  {reward.icon ? (
+                    <img src={reward.icon} alt={reward.name} className="h-full w-full object-contain p-2" loading="lazy" />
+                  ) : (
+                    <span className="px-1 text-center text-[10px] font-black text-[#7b8a96]">{reward.type}</span>
+                  )}
+                </div>
+                <div className="border-t border-[#2a3540] px-1.5 py-1.5">
+                  <div className="text-[10px] font-black text-[#7b8a96]">{reward.tier}티어</div>
+                  <div className="truncate text-[10px] font-bold text-white" title={reward.name}>
+                    {reward.amount > 1 ? `${reward.name} x${reward.amount}` : reward.name}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 시즌 누적 XP */}
       <div className="border-t border-[#1a2d3e] pt-3 flex items-center justify-between text-[11px] text-[#7b8a96]">

@@ -2767,8 +2767,8 @@ function ParticipantList({
     "minmax(150px,1.15fr)",
     showRiot ? "minmax(170px,1.05fr)" : null,
     showTier ? "86px" : null,
-    "66px",
-    showRole ? "minmax(130px,0.8fr)" : null,
+    "78px",
+    showRole ? "minmax(190px,1fr)" : null,
     showAgents ? "minmax(86px,0.65fr)" : null,
     captainMode ? "60px" : null,
     "28px",
@@ -2780,7 +2780,7 @@ function ParticipantList({
     <div className="overflow-hidden rounded border border-[#2a3540] bg-[#0b141c]/50">
       <div className="overflow-x-auto">
         <div style={{ minWidth: "400px" }}>
-          <div className="items-center gap-1.5 border-b border-[#2a3540] bg-[#0f1923] px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]"
+          <div className="items-center gap-3 border-b border-[#2a3540] bg-[#0f1923] px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]"
             style={{ display: "grid", gridTemplateColumns: gridCols }}>
             <div>Player</div>
             {showRiot && <div>Riot ID</div>}
@@ -2854,8 +2854,8 @@ function ParticipantRow({
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", player.id);
       }}
-      className={`cursor-grab items-center gap-1.5 px-2 py-1.5 transition active:cursor-grabbing ${isSelected ? "bg-[#f6c945]/8 hover:bg-[#f6c945]/12" : "hover:bg-[#13212b]"}`}
-      style={{ display: "grid", gridTemplateColumns: gridCols ?? "minmax(150px,1.15fr) minmax(170px,1.05fr) 86px 66px 86px minmax(86px,0.65fr) 28px" }}
+      className={`cursor-grab items-center gap-3 px-2 py-1.5 transition active:cursor-grabbing ${isSelected ? "bg-[#f6c945]/8 hover:bg-[#f6c945]/12" : "hover:bg-[#13212b]"}`}
+      style={{ display: "grid", gridTemplateColumns: gridCols ?? "minmax(150px,1.15fr) minmax(170px,1.05fr) 86px 78px minmax(190px,1fr) minmax(86px,0.65fr) 28px" }}
     >
       <div className="flex min-w-0 items-center gap-1.5">
         {player.user.image ? (
@@ -2896,23 +2896,23 @@ function ParticipantRow({
       <div className="text-right">
         {kd ? (
           <div>
-            <div className={kd.kd >= 1 ? "text-sm font-black text-[#00e7c2]" : "text-sm font-black text-[#ff4655]"}>
+            <div className="text-sm font-black text-white">
               {kd.kd.toFixed(2)}
             </div>
-            <div className="text-[9px] font-bold uppercase text-[#7b8a96]">{kd.source === "scrim" ? "내전" : "랭크"}</div>
+            <div className={`text-[9px] font-black uppercase ${kd.source === "scrim" ? "text-[#00e7c2]" : "text-[#b8a7ff]"}`}>
+              {kd.source === "scrim" ? "내전" : "랭크"}
+            </div>
           </div>
         ) : (
           <span className="text-xs font-bold text-[#52616d]">-</span>
         )}
       </div>
       {showRole && (
-        <div className="flex min-w-0 flex-wrap gap-1">
+        <div className="min-w-0">
           {roleLabels.length > 0 ? (
-            roleLabels.map((role) => (
-              <span key={role} className="rounded bg-[#24313c] px-1.5 py-0.5 text-[10px] font-bold text-[#c8d3db]">
-                {role}
-              </span>
-            ))
+            <span className="block max-w-full truncate rounded bg-[#24313c] px-2 py-0.5 text-[10px] font-bold text-[#c8d3db]" title={roleLabels.join(", ")}>
+              {roleLabels.join(", ")}
+            </span>
           ) : (
             <span className="text-xs font-bold text-[#52616d]">-</span>
           )}

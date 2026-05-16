@@ -478,6 +478,7 @@ export async function PATCH(req: NextRequest) {
       pausedPhase: null,
       captainPoints: JSON.stringify(captainPoints),
       currentBids: "{}",
+      joinedCaptains: "[]",
     });
     broadcastAuction(sessionId, "setup_captains", auction);
     return Response.json({ auction });

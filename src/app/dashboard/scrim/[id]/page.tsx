@@ -1605,6 +1605,7 @@ function AuctionScrimPage({
   const auctionBidHistory = useMemo(() => auction?.bidHistory ?? [], [auction?.bidHistory]);
   const captainIds = Object.keys(captainPoints);
   const inviteCaptainIds = captainIds.length > 0 ? captainIds : Object.keys(captainSelections);
+  const setupCaptainIds = Object.keys(captainSelections);
 
   const playerMap = useMemo(() => {
     const m = new Map<string, ScrimPlayer>();
@@ -1791,11 +1792,11 @@ function AuctionScrimPage({
             </div>
           ))}
         </div>
-        {inviteCaptainIds.length > 0 && (
+        {setupCaptainIds.length > 0 && (
           <div className="mt-5 rounded border border-[#2a3540] bg-[#0b1420] p-4">
             <div className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-[#7b8a96]">팀장 입장 확인</div>
             <div className="grid gap-2 sm:grid-cols-2">
-              {inviteCaptainIds.map((captainId, index) => {
+              {setupCaptainIds.map((captainId, index) => {
                 const player = playerMap.get(captainId);
                 const joined = joinedCaptains.includes(captainId);
                 return (
@@ -1850,7 +1851,7 @@ function AuctionScrimPage({
               <button type="button" onClick={() => setInviteOpen(true)} className="rounded bg-[#f6c945] px-4 py-2 text-sm font-black text-black">초대 링크 보기</button>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {inviteCaptainIds.map((captainId, index) => {
+              {setupCaptainIds.map((captainId, index) => {
                 const player = playerMap.get(captainId);
                 const joined = joinedCaptains.includes(captainId);
                 return (

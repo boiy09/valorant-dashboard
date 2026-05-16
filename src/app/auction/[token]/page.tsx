@@ -9,6 +9,12 @@ interface RiotAccount {
   cachedTierName: string | null;
 }
 
+interface AgentOption {
+  name: string;
+  icon: string | null;
+  portrait: string | null;
+}
+
 interface AuctionPlayer {
   id: string;
   team: string;
@@ -77,6 +83,16 @@ interface RoomPayload {
 }
 
 const TEAM_COLORS = ["#ff4655", "#f6c945", "#00e7c2", "#7c9cff", "#b884ff", "#ff9f43"];
+const ROLE_LABELS: Record<string, string> = {
+  Duelist: "타격대",
+  Initiator: "척후대",
+  Controller: "전략가",
+  Sentinel: "감시자",
+  duelist: "타격대",
+  initiator: "척후대",
+  controller: "전략가",
+  sentinel: "감시자",
+};
 
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -94,6 +110,29 @@ function teamId(index: number) {
 function playerName(player?: AuctionPlayer | null, guildId?: string) {
   const serverNick = guildId ? player?.user.guilds?.find((guild) => guild.guildId === guildId)?.nickname : null;
   return serverNick || player?.user.name || "이름 없음";
+}
+
+function parseAgents(value: string | null | undefined) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+}
+
+function normalizeAgentKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function toRoleLabels(value: string | null | undefined) {
+  if (!value) return [];
+  return value.split(",").map((role) => role.trim()).filter(Boolean).map((role) => ROLE_LABELS[role] ?? role);
+}
+
+function toRoleText(value: string | null | undefined) {
+  return toRoleLabels(value).join(", ");
 }
 
 function teamName(index: number) {
@@ -120,7 +159,7 @@ function LotNameCard({ player, label, muted = false }: { player?: AuctionPlayer 
         <div className="truncate text-sm font-black text-white">{playerName(player)}</div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-[#8fa0ad]">
           <span>{label}</span>
-          {player?.user.valorantRole && <span className="rounded bg-[#263442] px-1.5 py-0.5 text-[#c8d3db]">{player.user.valorantRole}</span>}
+          {player?.user.valorantRole && <span className="max-w-full rounded bg-[#263442] px-1.5 py-0.5 text-[#c8d3db]">{toRoleText(player.user.valorantRole)}</span>}
           {player?.user.riotAccounts[0]?.cachedTierName && <span className="text-[#ff8a95]">{player.user.riotAccounts[0].cachedTierName}</span>}
         </div>
       </div>
@@ -144,7 +183,25 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
   const [hostBidAmount, setHostBidAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [agentPortraits, setAgentPortraits] = useState<Record<string, string>>({});
   const auctionForTimer = room?.auction;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/valorant/agents", { cache: "force-cache" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload: { agents?: AgentOption[] } | null) => {
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        for (const agent of payload?.agents ?? []) {
+          const image = agent.portrait || agent.icon;
+          if (agent.name && image) next[normalizeAgentKey(agent.name)] = image;
+        }
+        setAgentPortraits(next);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const loadRoom = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -250,6 +307,8 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
   const timerPct = auction.auctionDuration > 0 ? Math.max(0, Math.min(100, (timeLeft / auction.auctionDuration) * 100)) : 0;
   const timerColor = timerPct > 45 ? "#00e7c2" : timerPct > 20 ? "#f6c945" : "#ff4655";
   const currentLotBids = bidHistory.filter((bid) => bid.lotUserId === auction.currentUserId).slice(-8).reverse();
+  const currentRoleText = currentPlayer ? toRoleText(currentPlayer.user.valorantRole) : "";
+  const currentAgents = currentPlayer ? parseAgents(currentPlayer.user.favoriteAgents).slice(0, 3) : [];
   const lotCards = [
     ...(currentPlayer ? [{ userId: currentPlayer.user.id, label: "현재 매물", muted: false }] : []),
     ...queue.map((userId, index) => ({ userId, label: `대기 ${index + 1}`, muted: false })),
@@ -391,8 +450,29 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
                         {account.cachedTierName && <span className="ml-2 text-[#ff8a95]">{account.cachedTierName}</span>}
                       </span>
                     ))}
-                    {currentPlayer.user.valorantRole && <span className="rounded bg-[#263442] px-3 py-1 text-sm font-bold text-[#c8d3db]">{currentPlayer.user.valorantRole}</span>}
+                    {currentRoleText && <span className="max-w-full rounded bg-[#263442] px-3 py-1 text-sm font-bold text-[#c8d3db]">{currentRoleText}</span>}
                   </div>
+                  {currentAgents.length > 0 && (
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#7b8a96]">MOST AGENTS</span>
+                      {currentAgents.map((agent, index) => {
+                        const portrait = agentPortraits[normalizeAgentKey(agent)];
+                        return portrait ? (
+                          <img
+                            key={`${agent}-${index}`}
+                            src={portrait}
+                            alt={agent}
+                            title={agent}
+                            className="h-11 w-11 rounded-lg bg-[#24313c] object-cover object-top ring-1 ring-white/10"
+                          />
+                        ) : (
+                          <span key={`${agent}-${index}`} title={agent} className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#24313c] text-xs font-black text-[#c8d3db]">
+                            {agent.slice(0, 1)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   <div className="mt-8 grid gap-3 sm:grid-cols-2">
                     <div className="rounded-lg border border-[#263442] bg-[#0a1320] p-4">
@@ -547,6 +627,20 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
                     <span className="min-w-0 truncate text-sm font-bold text-[#dce7ef]">{playerName(playerMap.get(bid.captainId))}</span>
                     <span className="text-sm font-black text-[#f6c945]">{bid.amount.toLocaleString()}P</span>
                   </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[#263442] bg-[#101925] p-5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">FAILED LOTS</div>
+                <div className="text-xs font-bold text-[#7b8a96]">{failedQueue.length}명</div>
+              </div>
+              <div className="mt-3 space-y-2">
+                {failedQueue.length === 0 ? (
+                  <div className="rounded border border-dashed border-[#263442] py-6 text-center text-xs font-bold text-[#7b8a96]">유찰된 참가자가 없습니다</div>
+                ) : failedQueue.map((userId, index) => (
+                  <LotNameCard key={`failed-${userId}-${index}`} player={playerMap.get(userId)} label={`유찰 ${index + 1}`} muted />
                 ))}
               </div>
             </div>

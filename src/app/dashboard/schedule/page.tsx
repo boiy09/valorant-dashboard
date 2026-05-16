@@ -233,13 +233,31 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      {!vctLoading && vctMatches.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded border border-[#2a3540] bg-[#111c24]">
+      <div className="mb-6 overflow-hidden rounded border border-[#2a3540] bg-[#111c24]">
           <div className="flex items-center justify-between border-b border-[#2a3540] px-4 py-3">
             <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">VCT 대회 일정</div>
-            <div className="text-xs text-[#7b8a96]">{vctMatches.length}경기</div>
+            <div className="text-xs text-[#7b8a96]">{vctLoading ? "불러오는 중" : `${vctMatches.length}경기`}</div>
           </div>
-          <div className="grid gap-3 p-3 lg:grid-cols-3">
+          {vctLoading ? (
+            <div className="grid gap-3 p-3 lg:grid-cols-3">
+              {["VCT Pacific", "VCT Americas", "VCT EMEA"].map((league) => (
+                <section key={league} className="overflow-hidden rounded border border-[#263442] bg-[#0b141c]">
+                  <div className="flex items-center justify-between border-b border-[#263442] bg-[#111c24] px-4 py-2">
+                    <div className="text-xs font-black text-white">{league}</div>
+                    <div className="h-3 w-10 animate-pulse rounded bg-[#263442]" />
+                  </div>
+                  <div className="space-y-2 p-3">
+                    {[0, 1, 2].map((item) => (
+                      <div key={item} className="h-10 animate-pulse rounded bg-[#14212b]" />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : groupedVctMatches.length === 0 ? (
+            <div className="p-6 text-center text-sm text-[#7b8a96]">표시할 VCT 일정이 없습니다.</div>
+          ) : (
+            <div className="grid gap-3 p-3 lg:grid-cols-3">
             {groupedVctMatches.map((group) => (
               <section key={group.leagueName} className="overflow-hidden rounded border border-[#263442] bg-[#0b141c]">
                 <div className="flex items-center justify-between border-b border-[#263442] bg-[#111c24] px-4 py-2">
@@ -253,9 +271,9 @@ export default function SchedulePage() {
                 </div>
               </section>
             ))}
-          </div>
+            </div>
+          )}
         </div>
-      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="val-card overflow-hidden">

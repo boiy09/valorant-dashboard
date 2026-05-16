@@ -629,7 +629,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     try {
       const res = await fetch(`/api/scrim/${id}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sync-reactions" }),
+        body: JSON.stringify({ action: "sync-reactions", restoreRemoved: true }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "참가자 로드에 실패했습니다.");
@@ -1535,7 +1535,7 @@ function AuctionScrimPage({
       const res = await fetch(`/api/scrim/${scrim.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sync-reactions" }),
+        body: JSON.stringify({ action: "sync-reactions", restoreRemoved: true }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "참가자 로드에 실패했습니다.");

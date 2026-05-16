@@ -219,21 +219,28 @@ async function fetchDiscordJson<T>(url: string): Promise<T | null> {
   return (await response.json().catch(() => null)) as T | null;
 }
 
-async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<typeof findScrim>>>, force = false) {
-  if (!scrim.recruitmentChannelId) return 0;
+async function syncRecruitmentReactions(
+  scrim: NonNullable<Awaited<ReturnType<typeof findScrim>>>,
+  force = false,
+  options: { restoreRemoved?: boolean } = {}
+) {
+  if (!scrim.recruitmentChannelId) return { added: 0, restored: 0 };
 
   const messageIds = parseIdList(scrim.recruitmentMessageIds);
-  if (messageIds.length === 0) return 0;
+  if (messageIds.length === 0) return { added: 0, restored: 0 };
 
   if (!force) {
     const lastSynced = reactionSyncCache.get(scrim.id) ?? 0;
-    if (Date.now() - lastSynced < 15_000) return 0;
+    if (Date.now() - lastSynced < 15_000) return { added: 0, restored: 0 };
   }
   reactionSyncCache.set(scrim.id, Date.now());
 
   const excludedUserIds: string[] = (() => {
     try { const s = JSON.parse(scrim.settings || "{}"); return Array.isArray(s.excludedUserIds) ? s.excludedUserIds : []; } catch { return []; }
   })();
+  const restoredUserIds = new Set<string>();
+  let added = 0;
+  let restored = 0;
 
   const dbGuild = await prisma.guild.findUnique({ where: { id: scrim.guildId }, select: { discordId: true } });
 
@@ -257,7 +264,10 @@ async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<ty
 
         // 수동 제거된 유저는 재로드 스킵 (excludedUserIds 체크는 appUser 조회 후)
         const existingUser = await prisma.user.findUnique({ where: { discordId: discordUser.id }, select: { id: true } });
-        if (existingUser && excludedUserIds.includes(existingUser.id)) continue;
+        if (existingUser && excludedUserIds.includes(existingUser.id)) {
+          if (!options.restoreRemoved) continue;
+          restoredUserIds.add(existingUser.id);
+        }
 
         const avatarUrl = discordUser.avatar
           ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
@@ -276,6 +286,11 @@ async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<ty
           },
         });
 
+        const existingPlayer = await prisma.scrimPlayer.findUnique({
+          where: { sessionId_userId: { sessionId: scrim.id, userId: appUser.id } },
+          select: { id: true },
+        });
+
         await prisma.scrimPlayer.upsert({
           where: { sessionId_userId: { sessionId: scrim.id, userId: appUser.id } },
           update: {},
@@ -286,6 +301,10 @@ async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<ty
             role: "participant",
           },
         });
+        if (!existingPlayer) {
+          if (restoredUserIds.has(appUser.id)) restored += 1;
+          else added += 1;
+        }
 
         // GuildMember 레코드 생성/업데이트로 서버 닉네임 동기화
         if (dbGuild?.discordId) {
@@ -305,7 +324,19 @@ async function syncRecruitmentReactions(scrim: NonNullable<Awaited<ReturnType<ty
       }
     }
   }
-  return 0;
+  if (options.restoreRemoved && restoredUserIds.size > 0) {
+    const currentSettings = parseSettings(scrim.settings);
+    await prisma.scrimSession.update({
+      where: { id: scrim.id },
+      data: {
+        settings: JSON.stringify({
+          ...currentSettings,
+          excludedUserIds: excludedUserIds.filter((userId) => !restoredUserIds.has(userId)),
+        }),
+      },
+    });
+  }
+  return { added, restored };
 }
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -327,14 +358,15 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     return Response.json({ error: "내전 관리자 권한이 필요합니다." }, { status: 403 });
   }
 
+  let result = { added: 0, restored: 0 };
   try {
-    await syncRecruitmentReactions(scrim, true);
+    result = await syncRecruitmentReactions(scrim, true, { restoreRemoved: body.restoreRemoved === true });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : "참가자 로드에 실패했습니다." }, { status: 500 });
   }
 
   const updated = await findScrim(id, guild?.id);
-  return Response.json({ success: true, scrim: updated });
+  return Response.json({ success: true, scrim: updated, ...result });
 }
 
 export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {

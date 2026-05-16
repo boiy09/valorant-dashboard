@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     return {
       role: "captain" as const,
       captainId,
-      label: `${player?.user.name ?? `팀장 ${index + 1}`} 링크`,
+      label: `${serverNick || player?.user.name || `팀장 ${index + 1}`} 팀 링크`,
       href: `${origin}/auction/${token}`,
     };
   });

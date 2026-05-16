@@ -226,7 +226,7 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
   const myBid = myCaptainId ? currentBids[myCaptainId] ?? 0 : 0;
   const highestBid = currentBidRows[0]?.amount ?? 0;
   const highestCaptainId = currentBidRows[0]?.captainId ?? null;
-  const canBid = access.role === "captain" && (auction.phase === "auction" || auction.phase === "reauction") && !!auction.currentUserId;
+  const canBid = access.role === "captain" && room.viewer?.matchesCaptain === true && (auction.phase === "auction" || auction.phase === "reauction") && !!auction.currentUserId;
   const timerPct = auction.auctionDuration > 0 ? Math.max(0, Math.min(100, (timeLeft / auction.auctionDuration) * 100)) : 0;
   const timerColor = timerPct > 45 ? "#00e7c2" : timerPct > 20 ? "#f6c945" : "#ff4655";
   const currentLotBids = bidHistory.filter((bid) => bid.lotUserId === auction.currentUserId).slice(-8).reverse();

@@ -339,8 +339,16 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ token:
   if (!scrim) return Response.json({ error: "경매방을 찾을 수 없습니다." }, { status: 404 });
   if (scrim.mode !== "auction") return Response.json({ error: "경매 내전이 아닙니다." }, { status: 400 });
 
+  const session = await auth().catch(() => null);
+  const captainPlayer = access.role === "captain" && access.captainId
+    ? scrim.players.find((player) => player.userId === access.captainId || player.user.id === access.captainId)
+    : null;
+  const matchesCaptain = access.role === "captain" && access.captainId
+    ? Boolean(session?.user?.id && captainPlayer?.user.discordId && session.user.id === captainPlayer.user.discordId)
+    : null;
+
   let currentAuction = auction;
-  if (currentAuction && access.role === "captain" && access.captainId) {
+  if (currentAuction && access.role === "captain" && access.captainId && matchesCaptain === true) {
     const joinedCaptains = parseJson<string[]>(currentAuction.joinedCaptains, []);
     if (!joinedCaptains.includes(access.captainId)) {
       currentAuction = await updateAuction(access.sessionId, {
@@ -356,13 +364,12 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ token:
     }
   }
 
-  const session = await auth().catch(() => null);
   const viewer = session?.user
     ? {
         id: session.user.id,
         name: session.user.name ?? null,
         image: session.user.image ?? null,
-        matchesCaptain: access.role === "captain" && access.captainId ? session.user.id === access.captainId : null,
+        matchesCaptain,
       }
     : null;
 

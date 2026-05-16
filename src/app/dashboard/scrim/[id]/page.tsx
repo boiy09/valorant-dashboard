@@ -1822,7 +1822,7 @@ function AuctionScrimPage({
 
   // ── 설정 단계 ──
   if (!auction || auction.phase === "setup") {
-    const participants = scrim.players.filter((p) => p.team === "participant" || p.role === "participant");
+    const participants = scrim.players;
     return (
       <div className="mx-auto max-w-[1100px]">
         {inviteModal}

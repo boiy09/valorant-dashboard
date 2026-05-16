@@ -416,6 +416,10 @@ export async function POST(req: NextRequest) {
   const captainIds = Object.keys(captainPoints);
   await prisma.$executeRawUnsafe(`DELETE FROM "AuctionBid" WHERE "sessionId" = $1`, sessionId);
   await prisma.$executeRawUnsafe(`DELETE FROM "AuctionPick" WHERE "sessionId" = $1`, sessionId);
+  await prisma.scrimPlayer.updateMany({
+    where: { sessionId },
+    data: { team: "participant", role: "participant" },
+  });
   for (let i = 0; i < captainIds.length; i++) {
     const teamId = `team_${String.fromCharCode(97 + i)}`;
     await prisma.scrimPlayer.updateMany({

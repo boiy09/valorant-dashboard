@@ -1413,6 +1413,7 @@ function AuctionScrimPage({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteCopied, setInviteCopied] = useState<string | null>(null);
   const [accessLinks, setAccessLinks] = useState<AuctionInviteLink[]>([]);
+  const [reactionLoading, setReactionLoading] = useState(false);
 
   const auctionSettings = useMemo(() => parseSettings(scrim.settings), [scrim.settings]);
 
@@ -1524,6 +1525,28 @@ function AuctionScrimPage({
       if (reloadData.scrim) onScrimUpdate(reloadData.scrim);
     } catch (e) { setMessage(e instanceof Error ? e.message : "더미 추가에 실패했습니다."); }
     finally { setDummyAdding(false); }
+  }
+
+  async function loadReactions() {
+    if (!scrim.recruitmentChannelId || reactionLoading) return;
+    setReactionLoading(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/scrim/${scrim.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync-reactions" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "참가자 로드에 실패했습니다.");
+      if (data.scrim) onScrimUpdate(data.scrim);
+      setMessage("디스코드 이모지 반응자를 참가자로 로드했습니다.");
+      await pollAuction(true).catch(() => {});
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "참가자 로드에 실패했습니다.");
+    } finally {
+      setReactionLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -1916,6 +1939,11 @@ function AuctionScrimPage({
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" onClick={addRecruitment} disabled={saving} className="rounded border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
                   <button type="button" onClick={() => { setDummyRows([auctionEmptyRow()]); setDummyOpen(true); }} className="val-btn border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-2 text-xs font-black text-[#f6c945]" title="테스트용 더미 참가자 추가">🧪 더미 데이터</button>
+                  {scrim.recruitmentChannelId && (
+                    <button type="button" onClick={() => void loadReactions()} disabled={saving || reactionLoading} className="rounded border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50">
+                      {reactionLoading ? "로드 중..." : "참가자 로드"}
+                    </button>
+                  )}
                   <button type="button" onClick={startAuction} disabled={Object.keys(captainSelections).length < 2} className="val-btn bg-[#f6c945] px-5 py-2 text-sm font-black text-black disabled:opacity-40">
                     🏷 링크 생성
                   </button>

@@ -469,10 +469,13 @@ export async function PATCH(req: NextRequest) {
 
   if (action === "setup_captains") {
     if (!isAdmin) return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
-    const captainPoints = body.captainPoints as Record<string, number> | undefined;
-    if (!captainPoints || typeof captainPoints !== "object") {
+    const rawCaptainPoints = body.captainPoints as Record<string, number> | undefined;
+    if (!rawCaptainPoints || typeof rawCaptainPoints !== "object") {
       return Response.json({ error: "captainPoints가 필요합니다." }, { status: 400 });
     }
+    const players = await prisma.scrimPlayer.findMany({ where: { sessionId }, select: { userId: true } });
+    const validUserIds = new Set(players.map((player) => player.userId));
+    const captainPoints = Object.fromEntries(Object.entries(rawCaptainPoints).filter(([userId]) => validUserIds.has(userId)));
     const auction = await upsertAuction(sessionId, {
       phase: "setup",
       pausedPhase: null,

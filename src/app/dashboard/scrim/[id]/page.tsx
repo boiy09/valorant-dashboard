@@ -1470,6 +1470,12 @@ function AuctionScrimPage({
   const auctionEmptyRow = (): AuctionDummyRow => ({ discordName: "", riotId: "", tierId: 0, valorantRole: "", favoriteAgents: "" });
   const [dummyRows, setDummyRows] = useState<AuctionDummyRow[]>(() => [auctionEmptyRow()]);
 
+  const normalizeCaptainSelections = useCallback((raw: string | null | undefined) => {
+    const parsed = parseJson<Record<string, number>>(raw, {});
+    const validUserIds = new Set(scrim.players.map((player) => player.user.id));
+    return Object.fromEntries(Object.entries(parsed).filter(([userId]) => validUserIds.has(userId)));
+  }, [scrim.players]);
+
   function setDummyRow(index: number, patch: Partial<AuctionDummyRow>) {
     setDummyRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
@@ -1535,7 +1541,7 @@ function AuctionScrimPage({
       const data = await res.json();
       setAuction(data.auction ?? null);
       if (data.auction?.phase === "setup" && data.auction.captainPoints) {
-        try { setCaptainSelections(JSON.parse(data.auction.captainPoints)); } catch { /* ignore */ }
+        setCaptainSelections(normalizeCaptainSelections(data.auction.captainPoints));
       }
       if (data.auction?.phase !== "setup") {
         const scrimRes = await fetch(`/api/scrim/${scrim.id}`, { cache: "no-store" });
@@ -1543,7 +1549,7 @@ function AuctionScrimPage({
         if (scrimData.scrim) onScrimUpdate(scrimData.scrim);
       }
     } finally { if (!silent) setAuctionLoading(false); }
-  }, [scrim.id, onScrimUpdate]);
+  }, [scrim.id, onScrimUpdate, normalizeCaptainSelections]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1563,7 +1569,7 @@ function AuctionScrimPage({
       const nextAuction = event.auction as AuctionState;
       setAuction(nextAuction);
       if (nextAuction.phase === "setup" && nextAuction.captainPoints) {
-        try { setCaptainSelections(JSON.parse(nextAuction.captainPoints)); } catch { /* ignore */ }
+        setCaptainSelections(normalizeCaptainSelections(nextAuction.captainPoints));
       }
       if (event.action !== "auction_bid" && event.action !== "setup_captains") {
         fetch(`/api/scrim/${scrim.id}`, { cache: "no-store" })

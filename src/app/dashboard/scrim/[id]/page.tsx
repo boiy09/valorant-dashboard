@@ -2908,11 +2908,13 @@ function ParticipantRow({
         )}
       </div>
       {showRole && (
-        <div className="min-w-0">
+        <div className="flex min-w-0 flex-nowrap gap-1 overflow-hidden">
           {roleLabels.length > 0 ? (
-            <span className="block max-w-full truncate rounded bg-[#24313c] px-2 py-0.5 text-[10px] font-bold text-[#c8d3db]" title={roleLabels.join(", ")}>
-              {roleLabels.join(", ")}
-            </span>
+            roleLabels.map((role) => (
+              <span key={role} className="shrink-0 rounded bg-[#24313c] px-1.5 py-0.5 text-[10px] font-bold text-[#c8d3db]">
+                {role}
+              </span>
+            ))
           ) : (
             <span className="text-xs font-bold text-[#52616d]">-</span>
           )}

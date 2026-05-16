@@ -214,9 +214,17 @@ async function fetchDiscordJson<T>(url: string): Promise<T | null> {
   const headers = getDiscordHeaders();
   if (!headers) return null;
 
-  const response = await fetch(url, { headers, cache: "no-store" });
-  if (!response.ok) return null;
-  return (await response.json().catch(() => null)) as T | null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const response = await fetch(url, { headers, cache: "no-store" });
+    if (response.ok) return (await response.json().catch(() => null)) as T | null;
+    if (response.status !== 429) return null;
+
+    const body = (await response.json().catch(() => null)) as { retry_after?: number } | null;
+    const retryAfterMs = Math.ceil(Number(body?.retry_after ?? 1) * 1000) + 250;
+    await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+  }
+
+  return null;
 }
 
 async function syncRecruitmentReactions(
@@ -239,6 +247,7 @@ async function syncRecruitmentReactions(
     try { const s = JSON.parse(scrim.settings || "{}"); return Array.isArray(s.excludedUserIds) ? s.excludedUserIds : []; } catch { return []; }
   })();
   const restoredUserIds = new Set<string>();
+  const syncedUserIds = new Set<string>();
   let added = 0;
   let restored = 0;
 
@@ -301,6 +310,7 @@ async function syncRecruitmentReactions(
             role: "participant",
           },
         });
+        syncedUserIds.add(appUser.id);
         if (!existingPlayer) {
           if (restoredUserIds.has(appUser.id)) restored += 1;
           else added += 1;
@@ -335,6 +345,29 @@ async function syncRecruitmentReactions(
         }),
       },
     });
+  }
+  if (syncedUserIds.size > 0) {
+    const rows = await prisma.$queryRawUnsafe<Array<{ phase: string; captainPoints: string; queue: string }>>(
+      `SELECT "phase", "captainPoints", "queue" FROM "AuctionState" WHERE "sessionId" = $1 LIMIT 1`,
+      scrim.id
+    ).catch(() => []);
+    const auction = rows[0];
+    if (auction?.phase === "setup") {
+      const captainPoints = parseSettings(auction.captainPoints) as Record<string, number>;
+      const captainIds = new Set(Object.keys(captainPoints));
+      const currentQueue = parseIdList(auction.queue);
+      const nextQueue = Array.from(new Set([
+        ...currentQueue,
+        ...Array.from(syncedUserIds).filter((userId) => !captainIds.has(userId)),
+      ]));
+      if (nextQueue.length !== currentQueue.length) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE "AuctionState" SET "queue" = $1, "updatedAt" = NOW() WHERE "sessionId" = $2`,
+          JSON.stringify(nextQueue),
+          scrim.id
+        ).catch(() => {});
+      }
+    }
   }
   return { added, restored };
 }

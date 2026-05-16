@@ -347,23 +347,6 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ token:
     ? Boolean(session?.user?.id && captainPlayer?.user.discordId && session.user.id === captainPlayer.user.discordId)
     : null;
 
-  let currentAuction = auction;
-  if (currentAuction && access.role === "captain" && access.captainId && matchesCaptain === true) {
-    const joinedCaptains = parseJson<string[]>(currentAuction.joinedCaptains, []);
-    if (!joinedCaptains.includes(access.captainId)) {
-      currentAuction = await updateAuction(access.sessionId, {
-        joinedCaptains: JSON.stringify([...joinedCaptains, access.captainId]),
-        auditLog: appendLog(currentAuction.auditLog, {
-          actorId: access.captainId,
-          action: "captain_joined",
-          captainId: access.captainId,
-          message: "팀장 링크로 입장했습니다.",
-        }),
-      });
-      broadcast(`scrim:${access.sessionId}`, { action: "auction_captain_joined", auction: currentAuction }).catch(() => {});
-    }
-  }
-
   const viewer = session?.user
     ? {
         id: session.user.id,
@@ -376,7 +359,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ token:
   return Response.json({
     access: { role: access.role, captainId: access.captainId ?? null },
     scrim,
-    auction: currentAuction,
+    auction,
     viewer,
   });
 }
@@ -392,6 +375,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
 
   const auction = await maybeFinalize(await getAuction(access.sessionId));
   if (!auction) return Response.json({ error: "경매 상태를 찾을 수 없습니다." }, { status: 404 });
+
+  if (action === "confirmJoin") {
+    if (access.role !== "captain" || !access.captainId) {
+      return Response.json({ error: "팀장 링크가 필요합니다." }, { status: 403 });
+    }
+    const session = await auth().catch(() => null);
+    const captain = await prisma.scrimPlayer.findFirst({
+      where: { sessionId: access.sessionId, userId: access.captainId },
+      include: { user: { select: { discordId: true } } },
+    });
+    if (!session?.user?.id || !captain?.user.discordId || session.user.id !== captain.user.discordId) {
+      return Response.json({ error: "현재 로그인한 Discord 계정이 이 팀장 링크와 다릅니다." }, { status: 403 });
+    }
+
+    const joinedCaptains = parseJson<string[]>(auction.joinedCaptains, []);
+    const updated = joinedCaptains.includes(access.captainId)
+      ? auction
+      : await updateAuction(access.sessionId, {
+          joinedCaptains: JSON.stringify([...joinedCaptains, access.captainId]),
+          auditLog: appendLog(auction.auditLog, {
+            actorId: access.captainId,
+            action: "captain_joined",
+            captainId: access.captainId,
+            message: "팀장이 본인 확인 후 입장을 완료했습니다.",
+          }),
+        });
+    broadcast(`scrim:${access.sessionId}`, { action: "auction_captain_joined", auction: updated }).catch(() => {});
+    return Response.json({ success: true, auction: updated });
+  }
 
   if (action !== "bid") {
     if (access.role !== "host") return Response.json({ error: "주최자 링크가 필요합니다." }, { status: 403 });

@@ -394,6 +394,16 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
                   <div className="mt-2 text-sm text-[#9aa8b3]">보유 포인트</div>
                   <div className="text-4xl font-black text-white">{myPoints.toLocaleString()}P</div>
                   {myBid > 0 && <div className="mt-1 text-sm font-bold text-[#f6c945]">현재 내 입찰: {myBid.toLocaleString()}P</div>}
+                  {auction.phase === "setup" && myCaptainId && (
+                    <button
+                      type="button"
+                      disabled={submitting || room.viewer?.matchesCaptain !== true || joinedCaptains.includes(myCaptainId)}
+                      onClick={() => void sendAction("confirmJoin")}
+                      className="mt-5 w-full rounded bg-[#00e7c2] px-4 py-3 text-sm font-black text-black disabled:opacity-40"
+                    >
+                      {joinedCaptains.includes(myCaptainId) ? "입장 확인 완료" : "본인 확인 후 입장 완료"}
+                    </button>
+                  )}
                   <div className="mt-5 grid grid-cols-3 gap-2">
                     {[10, 50, 100].map((step) => (
                       <button

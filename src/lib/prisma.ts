@@ -6,6 +6,9 @@ const fallbackUrl =
   "postgresql://postgres:password@localhost:5432/valorant_dashboard?schema=public";
 
 function createPrisma() {
+  if (!process.env.DATABASE_URL?.startsWith("postgresql://")) {
+    console.warn("[prisma] DATABASE_URL not set — using local fallback (unsafe for production)");
+  }
   const connectionString =
     process.env.DATABASE_URL?.startsWith("postgresql://")
       ? process.env.DATABASE_URL

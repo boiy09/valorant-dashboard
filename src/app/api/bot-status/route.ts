@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { Pool } from "pg";
 
 export const maxDuration = 30;
 
@@ -16,22 +15,6 @@ let lastGood: StatusData | null = null;
 let lastGoodAt = 0;
 const FRESH_TTL_MS = 30_000; // 30초 이내면 DB 재조회 안 함
 
-const fallbackUrl =
-  "postgresql://postgres:password@localhost:5432/valorant_dashboard?schema=public";
-
-const globalForStatusDb = globalThis as unknown as { statusDbPool?: Pool };
-const statusDbPool =
-  globalForStatusDb.statusDbPool ??
-  new Pool({
-    connectionString: process.env.DATABASE_URL?.startsWith("postgresql://")
-      ? process.env.DATABASE_URL
-      : fallbackUrl,
-    max: 1,
-    idleTimeoutMillis: 300000,
-    connectionTimeoutMillis: 1000,
-  });
-globalForStatusDb.statusDbPool = statusDbPool;
-
 export async function GET() {
   const now = Date.now();
 
@@ -39,11 +22,10 @@ export async function GET() {
     return Response.json(lastGood);
   }
 
+  const startTime = now;
+
   try {
     const today = new Date().toISOString().slice(0, 10);
-    const dbStartTime = Date.now();
-    await statusDbPool.query("SELECT 1");
-    const dbLatency = Date.now() - dbStartTime;
 
     const [userCount, scrimCount, announcementCount, todayAttendance] = await Promise.all([
       prisma.user.count(),
@@ -54,7 +36,7 @@ export async function GET() {
 
     const data: StatusData = {
       status: "정상",
-      db: { status: "정상", latency: dbLatency },
+      db: { status: "정상", latency: Date.now() - startTime },
       stats: { users: userCount, scrims: scrimCount, announcements: announcementCount, todayAttendance },
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),

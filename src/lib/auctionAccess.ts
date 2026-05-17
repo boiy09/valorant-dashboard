@@ -10,8 +10,12 @@ export interface AuctionAccessPayload {
   iat: number;
 }
 
+const TOKEN_TTL_S = 24 * 60 * 60; // 24시간
+
 function secret() {
-  return process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "valorant-dashboard-dev-secret";
+  const s = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
+  if (!s) console.warn("[auctionAccess] NEXTAUTH_SECRET not set — auction tokens are insecure in production");
+  return s || "valorant-dashboard-dev-secret";
 }
 
 function encode(value: unknown) {
@@ -53,6 +57,7 @@ export function verifyAuctionAccessToken(token: string): AuctionAccessPayload | 
     if (!payload.sessionId || !payload.role || !payload.nonce || !payload.iat) return null;
     if (!["host", "captain", "observer"].includes(payload.role)) return null;
     if (payload.role === "captain" && !payload.captainId) return null;
+    if (Math.floor(Date.now() / 1000) - payload.iat > TOKEN_TTL_S) return null;
     return payload;
   } catch {
     return null;

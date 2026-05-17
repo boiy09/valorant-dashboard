@@ -146,8 +146,17 @@ function appendLog(raw: string | null | undefined, entry: Omit<AuctionLogEntry, 
 }
 
 function broadcastAuction(sessionId: string, action: string, auction: AuctionRow | null) {
-  broadcast(`scrim:${sessionId}`, { action, auction }).catch(() => {});
+  broadcast(`scrim:${sessionId}`, { action, auction }).catch((e) =>
+    console.error(`[auction] broadcast ${action} failed:`, e)
+  );
 }
+
+// upsertAuction에서 허용된 컬럼만 업데이트 (SQL injection 방지)
+const ALLOWED_AUCTION_COLUMNS = new Set([
+  "phase", "pausedPhase", "captainPoints", "queue", "currentUserId",
+  "currentBids", "joinedCaptains", "auctionStartAt", "auctionDuration",
+  "failedQueue", "bidLog", "auditLog",
+]);
 
 function getTeamIdByCaptain(captainIds: string[], captainId: string) {
   const index = captainIds.indexOf(captainId);
@@ -242,12 +251,15 @@ async function applyFinalAssignments(sessionId: string) {
     `SELECT * FROM "AuctionPick" WHERE "sessionId" = $1`,
     sessionId
   );
-  for (const pick of picks) {
-    await prisma.scrimPlayer.updateMany({
-      where: { sessionId, userId: pick.userId },
-      data: { team: pick.team, role: "member" },
-    });
-  }
+  if (picks.length === 0) return;
+  await prisma.$transaction(
+    picks.map((pick) =>
+      prisma.scrimPlayer.updateMany({
+        where: { sessionId, userId: pick.userId },
+        data: { team: pick.team, role: "member" },
+      })
+    )
+  );
 }
 
 async function upsertAuction(sessionId: string, data: Record<string, unknown>) {
@@ -277,6 +289,10 @@ async function upsertAuction(sessionId: string, data: Record<string, unknown>) {
     const vals: unknown[] = [];
     let idx = 1;
     for (const [k, v] of Object.entries(data)) {
+      if (!ALLOWED_AUCTION_COLUMNS.has(k)) {
+        console.error("[auction] upsertAuction: disallowed column", k);
+        continue;
+      }
       sets.push(`"${k}" = $${idx++}`);
       vals.push(v);
     }
@@ -414,6 +430,12 @@ export async function POST(req: NextRequest) {
   if (!sessionId) return Response.json({ error: "sessionId가 필요합니다." }, { status: 400 });
   if (!captainPoints || Object.keys(captainPoints).length < 2) {
     return Response.json({ error: "팀장을 2명 이상 지정해야 합니다." }, { status: 400 });
+  }
+  if (Object.keys(captainPoints).length > 26) {
+    return Response.json({ error: "팀장은 최대 26명까지 지정할 수 있습니다." }, { status: 400 });
+  }
+  if (!Number.isInteger(auctionDuration) || auctionDuration < 10 || auctionDuration > 300) {
+    return Response.json({ error: "경매 시간은 10초~300초 사이의 정수여야 합니다." }, { status: 400 });
   }
 
   const captainIds = Object.keys(captainPoints);
@@ -623,7 +645,9 @@ export async function PATCH(req: NextRequest) {
     return Response.json({ error: "지원하지 않는 경매 조작입니다." }, { status: 400 });
   }
 
-  if (bidAmount <= 0) return Response.json({ error: "입찰 금액은 1 이상이어야 합니다." }, { status: 400 });
+  if (!Number.isInteger(bidAmount) || bidAmount <= 0) {
+    return Response.json({ error: "입찰 금액은 1 이상의 정수여야 합니다." }, { status: 400 });
+  }
   if (auction.phase !== "auction" && auction.phase !== "reauction") {
     return Response.json({ error: "경매가 진행 중이 아닙니다." }, { status: 400 });
   }

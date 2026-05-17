@@ -7,6 +7,30 @@ import { auth } from "@/lib/auth";
 type AuctionPhase = "setup" | "auction" | "reauction" | "paused" | "done";
 const MIN_BID_INCREMENT = 10;
 
+// updateAuction에서 허용된 컬럼만 업데이트 (SQL injection 방지)
+const ALLOWED_AUCTION_COLUMNS = new Set([
+  "phase", "pausedPhase", "captainPoints", "queue", "currentUserId",
+  "currentBids", "joinedCaptains", "auctionStartAt", "auctionDuration",
+  "failedQueue", "bidLog", "auditLog",
+]);
+
+// maybeFinalize 이중 실행 방지 (프로세스 내)
+const finalizingLocks = new Set<string>();
+
+// 입찰 레이트 리밋: 팀장 1명당 30초에 최대 10회
+const bidRateLimit = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 30_000;
+const RATE_LIMIT_MAX = 10;
+
+function checkBidRateLimit(captainId: string): boolean {
+  const now = Date.now();
+  const timestamps = (bidRateLimit.get(captainId) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= RATE_LIMIT_MAX) return false;
+  timestamps.push(now);
+  bidRateLimit.set(captainId, timestamps);
+  return true;
+}
+
 interface AuctionRow {
   id: string;
   sessionId: string;
@@ -168,29 +192,40 @@ async function applyFinalAssignments(sessionId: string) {
     `SELECT * FROM "AuctionPick" WHERE "sessionId" = $1`,
     sessionId
   );
-  for (const pick of picks) {
-    await prisma.scrimPlayer.updateMany({
-      where: { sessionId, userId: pick.userId },
-      data: { team: pick.team, role: "member" },
-    });
-  }
+  if (picks.length === 0) return;
+  await prisma.$transaction(
+    picks.map((pick) =>
+      prisma.scrimPlayer.updateMany({
+        where: { sessionId, userId: pick.userId },
+        data: { team: pick.team, role: "member" },
+      })
+    )
+  );
 }
 
-async function updateAuction(sessionId: string, data: Record<string, unknown>) {
+async function updateAuction(sessionId: string, data: Record<string, unknown>, conditionPhase?: AuctionPhase) {
   const sets: string[] = [];
   const vals: unknown[] = [];
   let idx = 1;
   for (const [key, value] of Object.entries(data)) {
+    if (!ALLOWED_AUCTION_COLUMNS.has(key)) {
+      console.error("[auction] updateAuction: disallowed column", key);
+      continue;
+    }
     sets.push(`"${key}" = $${idx++}`);
     vals.push(value);
   }
   if (sets.length === 0) return getAuction(sessionId);
   sets.push(`"updatedAt" = NOW()`);
   vals.push(sessionId);
-  await prisma.$executeRawUnsafe(
-    `UPDATE "AuctionState" SET ${sets.join(", ")} WHERE "sessionId" = $${idx}`,
-    ...vals
-  );
+
+  let sql = `UPDATE "AuctionState" SET ${sets.join(", ")} WHERE "sessionId" = $${idx++}`;
+  if (conditionPhase) {
+    sql += ` AND "phase" = $${idx++}`;
+    vals.push(conditionPhase);
+  }
+
+  await prisma.$executeRawUnsafe(sql, ...vals);
   return getAuction(sessionId);
 }
 
@@ -236,7 +271,7 @@ async function finalizeCurrentLot(auction: AuctionRow, actorId = "public-room") 
         targetUserId: auction.currentUserId,
         message: "입찰 없이 유찰 처리되었습니다.",
       }),
-    });
+    }, auction.phase);
     if (updated?.phase === "done") await applyFinalAssignments(auction.sessionId);
     return updated;
   }
@@ -270,7 +305,7 @@ async function finalizeCurrentLot(auction: AuctionRow, actorId = "public-room") 
       amount: winnerBid,
       message: "타이머 종료로 자동 낙찰되었습니다.",
     }),
-  });
+  }, auction.phase);
   if (updated?.phase === "done") await applyFinalAssignments(auction.sessionId);
   return updated;
 }
@@ -281,13 +316,21 @@ async function maybeFinalize(auction: AuctionRow | null) {
     (auction.phase === "auction" || auction.phase === "reauction") &&
     auction.auctionStartAt &&
     auction.currentUserId &&
-    auction.auctionDuration > 0
+    auction.auctionDuration > 0 &&
+    !finalizingLocks.has(auction.sessionId)
   ) {
     const elapsed = (Date.now() - new Date(auction.auctionStartAt).getTime()) / 1000;
     if (elapsed >= auction.auctionDuration) {
-      const updated = await finalizeCurrentLot(auction);
-      broadcast(`scrim:${auction.sessionId}`, { action: "auction_resolved", auction: updated }).catch(() => {});
-      return updated;
+      finalizingLocks.add(auction.sessionId);
+      try {
+        const updated = await finalizeCurrentLot(auction);
+        broadcast(`scrim:${auction.sessionId}`, { action: "auction_resolved", auction: updated }).catch((e) =>
+          console.error("[auction] broadcast auction_resolved failed:", e)
+        );
+        return updated;
+      } finally {
+        finalizingLocks.delete(auction.sessionId);
+      }
     }
   }
   return auction;
@@ -405,7 +448,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
             message: "팀장이 본인 확인 후 입장을 완료했습니다.",
           }),
         });
-    broadcast(`scrim:${access.sessionId}`, { action: "auction_captain_joined", auction: updated }).catch(() => {});
+    broadcast(`scrim:${access.sessionId}`, { action: "auction_captain_joined", auction: updated }).catch((e) =>
+      console.error("[auction] broadcast auction_captain_joined failed:", e)
+    );
     return Response.json({ success: true, auction: updated });
   }
 
@@ -444,7 +489,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
       });
     }
 
-    broadcast(`scrim:${access.sessionId}`, { action: "auction_captain_passed", auction: updated }).catch(() => {});
+    broadcast(`scrim:${access.sessionId}`, { action: "auction_captain_passed", auction: updated }).catch((e) =>
+      console.error("[auction] broadcast auction_captain_passed failed:", e)
+    );
     return Response.json({ success: true, auction: updated });
   }
 
@@ -454,7 +501,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
     if (action === "begin") {
       try {
         const updated = await beginAuction(auction);
-        broadcast(`scrim:${access.sessionId}`, { action: "auction_started", auction: updated }).catch(() => {});
+        broadcast(`scrim:${access.sessionId}`, { action: "auction_started", auction: updated }).catch((e) =>
+          console.error("[auction] broadcast auction_started failed:", e)
+        );
         return Response.json({ success: true, auction: updated });
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "경매를 시작할 수 없습니다." }, { status: 400 });
@@ -478,7 +527,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
           message: "주최자 링크에서 경매를 일시정지했습니다.",
         }),
       });
-      broadcast(`scrim:${access.sessionId}`, { action: "auction_paused", auction: updated }).catch(() => {});
+      broadcast(`scrim:${access.sessionId}`, { action: "auction_paused", auction: updated }).catch((e) =>
+        console.error("[auction] broadcast auction_paused failed:", e)
+      );
       return Response.json({ success: true, auction: updated });
     }
 
@@ -496,7 +547,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
           message: "주최자 링크에서 경매를 재개했습니다.",
         }),
       });
-      broadcast(`scrim:${access.sessionId}`, { action: "auction_resumed", auction: updated }).catch(() => {});
+      broadcast(`scrim:${access.sessionId}`, { action: "auction_resumed", auction: updated }).catch((e) =>
+        console.error("[auction] broadcast auction_resumed failed:", e)
+      );
       return Response.json({ success: true, auction: updated });
     }
 
@@ -509,6 +562,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
       const captainId = typeof body.captainId === "string" ? body.captainId : "";
       if (!captainIds.includes(captainId)) {
         return Response.json({ error: "유효한 팀장을 선택해야 합니다." }, { status: 400 });
+      }
+      if (!Number.isInteger(bidAmount)) {
+        return Response.json({ error: "입찰 금액은 정수여야 합니다." }, { status: 400 });
       }
       const amount = Math.max(0, bidAmount);
       const available = captainPoints[captainId] ?? 0;
@@ -542,7 +598,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
         }),
       });
       if (updated?.phase === "done") await applyFinalAssignments(access.sessionId);
-      broadcast(`scrim:${access.sessionId}`, { action: "auction_force_assigned", auction: updated }).catch(() => {});
+      broadcast(`scrim:${access.sessionId}`, { action: "auction_force_assigned", auction: updated }).catch((e) =>
+        console.error("[auction] broadcast auction_force_assigned failed:", e)
+      );
       return Response.json({ success: true, auction: updated });
     }
 
@@ -551,7 +609,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
         return Response.json({ error: "처리할 현재 매물이 없습니다." }, { status: 400 });
       }
       const updated = await finalizeCurrentLot(auction, "host-link");
-      broadcast(`scrim:${access.sessionId}`, { action: "auction_resolved", auction: updated }).catch(() => {});
+      broadcast(`scrim:${access.sessionId}`, { action: "auction_resolved", auction: updated }).catch((e) =>
+        console.error("[auction] broadcast auction_resolved failed:", e)
+      );
       return Response.json({ success: true, auction: updated });
     }
 
@@ -570,7 +630,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
         }),
       });
       if (updated?.phase === "done") await applyFinalAssignments(access.sessionId);
-      broadcast(`scrim:${access.sessionId}`, { action: "auction_passed", auction: updated }).catch(() => {});
+      broadcast(`scrim:${access.sessionId}`, { action: "auction_passed", auction: updated }).catch((e) =>
+        console.error("[auction] broadcast auction_passed failed:", e)
+      );
       return Response.json({ success: true, auction: updated });
     }
 
@@ -580,11 +642,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
   if (access.role !== "captain" || !access.captainId) {
     return Response.json({ error: "팀장 링크로만 입찰할 수 있습니다." }, { status: 403 });
   }
-  if (bidAmount <= 0) return Response.json({ error: "입찰 금액은 1 이상이어야 합니다." }, { status: 400 });
+  if (!Number.isInteger(bidAmount) || bidAmount <= 0) {
+    return Response.json({ error: "입찰 금액은 1 이상의 정수여야 합니다." }, { status: 400 });
+  }
   if (auction.phase !== "auction" && auction.phase !== "reauction") {
     return Response.json({ error: "경매가 진행 중이 아닙니다." }, { status: 400 });
   }
   if (!auction.currentUserId) return Response.json({ error: "경매 중인 참가자가 없습니다." }, { status: 400 });
+
+  if (!checkBidRateLimit(access.captainId)) {
+    return Response.json({ error: "입찰 요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요." }, { status: 429 });
+  }
 
   const captainPoints = parseJson<Record<string, number>>(auction.captainPoints, {});
   const captainIds = Object.keys(captainPoints);
@@ -634,6 +702,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
     }),
   });
 
-  broadcast(`scrim:${access.sessionId}`, { action: "auction_bid", auction: updated }).catch(() => {});
+  broadcast(`scrim:${access.sessionId}`, { action: "auction_bid", auction: updated }).catch((e) =>
+    console.error("[auction] broadcast auction_bid failed:", e)
+  );
   return Response.json({ success: true, auction: updated });
 }

@@ -3001,16 +3001,27 @@ function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDro
           <span className="rounded border border-[#2a3540] px-2 py-1 text-[11px] font-black text-[#7b8a96]">{members.length + (captain ? 1 : 0)}명</span>
         </div>
       </div>
-      <div className="grid gap-4 p-4">
+      <div className="p-4 space-y-4">
         {onDropCaptain && (
-          <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} guildMembers={guildMembers} settings={settings} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDropCaptain(id); }}
+          >
+            <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">팀장</div>
+            {captain ? <PlayerCard player={captain} guildMembers={guildMembers} settings={settings} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}
+          </div>
         )}
-        <DropAreaMini label="팀원" onDrop={onDropMember}>
+        {onDropCaptain && <div className="border-t border-[#2a3540]" />}
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDropMember(id); }}
+        >
+          <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">팀원</div>
           <div className="grid gap-2">
             {members.map((p) => <PlayerCard key={p.id} player={p} guildMembers={guildMembers} settings={settings} onRemove={onRemove ? () => onRemove(p.id) : undefined} />)}
             {members.length === 0 && <EmptyState text="팀원 배치" />}
           </div>
-        </DropAreaMini>
+        </div>
       </div>
       <span className="sr-only">{teamId}</span>
     </article>
@@ -3047,7 +3058,7 @@ function PlayerCard({ player, compact = false, onRemove, guildMembers = [], sett
   const showAgents = settings?.showFavoriteAgents !== false;
 
   return (
-    <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab flex flex-col h-full min-h-[120px] rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
+    <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
       <div className="flex items-center gap-3">
         {player.user.image ? <img src={player.user.image} alt="" className={compact ? "h-9 w-9 rounded object-cover" : "h-12 w-12 rounded object-cover"} /> : <div className={compact ? "h-9 w-9 rounded bg-[#24313c]" : "h-12 w-12 rounded bg-[#24313c]"} />}
         <div className="min-w-0 flex-1">

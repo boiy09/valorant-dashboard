@@ -880,22 +880,18 @@ export interface RecentMatchesOptions {
   skipRankFallback?: boolean;
 }
 
-export async function getRecentMatches(
-  puuid: string,
-  count = 5,
-  region: ValorantRegion = "kr",
-  platform: ValorantPlatform = "pc",
+async function parseHenrikMatchList(
+  matches: any[],
+  findMe: (players: any[]) => any,
+  region: ValorantRegion,
   options?: RecentMatchesOptions
 ): Promise<MatchStats[]> {
-  const response = await henrikClient.get(
-    `/v4/by-puuid/matches/${region}/${platform}/${puuid}?size=${count}`
-  );
-  const matches = asArray<any>(response.data?.data);
 
   return Promise.all(matches.map(async (match) => {
     const players = asArray<any>(match.players);
     const teams = asArray<any>(match.teams);
-    const me = players.find((player) => player?.puuid === puuid) ?? {};
+    const me = findMe(players) ?? {};
+    const puuid: string = me?.puuid ?? "";
     const stats = me?.stats ?? {};
     const { teamScore, enemyScore } = getTeamScores(match, puuid);
     const agentAssets = asRecord(asRecord(me?.assets).agent);
@@ -1140,6 +1136,47 @@ export async function getRecentMatches(
   }));
 }
 
+export async function getRecentMatches(
+  puuid: string,
+  count = 5,
+  region: ValorantRegion = "kr",
+  platform: ValorantPlatform = "pc",
+  options?: RecentMatchesOptions
+): Promise<MatchStats[]> {
+  const response = await henrikClient.get(
+    `/v4/by-puuid/matches/${region}/${platform}/${puuid}?size=${count}`
+  );
+  const matches = asArray<any>(response.data?.data);
+  return parseHenrikMatchList(matches, (players) => players.find((p) => p?.puuid === puuid), region, options);
+}
+
+export async function getRecentMatchesByRiotId(
+  gameName: string,
+  tagLine: string,
+  count = 10,
+  region: ValorantRegion = "kr",
+  platform: ValorantPlatform = "pc",
+  options?: RecentMatchesOptions
+): Promise<MatchStats[]> {
+  const response = await henrikClient.get(
+    `/v4/matches/riot/${region}/${platform}/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}?size=${count}`
+  );
+  const matches = asArray<any>(response.data?.data);
+  const nameLower = gameName.toLowerCase();
+  const tagLower = tagLine.toLowerCase();
+  return parseHenrikMatchList(
+    matches,
+    (players) =>
+      players.find(
+        (p) =>
+          (p?.name ?? p?.game_name ?? "")?.toLowerCase() === nameLower &&
+          (p?.tag ?? p?.tagLine ?? p?.tag_line ?? "")?.toLowerCase() === tagLower
+      ) ?? players[0],
+    region,
+    options
+  );
+}
+
 export async function getPlayerStats(
   gameName: string,
   tagLine: string,
@@ -1326,7 +1363,7 @@ export async function getVctSchedule(
   });
   const matches = asArray<any>(raw);
 
-  return matches.slice(0, limit).map((item) => {
+  const normalized = matches.map((item) => {
     const teams = asArray<any>(item?.match?.teams);
     const teamOne = teams[0]?.name ?? "TBD";
     const teamTwo = teams[1]?.name ?? "TBD";
@@ -1345,4 +1382,232 @@ export async function getVctSchedule(
       vodUrl: item?.vod ?? null,
     };
   });
+
+  const now = Date.now();
+  return normalized
+    .sort((a, b) => {
+      const aTime = a.startsAt.getTime();
+      const bTime = b.startsAt.getTime();
+      const aFuture = aTime >= now;
+      const bFuture = bTime >= now;
+      if (aFuture !== bFuture) return aFuture ? -1 : 1;
+      return aFuture ? aTime - bTime : bTime - aTime;
+    })
+    .slice(0, limit);
+}
+
+const TRACKER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8",
+  "Referer": "https://tracker.gg/valorant",
+};
+
+export interface TrackerWebMatch {
+  matchId: string;
+  map: string;
+  mode: string;
+  startedAt: string;
+  isWin: boolean;
+  kills: number;
+  deaths: number;
+  assists: number;
+  acs: number;
+  headshotPct: number;
+  damagePerRound: number;
+  teamRoundsWon: number | null;
+  enemyRoundsWon: number | null;
+  agentName: string;
+  agentIcon: string | null;
+}
+
+function parseTrackerItem(item: Record<string, unknown>): TrackerWebMatch | null {
+  const attrs = (item.attributes ?? {}) as Record<string, unknown>;
+  const meta = (item.metadata ?? {}) as Record<string, unknown>;
+  const segments = Array.isArray(item.segments) ? item.segments as Record<string, unknown>[] : [];
+  const seg = segments.find((s) => s.type === "overview" || s.type === "player") ?? segments[0];
+  if (!seg) return null;
+
+  const stats = (seg.stats ?? {}) as Record<string, unknown>;
+  const segMeta = (seg.metadata ?? {}) as Record<string, unknown>;
+
+  const sv = (s: unknown) => {
+    if (s && typeof s === "object" && "value" in s) return Number((s as { value: unknown }).value) || 0;
+    return Number(s) || 0;
+  };
+
+  const kills = Math.round(sv(stats.kills));
+  const deaths = Math.round(sv(stats.deaths));
+  const assists = Math.round(sv(stats.assists));
+  const roundsPlayed = Math.round(sv(stats.roundsPlayed));
+  const roundsWon = Math.round(sv(stats.roundsWon));
+  const totalScore = sv(stats.score);
+  const acs = roundsPlayed > 0 ? Math.round(totalScore / roundsPlayed) : Math.round(sv(stats.scorePerRound ?? stats.acs));
+  const hsPct = Math.round(sv(stats.headshotsPercentage) * 10) / 10;
+  const dpr = Math.round(sv(stats.damagePerRound));
+  const roundsLost = roundsPlayed > roundsWon ? roundsPlayed - roundsWon : null;
+
+  const resultRaw = String(meta.result ?? segMeta.result ?? attrs.result ?? "").toLowerCase();
+  const isWin = resultRaw === "victory" || resultRaw === "win";
+
+  const matchId = String(attrs.id ?? item.id ?? "");
+  if (!matchId) return null;
+
+  return {
+    matchId,
+    map: String(meta.map ?? attrs.mapName ?? ""),
+    mode: String(meta.queue ?? attrs.modeKey ?? ""),
+    startedAt: String(meta.timestamp ?? ""),
+    isWin,
+    kills,
+    deaths,
+    assists,
+    acs,
+    headshotPct: hsPct,
+    damagePerRound: dpr,
+    teamRoundsWon: roundsWon > 0 ? roundsWon : null,
+    enemyRoundsWon: roundsLost,
+    agentName: String(segMeta.agentName ?? ""),
+    agentIcon: typeof segMeta.agentImageUrl === "string" ? segMeta.agentImageUrl : null,
+  };
+}
+
+// tracker.gg 웹 API 스크래핑 (API key 불필요)
+export async function getTrackerWebMatches(
+  gameName: string,
+  tagLine: string,
+  typeFilter?: string,
+  limit = 10
+): Promise<TrackerWebMatch[]> {
+  try {
+    const encoded = `${encodeURIComponent(gameName)}%23${encodeURIComponent(tagLine)}`;
+    const qs = typeFilter ? `?type=${typeFilter}` : "";
+    const url = `https://api.tracker.gg/api/v2/valorant/standard/matches/riot/${encoded}${qs}`;
+    const res = await fetch(url, { headers: TRACKER_HEADERS as Record<string, string>, signal: AbortSignal.timeout(12000) });
+    if (!res.ok) {
+      console.warn(`[tracker.gg] matches ${res.status} for ${gameName}#${tagLine}`);
+      return [];
+    }
+    const json = await res.json() as { data?: unknown };
+    const raw = json?.data;
+    const items: Record<string, unknown>[] = Array.isArray(raw) ? raw : [];
+    return items.slice(0, limit).flatMap((item) => {
+      const parsed = parseTrackerItem(item);
+      return parsed ? [parsed] : [];
+    });
+  } catch (e) {
+    console.warn("[tracker.gg] web match fetch failed:", e instanceof Error ? e.message : String(e));
+    return [];
+  }
+}
+
+async function fetchTrackerMatchIds(gameName: string, tagLine: string, typeFilter?: string): Promise<string[]> {
+  const matches = await getTrackerWebMatches(gameName, tagLine, typeFilter, 20);
+  return matches.map((m) => m.matchId).filter(Boolean);
+}
+
+export async function getTrackerCustomMatchIds(gameName: string, tagLine: string): Promise<string[]> {
+  return fetchTrackerMatchIds(gameName, tagLine, "custom");
+}
+
+export async function getTrackerRecentMatchIds(gameName: string, tagLine: string): Promise<string[]> {
+  return fetchTrackerMatchIds(gameName, tagLine);
+}
+
+export async function getHenrikMatchById(
+  matchId: string,
+  region: ValorantRegion
+): Promise<MatchStats | null> {
+  try {
+    const response = await henrikClient.get(`/v4/match/${region}/${matchId}`);
+    const match = response.data?.data;
+    if (!match) return null;
+
+    const players = asArray<any>(match.players);
+    const teams = asArray<any>(match.teams);
+    const meta = asRecord(match.metadata ?? {});
+
+    const modeRaw = toString(meta.queue ?? meta.mode ?? meta.game_mode ?? "", "");
+    const mapRaw = toString(meta.map ?? meta.mapName ?? "", "");
+
+    const totalRoundsAll = teams.reduce((sum: number, t: any) => {
+      return sum + toNumber(t.rounds_won ?? asRecord(t.rounds).won ?? t.roundsWon ?? 0);
+    }, 0);
+
+    const scoreboardPlayers: ScoreboardPlayer[] = players.map((p: any) => {
+      const ps = asRecord(p.stats ?? {});
+      const pk = toNumber(ps.kills);
+      const pd = toNumber(ps.deaths);
+      const pa = toNumber(ps.assists);
+      const phs = toNumber(ps.headshots);
+      const pbs = toNumber(ps.bodyshots);
+      const pls = toNumber(ps.legshots);
+      const pScore = toNumber(ps.score);
+      const totalShots = phs + pbs + pls;
+      const pPuuid = toString(p.puuid ?? p.subject ?? "", "");
+      const teamRaw = toString(p.team_id ?? p.teamId ?? p.team ?? "", "");
+      return {
+        puuid: pPuuid,
+        name: toString(p.name ?? p.gameName ?? "", ""),
+        tag: toString(p.tag ?? p.tagLine ?? "", ""),
+        isPrivate: false,
+        teamId: normalizeTeamId(teamRaw),
+        level: null,
+        cardIcon: "",
+        agent: toString(asRecord(p.agent ?? {}).name ?? p.character ?? "", ""),
+        agentIcon: toString(asRecord(asRecord(p.assets ?? {}).agent ?? {}).killfeedPortrait ?? "", "") || "",
+        tierName: "",
+        tierId: 0,
+        tierIcon: null,
+        kills: pk,
+        deaths: pd,
+        assists: pa,
+        acs: totalRoundsAll > 0 ? Math.round(pScore / totalRoundsAll) : 0,
+        hsPercent: totalShots > 0 ? Math.round((phs / totalShots) * 100) : 0,
+        adr: null,
+        plusMinus: 0,
+        kd: pd > 0 ? Math.round((pk / pd) * 100) / 100 : pk,
+      } satisfies ScoreboardPlayer;
+    });
+
+    const scoreboardTeams: ScoreboardTeam[] = teams.map((t: any) => ({
+      teamId: normalizeTeamId(toString(t.team_id ?? t.teamId ?? t.id ?? "", "")),
+      won: Boolean(t.won ?? t.has_won),
+      roundsWon: toNumber(t.rounds_won ?? asRecord(t.rounds).won ?? t.roundsWon ?? 0),
+    }));
+
+    const matchIdStr = toString(meta.match_id ?? meta.matchId ?? matchId, matchId);
+
+    return {
+      matchId: matchIdStr,
+      mode: modeRaw,
+      map: mapRaw,
+      result: "무효",
+      teamScore: 0,
+      enemyScore: 0,
+      kills: 0,
+      deaths: 0,
+      assists: 0,
+      score: 0,
+      headshots: 0,
+      bodyshots: 0,
+      legshots: 0,
+      adr: null,
+      agent: "",
+      agentIcon: "",
+      playedAt: new Date(),
+      scoreboard: {
+        map: mapRaw,
+        mode: modeRaw,
+        startedAt: toString(meta.game_start ?? meta.started_at ?? "", ""),
+        gameLengthMs: toNumber(meta.game_length ?? meta.gameLengthMs ?? 0),
+        totalRounds: totalRoundsAll,
+        players: scoreboardPlayers,
+        teams: scoreboardTeams,
+        rounds: [],
+      },
+    } satisfies MatchStats;
+  } catch {
+    return null;
+  }
 }

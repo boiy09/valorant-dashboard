@@ -69,6 +69,13 @@ function regionLabel(region: string) {
   return region.toUpperCase() === "AP" ? "AP · 아섭" : "KR · 한섭";
 }
 
+function regionPriority(region: string) {
+  const normalized = region.toUpperCase();
+  if (normalized === "KR") return 0;
+  if (normalized === "AP") return 1;
+  return 2;
+}
+
 export default function ProfileModal({
   title = "프로필",
   profile,
@@ -115,7 +122,7 @@ export default function ProfileModal({
   if (!profile) return null;
 
   const displayName = profile.name || "이름 없음";
-  const accounts = profile.riotAccounts ?? [];
+  const accounts = [...(profile.riotAccounts ?? [])].sort((a, b) => regionPriority(a.region) - regionPriority(b.region));
   const activeRoleValues = editable ? selectedRoles : parseProfileRoles(profile.valorantRole);
   const currentRoles = roles.filter((role) => activeRoleValues.includes(role.role));
   const favoriteAgentDetails = (editable ? selectedAgents : profile.favoriteAgents ?? []).map(

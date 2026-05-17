@@ -10,6 +10,7 @@ import { refreshTokens } from "@/lib/riotAuth";
 import { getPrivateMMR, getPrivateProfile } from "@/lib/riotPrivateApi";
 import { getTrackerCurrentRank } from "@/lib/trackergg";
 import { getRankByPuuid, getRankIconByTier, getPlayerByRiotId, type ValorantRegion } from "@/lib/valorant";
+import { getOpGgProfileFallback } from "@/lib/opgg";
 
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
@@ -50,7 +51,9 @@ export interface FetchedProfile {
   card: string | null;
 }
 
-// 유효한 토큰 확인 or ssid로 갱신 (최대 6초)
+// 토큰 만료 후 이 시간 이내면 갱신 실패해도 기존 토큰을 그대로 사용 (프록시 일시 장애 대응)
+const STALE_TOKEN_GRACE_MS = 30 * 60 * 1000; // 30분
+
 export async function ensureTokenState(
   puuid: string,
   accessToken: string | null,
@@ -75,8 +78,24 @@ export async function ensureTokenState(
     };
   }
 
+  // 만료됐지만 grace period 내면 일단 기존 토큰 반환 (갱신은 백그라운드 시도)
+  const recentlyExpired =
+    accessToken &&
+    entitlementsToken &&
+    tokenExpiresAt &&
+    now - tokenExpiresAt.getTime() < STALE_TOKEN_GRACE_MS;
+
   const refreshCookie = authCookie || ssid;
   if (!refreshCookie) {
+    if (recentlyExpired) {
+      // 인증 정보 없어도 아직 작동 가능 — 다음 갱신 때까지 기존 토큰 사용
+      return {
+        tokens: { accessToken: accessToken!, entitlementsToken: entitlementsToken! },
+        needsRelink: false,
+        reason: null,
+        message: null,
+      };
+    }
     return {
       tokens: null,
       needsRelink: true,
@@ -86,11 +105,22 @@ export async function ensureTokenState(
   }
 
   try {
+    // 프록시가 느릴 수 있으므로 타임아웃을 12초로
     const result = await withTimeout(
       refreshTokens(refreshCookie).catch(() => null),
-      6000
+      12000
     );
     if (!result || result.status !== "success") {
+      if (recentlyExpired) {
+        // 갱신 실패해도 grace period 내면 기존 토큰 계속 사용 (연동 해제 안 함)
+        console.warn("[rankFetcher] token refresh failed, using stale tokens:", puuid);
+        return {
+          tokens: { accessToken: accessToken!, entitlementsToken: entitlementsToken! },
+          needsRelink: false,
+          reason: null,
+          message: null,
+        };
+      }
       return {
         tokens: null,
         needsRelink: true,
@@ -107,6 +137,15 @@ export async function ensureTokenState(
     }).catch(() => null);
 
     if (!entRes?.ok) {
+      if (recentlyExpired) {
+        console.warn("[rankFetcher] entitlements refresh failed, using stale tokens:", puuid);
+        return {
+          tokens: { accessToken: accessToken!, entitlementsToken: entitlementsToken! },
+          needsRelink: false,
+          reason: null,
+          message: null,
+        };
+      }
       return {
         tokens: null,
         needsRelink: true,
@@ -119,7 +158,7 @@ export async function ensureTokenState(
     const newAccess = result.accessToken;
     const newEnt = entData.entitlements_token;
 
-    prisma.riotAccount.update({
+    await prisma.riotAccount.update({
       where: { puuid },
       data: {
         accessToken: newAccess,
@@ -137,6 +176,15 @@ export async function ensureTokenState(
       message: null,
     };
   } catch {
+    if (recentlyExpired) {
+      console.warn("[rankFetcher] token refresh exception, using stale tokens:", puuid);
+      return {
+        tokens: { accessToken: accessToken!, entitlementsToken: entitlementsToken! },
+        needsRelink: false,
+        reason: null,
+        message: null,
+      };
+    }
     return {
       tokens: null,
       needsRelink: true,
@@ -201,7 +249,7 @@ export async function fetchRank(
   return { tierId: 0, tierName: "언랭크", rankIcon: null };
 }
 
-// 프로필(레벨+카드) 조회: Private API(5s) → Henrik(10s)
+// 프로필(레벨+카드) 조회: Private API(5s) → Henrik+op.gg(10s) → op.gg 단독(5s)
 export async function fetchProfile(
   puuid: string,
   region: string,
@@ -223,14 +271,25 @@ export async function fetchProfile(
     }
   }
 
-  // 2. Henrik
+  // 2. Henrik (내부적으로 op.gg 카드/레벨 포함)
   const henrik = await withTimeout(
     getPlayerByRiotId(gameName, tagLine).catch(() => null),
     10000
   );
+  const henrikLevel = henrik?.accountLevel != null && henrik.accountLevel >= 0 ? henrik.accountLevel : null;
+  const henrikCard = henrik?.card ?? null;
+  if (henrikLevel !== null || henrikCard !== null) {
+    return { level: henrikLevel, card: henrikCard };
+  }
+
+  // 3. op.gg 직접 스크래핑 (Henrik 완전 실패 시 최종 보험)
+  const opgg = await withTimeout(
+    getOpGgProfileFallback(gameName, tagLine).catch(() => null),
+    5000
+  );
   return {
-    level: henrik?.accountLevel != null && henrik.accountLevel >= 0 ? henrik.accountLevel : null,
-    card: henrik?.card ?? null,
+    level: opgg?.level ?? null,
+    card: opgg?.playerCardIcon ?? null,
   };
 }
 

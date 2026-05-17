@@ -11,9 +11,18 @@ function getDiscordHeaders() {
 async function fetchDiscordJson<T>(url: string): Promise<T | null> {
   const headers = getDiscordHeaders();
   if (!headers) return null;
-  const response = await fetch(url, { headers, cache: "no-store" });
-  if (!response.ok) return null;
-  return (await response.json().catch(() => null)) as T | null;
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const response = await fetch(url, { headers, cache: "no-store" });
+    if (response.ok) return (await response.json().catch(() => null)) as T | null;
+    if (response.status !== 429) return null;
+
+    const body = (await response.json().catch(() => null)) as { retry_after?: number } | null;
+    const retryAfterMs = Math.ceil(Number(body?.retry_after ?? 1) * 1000) + 250;
+    await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+  }
+
+  return null;
 }
 
 function encodeReactionEmoji(reaction: { emoji?: { id?: string | null; name?: string | null } }) {

@@ -101,9 +101,51 @@ interface AuctionState {
   queue: string; // JSON: userId[]
   currentUserId: string | null;
   currentBids: string; // JSON: { captainUserId: bidAmount }
+  joinedCaptains?: string; // JSON: captain userId[]
   auctionStartAt: string | null;
   auctionDuration: number;
   failedQueue: string; // JSON: userId[]
+  pausedPhase?: string | null;
+  bidLog?: string;
+  auditLog?: string;
+  picks?: AuctionPick[];
+  bidHistory?: AuctionBid[];
+}
+
+interface AuctionPick {
+  id: string;
+  sessionId: string;
+  userId: string;
+  captainId: string;
+  team: string;
+  amount: number;
+  createdAt: string;
+}
+
+interface AuctionBid {
+  id: string;
+  sessionId: string;
+  lotUserId: string;
+  captainId: string;
+  amount: number;
+  createdAt: string;
+}
+
+interface AuctionLogEntry {
+  id: string;
+  ts: string;
+  actorId?: string;
+  action: string;
+  message: string;
+  captainId?: string;
+  targetUserId?: string;
+  amount?: number;
+}
+
+interface AuctionInviteLink {
+  label: string;
+  href: string;
+  tone?: string;
 }
 
 // ─── 전적탭 동일 헬퍼 함수 ────────────────────────────────────────────────────
@@ -380,6 +422,8 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
   const [dummyOpen, setDummyOpen] = useState(false);
   const [dummyAdding, setDummyAdding] = useState(false);
   const DUMMY_ROLES = ["감시자", "타격대", "척후대", "전략가"];
+  const DUMMY_NAMES = ["루나", "제로", "하루", "민트", "레이", "노바", "유키", "카이", "아린", "시온", "로이", "하온"];
+  const DUMMY_AGENTS = ["제트", "오멘", "소바", "킬조이", "레이나", "바이퍼", "페이드", "사이퍼", "클로브", "아이소"];
   const TIER_OPTIONS = [
     { label: "언랭크", id: 0 }, { label: "아이언 1", id: 1 }, { label: "아이언 2", id: 2 }, { label: "아이언 3", id: 3 },
     { label: "브론즈 1", id: 4 }, { label: "브론즈 2", id: 5 }, { label: "브론즈 3", id: 6 },
@@ -397,6 +441,21 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
 
   function setDummyRow(index: number, patch: Partial<DummyRow>) {
     setDummyRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  function fillRandomDummyRows() {
+    setDummyRows(Array.from({ length: 10 }, (_, index) => {
+      const name = DUMMY_NAMES[index % DUMMY_NAMES.length];
+      const tier = TIER_OPTIONS[Math.floor(Math.random() * Math.max(1, TIER_OPTIONS.length - 1)) + 1] ?? TIER_OPTIONS[0];
+      const agents = [...DUMMY_AGENTS].sort(() => Math.random() - 0.5).slice(0, 3);
+      return {
+        discordName: `${name}${Math.floor(10 + Math.random() * 90)}`,
+        riotId: `${name}${Math.floor(100 + Math.random() * 900)}#KR1`,
+        tierId: tier.id,
+        valorantRole: DUMMY_ROLES[Math.floor(Math.random() * DUMMY_ROLES.length)] ?? "",
+        favoriteAgents: agents.join(","),
+      };
+    }));
   }
 
   async function submitDummy() {
@@ -594,7 +653,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     try {
       const res = await fetch(`/api/scrim/${id}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sync-reactions" }),
+        body: JSON.stringify({ action: "sync-reactions", restoreRemoved: true }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "참가자 로드에 실패했습니다.");
@@ -925,7 +984,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           </DropArea>
           
           {settings.useTeamBoard && (
-            <section className="grid gap-4 lg:grid-cols-2">
+            <section className="grid gap-4 md:grid-cols-2">
               {teamIds.map((tId, i) => {
                 const captain = settings.useCaptain ? scrim.players.find((p) => p.team === tId && p.role === "captain") : undefined;
                 const members = scrim.players.filter((p) => p.team === tId && (settings.useCaptain ? p.role === "member" : true));
@@ -1326,11 +1385,17 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
               ))}
             </div>
 
-            <button type="button" onClick={() => setDummyRows((prev) => [...prev, emptyRow()])}
-              disabled={dummyRows.length >= 20}
-              className="mt-3 w-full rounded border border-dashed border-[#2a3540] py-2 text-xs font-black text-[#7b8a96] hover:border-[#f6c945]/50 hover:text-[#f6c945] disabled:opacity-40">
-              + 참가자 추가
-            </button>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button type="button" onClick={fillRandomDummyRows}
+                className="rounded border border-[#f6c945]/40 bg-[#f6c945]/10 py-2 text-xs font-black text-[#f6c945] hover:bg-[#f6c945]/15">
+                랜덤 채우기
+              </button>
+              <button type="button" onClick={() => setDummyRows((prev) => [...prev, emptyRow()])}
+                disabled={dummyRows.length >= 20}
+                className="rounded border border-dashed border-[#2a3540] py-2 text-xs font-black text-[#7b8a96] hover:border-[#f6c945]/50 hover:text-[#f6c945] disabled:opacity-40">
+                + 참가자 추가
+              </button>
+            </div>
 
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => setDummyOpen(false)}
@@ -1369,6 +1434,10 @@ function AuctionScrimPage({
   const [auction, setAuction] = useState<AuctionState | null>(null);
   const [auctionLoading, setAuctionLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState<string | null>(null);
+  const [accessLinks, setAccessLinks] = useState<AuctionInviteLink[]>([]);
+  const [reactionLoading, setReactionLoading] = useState(false);
 
   const auctionSettings = useMemo(() => parseSettings(scrim.settings), [scrim.settings]);
 
@@ -1409,6 +1478,8 @@ function AuctionScrimPage({
   const [dummyOpen, setDummyOpen] = useState(false);
   const [dummyAdding, setDummyAdding] = useState(false);
   const AUCTION_DUMMY_ROLES = ["감시자", "타격대", "척후대", "전략가"];
+  const AUCTION_DUMMY_NAMES = ["루나", "제로", "하루", "민트", "레이", "노바", "유키", "카이", "아린", "시온", "로이", "하온"];
+  const AUCTION_DUMMY_AGENTS = ["제트", "오멘", "소바", "킬조이", "레이나", "바이퍼", "페이드", "사이퍼", "클로브", "아이소"];
   const AUCTION_TIER_OPTIONS = [
     { label: "언랭크", id: 0 }, { label: "아이언 1", id: 1 }, { label: "아이언 2", id: 2 }, { label: "아이언 3", id: 3 },
     { label: "브론즈 1", id: 4 }, { label: "브론즈 2", id: 5 }, { label: "브론즈 3", id: 6 },
@@ -1424,8 +1495,29 @@ function AuctionScrimPage({
   const auctionEmptyRow = (): AuctionDummyRow => ({ discordName: "", riotId: "", tierId: 0, valorantRole: "", favoriteAgents: "" });
   const [dummyRows, setDummyRows] = useState<AuctionDummyRow[]>(() => [auctionEmptyRow()]);
 
+  const normalizeCaptainSelections = useCallback((raw: string | null | undefined) => {
+    const parsed = parseJson<Record<string, number>>(raw, {});
+    const validUserIds = new Set(scrim.players.map((player) => player.user.id));
+    return Object.fromEntries(Object.entries(parsed).filter(([userId]) => validUserIds.has(userId)));
+  }, [scrim.players]);
+
   function setDummyRow(index: number, patch: Partial<AuctionDummyRow>) {
     setDummyRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  function fillRandomDummyRows() {
+    setDummyRows(Array.from({ length: 10 }, (_, index) => {
+      const name = AUCTION_DUMMY_NAMES[index % AUCTION_DUMMY_NAMES.length];
+      const tier = AUCTION_TIER_OPTIONS[Math.floor(Math.random() * Math.max(1, AUCTION_TIER_OPTIONS.length - 1)) + 1] ?? AUCTION_TIER_OPTIONS[0];
+      const agents = [...AUCTION_DUMMY_AGENTS].sort(() => Math.random() - 0.5).slice(0, 3);
+      return {
+        discordName: `${name}${Math.floor(10 + Math.random() * 90)}`,
+        riotId: `${name}${Math.floor(100 + Math.random() * 900)}#KR1`,
+        tierId: tier.id,
+        valorantRole: AUCTION_DUMMY_ROLES[Math.floor(Math.random() * AUCTION_DUMMY_ROLES.length)] ?? "",
+        favoriteAgents: agents.join(","),
+      };
+    }));
   }
 
   async function submitDummy() {
@@ -1459,6 +1551,28 @@ function AuctionScrimPage({
     finally { setDummyAdding(false); }
   }
 
+  async function loadReactions() {
+    if (!scrim.recruitmentChannelId || reactionLoading) return;
+    setReactionLoading(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/scrim/${scrim.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync-reactions", restoreRemoved: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "참가자 로드에 실패했습니다.");
+      if (data.scrim) onScrimUpdate(data.scrim);
+      setMessage("디스코드 이모지 반응자를 참가자로 로드했습니다.");
+      await pollAuction(true).catch(() => {});
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "참가자 로드에 실패했습니다.");
+    } finally {
+      setReactionLoading(false);
+    }
+  }
+
   useEffect(() => {
     fetch("/api/me/roles", { cache: "no-store" })
       .then((r) => r.json())
@@ -1474,7 +1588,7 @@ function AuctionScrimPage({
       const data = await res.json();
       setAuction(data.auction ?? null);
       if (data.auction?.phase === "setup" && data.auction.captainPoints) {
-        try { setCaptainSelections(JSON.parse(data.auction.captainPoints)); } catch { /* ignore */ }
+        setCaptainSelections(normalizeCaptainSelections(data.auction.captainPoints));
       }
       if (data.auction?.phase !== "setup") {
         const scrimRes = await fetch(`/api/scrim/${scrim.id}`, { cache: "no-store" });
@@ -1482,16 +1596,39 @@ function AuctionScrimPage({
         if (scrimData.scrim) onScrimUpdate(scrimData.scrim);
       }
     } finally { if (!silent) setAuctionLoading(false); }
-  }, [scrim.id, onScrimUpdate]);
+  }, [scrim.id, onScrimUpdate, normalizeCaptainSelections]);
 
   useEffect(() => {
     let cancelled = false;
     pollAuction().catch(() => {});
-    const t = window.setInterval(() => { if (!cancelled) pollAuction(true).catch(() => {}); }, 1500);
+    const t = window.setInterval(() => { if (!cancelled) pollAuction(true).catch(() => {}); }, 10000);
     return () => { cancelled = true; window.clearInterval(t); };
   }, [pollAuction]);
 
-  useRealtime(`scrim:${scrim.id}`, () => { pollAuction(true).catch(() => {}); });
+  useRealtime(`scrim:${scrim.id}`, (event) => {
+    if (event.auction === null && event.action === "auction_reset") {
+      setAuction(null);
+      setCaptainSelections({});
+      return;
+    }
+
+    if (event.auction && typeof event.auction === "object") {
+      const nextAuction = event.auction as AuctionState;
+      setAuction(nextAuction);
+      if (nextAuction.phase === "setup" && nextAuction.captainPoints) {
+        setCaptainSelections(normalizeCaptainSelections(nextAuction.captainPoints));
+      }
+      if (event.action !== "auction_bid" && event.action !== "setup_captains") {
+        fetch(`/api/scrim/${scrim.id}`, { cache: "no-store" })
+          .then((res) => res.json())
+          .then((data) => { if (data.scrim) onScrimUpdate(data.scrim); })
+          .catch(() => {});
+      }
+      return;
+    }
+
+    pollAuction(true).catch(() => {});
+  });
 
   // 타이머 카운트다운
   useEffect(() => {
@@ -1514,13 +1651,57 @@ function AuctionScrimPage({
   const currentBids = parseJson<Record<string, number>>(auction?.currentBids, {});
   const failedQueue = parseJson<string[]>(auction?.failedQueue, []);
   const queue = parseJson<string[]>(auction?.queue, []);
+  const joinedCaptains = parseJson<string[]>(auction?.joinedCaptains, []);
+  const bidLog = parseJson<AuctionLogEntry[]>(auction?.bidLog, []);
+  const auditLog = parseJson<AuctionLogEntry[]>(auction?.auditLog, []);
+  const auctionPicks = useMemo(() => auction?.picks ?? [], [auction?.picks]);
+  const auctionBidHistory = useMemo(() => auction?.bidHistory ?? [], [auction?.bidHistory]);
   const captainIds = Object.keys(captainPoints);
+  const inviteCaptainIds = captainIds.length > 0 ? captainIds : Object.keys(captainSelections);
+  const setupCaptainIds = Object.keys(captainSelections);
 
   const playerMap = useMemo(() => {
     const m = new Map<string, ScrimPlayer>();
     scrim.players.forEach((p) => m.set(p.user.id, p));
     return m;
   }, [scrim.players]);
+
+  const playersForAuctionTeam = useCallback((teamId: string, captainId?: string) => {
+    const pickedUserIds = new Set(auctionPicks.filter((pick) => pick.team === teamId).map((pick) => pick.userId));
+    return scrim.players.filter((player) => player.user.id === captainId || player.team === teamId || pickedUserIds.has(player.user.id));
+  }, [auctionPicks, scrim.players]);
+
+  const inviteLinks = useMemo<AuctionInviteLink[]>(() => {
+    if (accessLinks.length > 0) return accessLinks;
+    const origin = typeof window === "undefined" ? "" : window.location.origin;
+    const base = `${origin}/dashboard/scrim/${scrim.id}`;
+    return [
+      { label: "주최자 링크", href: `${base}?auctionRole=host`, tone: "#f6c945" },
+      ...inviteCaptainIds.map((captainId, index) => {
+        const captain = playerMap.get(captainId);
+        return {
+          label: `${captain?.user.name ?? `팀장 ${index + 1}`} 링크`,
+          href: `${base}?auctionRole=captain&captainId=${encodeURIComponent(captainId)}`,
+          tone: ["#ff4655", "#f59e0b", "#f6c945", "#10b981", "#3b82f6"][index % 5],
+        };
+      }),
+      { label: "옵저버 링크", href: `${base}?auctionRole=observer`, tone: "#9aa8b3" },
+    ];
+  }, [accessLinks, scrim.id, inviteCaptainIds, playerMap]);
+
+  useEffect(() => {
+    if (!inviteOpen || !isAdmin) return;
+    let cancelled = false;
+    fetch(`/api/scrim/auction/access?sessionId=${encodeURIComponent(scrim.id)}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { links?: Array<{ label: string; href: string }> } | null) => {
+        if (cancelled || !data?.links) return;
+        const tones = ["#f6c945", "#ff4655", "#f59e0b", "#10b981", "#3b82f6", "#9aa8b3"];
+        setAccessLinks(data.links.map((link, index) => ({ ...link, tone: tones[index % tones.length] })));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [inviteOpen, isAdmin, scrim.id, auction?.captainPoints]);
 
   const currentPlayer = auction?.currentUserId ? playerMap.get(auction.currentUserId) : null;
 
@@ -1557,6 +1738,7 @@ function AuctionScrimPage({
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setMessage(data.error ?? "경매 시작에 실패했습니다."); return; }
     setAuction(data.auction);
+    setInviteOpen(true);
   }
 
   async function manualResolve() {
@@ -1580,6 +1762,23 @@ function AuctionScrimPage({
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setMessage(data.error ?? "처리에 실패했습니다."); return; }
     setAuction(data.auction);
+  }
+
+  async function auctionAdminAction(action: string, extra: Record<string, unknown> = {}) {
+    setBidding(true);
+    setMessage(null);
+    const res = await fetch("/api/scrim/auction", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: scrim.id, action, ...extra }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(data.error ?? "경매 조작에 실패했습니다.");
+    } else {
+      setAuction(data.auction);
+    }
+    setBidding(false);
   }
 
   async function submitBid(captainId: string) {
@@ -1614,14 +1813,73 @@ function AuctionScrimPage({
     setAuction(null); setCaptainSelections({});
   }
 
+  async function copyInviteLink(link: AuctionInviteLink) {
+    await navigator.clipboard.writeText(link.href);
+    setInviteCopied(link.label);
+    window.setTimeout(() => setInviteCopied((current) => (current === link.label ? null : current)), 1200);
+  }
+
   const timerPct = auction?.auctionDuration ? (timeLeft / auction.auctionDuration) * 100 : 0;
   const timerColor = timerPct > 50 ? "#00e7c2" : timerPct > 25 ? "#f6c945" : "#ff4655";
+  const inviteModal = inviteOpen ? (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-[640px] rounded-lg border border-[#2a3540] bg-[#101826] p-6 shadow-2xl shadow-black/60">
+        <div className="text-center">
+          <div className="text-3xl">🎉</div>
+          <div className="mt-3 text-2xl font-black text-white">경매방이 생성되었습니다!</div>
+          <div className="mt-1 text-sm font-bold text-[#9aa8b3]">{scrim.title}</div>
+        </div>
+        <div className="mt-5 space-y-3">
+          {inviteLinks.map((link) => (
+            <div key={link.href} className="rounded border border-[#2a3540] bg-[#162232] p-4">
+              <div className="mb-2 flex items-center gap-2 text-sm font-black" style={{ color: link.tone ?? "#f6c945" }}>
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: link.tone ?? "#f6c945" }} />
+                {link.label}
+              </div>
+              <div className="flex gap-2">
+                <input readOnly value={link.href} className="min-w-0 flex-1 rounded border border-[#314255] bg-[#0b1420] px-3 py-2 text-sm font-bold text-[#dce7ef]" />
+                <button type="button" onClick={() => void copyInviteLink(link)} className="rounded bg-[#314255] px-4 py-2 text-sm font-black text-white hover:bg-[#3f5269]">
+                  {inviteCopied === link.label ? "완료" : "복사"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        {setupCaptainIds.length > 0 && (
+          <div className="mt-5 rounded border border-[#2a3540] bg-[#0b1420] p-4">
+            <div className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-[#7b8a96]">팀장 입장 확인</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {setupCaptainIds.map((captainId, index) => {
+                const player = playerMap.get(captainId);
+                const joined = joinedCaptains.includes(captainId);
+                return (
+                  <div key={captainId} className="flex items-center justify-between gap-2 rounded bg-[#162232] px-3 py-2">
+                    <span className="min-w-0 truncate text-xs font-black text-white">{player ? resolveServerNick(player.user.id, guildMembers, player.user.name) : `${getDefaultTeamName(index)} 팀`}</span>
+                    <span className={`rounded px-2 py-0.5 text-[10px] font-black ${joined ? "bg-[#00e7c2]/15 text-[#7fffe6]" : "bg-[#24313c] text-[#9aa8b3]"}`}>{joined ? "입장" : "대기"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div className="mt-5 flex gap-2">
+          <button type="button" onClick={() => setInviteOpen(false)} className="flex-1 rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black hover:bg-[#ffd85a]">
+            바로 입장하기
+          </button>
+          <button type="button" onClick={() => setInviteOpen(false)} className="rounded border border-[#314255] px-4 py-3 text-sm font-black text-[#c8d3db] hover:border-[#4b6078]">
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   // ── 설정 단계 ──
   if (!auction || auction.phase === "setup") {
-    const participants = scrim.players.filter((p) => p.team === "participant" || p.role === "participant");
+    const participants = scrim.players;
     return (
       <div className="mx-auto max-w-[1100px]">
+        {inviteModal}
         <div className="mb-6">
           <Link href="/dashboard/scrim" className="text-xs font-bold text-[#7b8a96] hover:text-white">← 내전 목록</Link>
           <div className="mt-4 text-[10px] uppercase tracking-[0.32em] text-[#f6c945]">AUCTION SCRIM</div>
@@ -1634,6 +1892,36 @@ function AuctionScrimPage({
           )}
         </div>
         {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
+
+        {auction?.phase === "setup" && (
+          <section className="val-card mb-5 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#00e7c2]">CAPTAIN CHECK-IN</div>
+                <h2 className="mt-1 text-2xl font-black text-white">팀장 입장 대기 중</h2>
+                <p className="mt-1 text-sm font-bold text-[#9aa8b3]">공유 링크로 팀장들이 들어온 뒤 주최자 링크에서 실제 경매를 시작하세요.</p>
+              </div>
+              <button type="button" onClick={() => setInviteOpen(true)} className="rounded bg-[#f6c945] px-4 py-2 text-sm font-black text-black">초대 링크 보기</button>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {setupCaptainIds.map((captainId, index) => {
+                const player = playerMap.get(captainId);
+                const joined = joinedCaptains.includes(captainId);
+                return (
+                  <div key={captainId} className="flex items-center justify-between gap-3 rounded border border-[#2a3540] bg-[#111c24] px-3 py-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-black text-[#7b8a96]">{getDefaultTeamName(index)}</div>
+                      <div className="truncate text-sm font-black text-white">{player ? resolveServerNick(player.user.id, guildMembers, player.user.name) : captainId} 팀</div>
+                    </div>
+                    <span className={`rounded px-2 py-1 text-[11px] font-black ${joined ? "bg-[#00e7c2]/15 text-[#7fffe6]" : "bg-[#24313c] text-[#9aa8b3]"}`}>
+                      {joined ? "입장 완료" : "대기"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
           <div className="space-y-5">
@@ -1652,31 +1940,37 @@ function AuctionScrimPage({
                   </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">입찰 타이머</label>
-                    <button
-                      type="button"
-                      onClick={() => setTimerEnabled((v) => !v)}
-                      className={`relative mt-0.5 h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus:outline-none ${timerEnabled ? "bg-[#00e7c2]" : "bg-[#2a3540]"}`}
-                    >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${timerEnabled ? "translate-x-6" : "translate-x-1"}`} />
-                    </button>
-                  </div>
-                  {timerEnabled && (
-                    <div>
-                      <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">타이머 시간 (초)</label>
-                      <input
-                        type="number" min={10} max={120} step={5} value={timerSeconds}
-                        onChange={(e) => setTimerSeconds(parseInt(e.target.value, 10))}
-                        className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
-                      />
+                    <div className="flex h-[38px] items-center">
+                      <button
+                        type="button"
+                        onClick={() => setTimerEnabled((v) => !v)}
+                        className={`relative h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus:outline-none ${timerEnabled ? "bg-[#00e7c2]" : "bg-[#2a3540]"}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${timerEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
                     </div>
-                  )}
+                  </div>
+                  <div className={timerEnabled ? "" : "pointer-events-none opacity-40"}>
+                    <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">타이머 시간 (초)</label>
+                    <input
+                      type="number" min={10} max={300} step={5} value={timerSeconds}
+                      onChange={(e) => setTimerSeconds(parseInt(e.target.value, 10))}
+                      disabled={!timerEnabled}
+                      className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
+                    />
+                  </div>
                 </div>
                 <div className="mb-1 text-xs font-black text-white">팀장 선택 <span className="ml-1 font-normal text-[#7b8a96]">{Object.keys(captainSelections).length}명 선택됨 · 아래 참가자 목록에서 팀장 버튼을 눌러 선택하세요</span></div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" onClick={addRecruitment} disabled={saving} className="rounded border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50">추가 모집</button>
                   <button type="button" onClick={() => { setDummyRows([auctionEmptyRow()]); setDummyOpen(true); }} className="val-btn border border-[#f6c945]/40 bg-[#f6c945]/10 px-3 py-2 text-xs font-black text-[#f6c945]" title="테스트용 더미 참가자 추가">🧪 더미 데이터</button>
+                  {scrim.recruitmentChannelId && (
+                    <button type="button" onClick={() => void loadReactions()} disabled={saving || reactionLoading} className="rounded border border-[#2a3540] bg-[#111c24] px-4 py-2 text-xs font-black text-white disabled:opacity-50">
+                      {reactionLoading ? "로드 중..." : "참가자 로드"}
+                    </button>
+                  )}
                   <button type="button" onClick={startAuction} disabled={Object.keys(captainSelections).length < 2} className="val-btn bg-[#f6c945] px-5 py-2 text-sm font-black text-black disabled:opacity-40">
-                    🏷 경매 시작
+                    🏷 링크 생성
                   </button>
                 </div>
               </section>
@@ -1782,11 +2076,17 @@ function AuctionScrimPage({
                   </div>
                 ))}
               </div>
-              <button type="button" onClick={() => setDummyRows((prev) => [...prev, auctionEmptyRow()])}
-                disabled={dummyRows.length >= 20}
-                className="mt-3 w-full rounded border border-dashed border-[#2a3540] py-2 text-xs font-black text-[#7b8a96] hover:border-[#f6c945]/50 hover:text-[#f6c945] disabled:opacity-40">
-                + 참가자 추가
-              </button>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button type="button" onClick={fillRandomDummyRows}
+                  className="rounded border border-[#f6c945]/40 bg-[#f6c945]/10 py-2 text-xs font-black text-[#f6c945] hover:bg-[#f6c945]/15">
+                  랜덤 채우기
+                </button>
+                <button type="button" onClick={() => setDummyRows((prev) => [...prev, auctionEmptyRow()])}
+                  disabled={dummyRows.length >= 20}
+                  className="rounded border border-dashed border-[#2a3540] py-2 text-xs font-black text-[#7b8a96] hover:border-[#f6c945]/50 hover:text-[#f6c945] disabled:opacity-40">
+                  + 참가자 추가
+                </button>
+              </div>
               <div className="mt-4 flex justify-end gap-2">
                 <button type="button" onClick={() => setDummyOpen(false)}
                   className="rounded border border-[#2a3540] bg-[#0f1923]/70 px-5 py-2 text-sm font-black text-[#9aa8b3] hover:border-[#ff4655]/50 hover:text-white">
@@ -1805,18 +2105,32 @@ function AuctionScrimPage({
   }
 
   // ── 경매 진행 / 재경매 / 완료 단계 ──
-  const phaseLabel = auction.phase === "reauction" ? "재경매" : auction.phase === "done" ? "경매 완료" : "경매 진행 중";
-  const phaseColor = auction.phase === "done" ? "#00e7c2" : "#f6c945";
+  const phaseLabel = auction.phase === "paused" ? "일시정지" : auction.phase === "reauction" ? "재경매" : auction.phase === "done" ? "경매 완료" : "경매 진행 중";
+  const phaseColor = auction.phase === "done" ? "#00e7c2" : auction.phase === "paused" ? "#7b8a96" : "#f6c945";
 
   // 팀별 배정 결과
   const teamAssignments: Record<string, ScrimPlayer[]> = {};
   captainIds.forEach((cId, i) => {
     const tId = `team_${String.fromCharCode(97 + i)}`;
-    teamAssignments[tId] = scrim.players.filter((p) => p.team === tId);
+    teamAssignments[tId] = playersForAuctionTeam(tId, cId);
   });
+  const currentBidRows = Object.entries(currentBids)
+    .map(([captainId, amount]) => ({ captainId, amount }))
+    .filter((row) => row.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+  const highestBid = currentBidRows[0]?.amount ?? 0;
+  const highestCaptainId = currentBidRows[0]?.captainId ?? null;
+  const currentLotBidHistory = auction.currentUserId
+    ? auctionBidHistory.filter((bid) => bid.lotUserId === auction.currentUserId).slice(-8).reverse()
+    : [];
+  const boardTimeLeft = auction.phase === "paused" ? auction.auctionDuration : timeLeft;
+  const boardTimerPct = auction.auctionDuration ? (boardTimeLeft / auction.auctionDuration) * 100 : 0;
+  const boardTimerColor = auction.phase === "paused" ? "#7b8a96" : boardTimerPct > 50 ? "#00e7c2" : boardTimerPct > 25 ? "#f6c945" : "#ff4655";
+  const showLegacyAuctionPanel = false;
 
   return (
     <div className="mx-auto max-w-[1200px]">
+      {inviteModal}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/dashboard/scrim" className="text-xs font-bold text-[#7b8a96] hover:text-white">← 내전 목록</Link>
@@ -1828,6 +2142,14 @@ function AuctionScrimPage({
         </div>
         {isAdmin && (
           <div className="flex gap-2">
+            <button type="button" onClick={() => setInviteOpen(true)} className="rounded border border-[#f6c945]/45 bg-[#f6c945]/10 px-4 py-2 text-xs font-black text-[#ffe089] hover:border-[#f6c945]">초대 링크</button>
+            {false && auction?.phase === "paused" ? (
+              <button type="button" onClick={() => void auctionAdminAction("resume")} disabled={bidding} className="rounded border border-[#00e7c2]/45 bg-[#00e7c2]/10 px-4 py-2 text-xs font-black text-[#7fffe6] hover:border-[#00e7c2] disabled:opacity-50">경매 재개</button>
+            ) : (
+              false && (auction?.phase === "auction" || auction?.phase === "reauction") && (
+                <button type="button" onClick={() => void auctionAdminAction("pause")} disabled={bidding} className="rounded border border-[#7b8a96]/45 bg-[#7b8a96]/10 px-4 py-2 text-xs font-black text-[#c8d3db] hover:border-[#9aa8b3] disabled:opacity-50">일시정지</button>
+              )
+            )}
             <button type="button" onClick={resetAuction} className="rounded border border-[#ff4655]/35 bg-[#ff4655]/10 px-4 py-2 text-xs font-black text-[#ff8a95] hover:border-[#ff4655]">경매 초기화</button>
           </div>
         )}
@@ -1835,8 +2157,269 @@ function AuctionScrimPage({
 
       {message && <div className="mb-4 rounded border border-[#2a3540] bg-[#111c24] px-4 py-3 text-sm font-bold text-[#c8d3db]">{message}</div>}
 
+      {auction.phase === "paused" && (
+        <div className="mb-5 val-card p-5">
+          <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">PAUSED</div>
+          <div className="mt-2 text-2xl font-black text-white">경매가 일시정지되었습니다.</div>
+          <p className="mt-1 text-sm font-bold text-[#9aa8b3]">관리자가 재개하면 현재 매물부터 타이머가 다시 시작됩니다.</p>
+        </div>
+      )}
+
       {/* 현재 경매 중인 참가자 */}
-      {(auction.phase === "auction" || auction.phase === "reauction") && (
+      {(auction.phase === "auction" || auction.phase === "reauction" || auction.phase === "paused") && (
+        <div className="val-card mb-5 p-4">
+          {auction.auctionDuration > 0 && (
+            <div className="mb-4 overflow-hidden rounded-full bg-[#1d2732]" style={{ height: 8 }}>
+              <div className="h-full rounded-full transition-all duration-200" style={{ width: `${boardTimerPct}%`, backgroundColor: boardTimerColor }} />
+            </div>
+          )}
+          <div className="grid gap-4 xl:grid-cols-[390px_minmax(0,1fr)_330px]">
+            <section className="space-y-3">
+              {captainIds.map((cId, i) => {
+                const tId = `team_${String.fromCharCode(97 + i)}`;
+                const captain = playerMap.get(cId);
+                const color = TEAM_COLORS[i % TEAM_COLORS.length];
+                const teamMembers = playersForAuctionTeam(tId, cId).slice(0, 5);
+                const slots = Array.from({ length: 5 }, (_, slotIndex) => teamMembers[slotIndex] ?? null);
+                return (
+                  <div key={cId} className="rounded border border-[#2a3540] bg-[#111c24]">
+                    <div className="flex items-center justify-between gap-3 border-b border-[#2a3540] bg-[#162232] px-3 py-2">
+                      <div className="min-w-0 truncate text-sm font-black" style={{ color }}>{getDefaultTeamName(i)}</div>
+                      <div className="rounded bg-[#00e7c2]/12 px-3 py-1 text-sm font-black text-[#7fffe6]">포인트 {(captainPoints[cId] ?? 0).toLocaleString()}</div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2 p-3">
+                      {slots.map((member, slotIndex) => {
+                        const pick = member ? auctionPicks.find((row) => row.userId === member.user.id) : null;
+                        const isCaptain = member?.user.id === cId;
+                        const displayName = member ? resolveServerNick(member.user.id, guildMembers, member.user.name) : "";
+                        return (
+                          <div key={`${cId}-${slotIndex}`} className="min-h-[90px] rounded bg-[#0b141c] p-1.5 text-center">
+                            {member ? (
+                              <>
+                                {member.user.image ? <img src={member.user.image} alt="" className="mx-auto h-12 w-12 rounded object-cover" /> : <div className="mx-auto flex h-12 w-12 items-center justify-center rounded bg-[#24313c] text-lg font-black">{displayName.slice(0, 1)}</div>}
+                                <div className="mt-1 min-w-0 truncate whitespace-nowrap text-[11px] font-black text-white" title={displayName}>{displayName}</div>
+                                <div className="truncate whitespace-nowrap text-[10px] font-black" style={{ color }}>{isCaptain ? "팀장" : pick ? `${pick.amount}P` : "멤버"}</div>
+                              </>
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-3xl font-black text-[#56636f]">{slotIndex === 0 ? "C" : slotIndex === 1 ? "M" : "-"}</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="truncate border-t border-[#2a3540] px-3 py-2 text-[11px] font-bold text-[#9aa8b3]">
+                      팀장 {captain ? resolveServerNick(captain.user.id, guildMembers, captain.user.name) : "-"} · 현재 입찰 {(currentBids[cId] ?? 0).toLocaleString()}P
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+
+            <section className="grid content-start gap-3">
+              <div className="rounded border border-[#2a3540] bg-[#111c24] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="text-sm font-black text-white">{auction.phase === "paused" ? "경매 일시정지" : "현재 경매 매물"}</div>
+                  <div className="rounded bg-[#162232] px-3 py-1 text-sm font-black" style={{ color: boardTimerColor }}>{auction.auctionDuration > 0 ? `${boardTimeLeft}s` : "수동"}</div>
+                </div>
+                <div className="rounded border border-[#2a3540] bg-[#0b141c] p-4">
+                  {currentPlayer ? (
+                    <div className="grid gap-4 sm:grid-cols-[132px_minmax(0,1fr)]">
+                      {currentPlayer.user.image ? <img src={currentPlayer.user.image} alt="" className="h-[132px] w-[132px] rounded object-cover" /> : <div className="flex h-[132px] w-[132px] items-center justify-center rounded bg-[#24313c] text-5xl font-black">?</div>}
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7fffe6]">CURRENT PLAYER</div>
+                        <div className="mt-2 truncate whitespace-nowrap text-3xl font-black text-white" title={resolveServerNick(currentPlayer.user.id, guildMembers, currentPlayer.user.name)}>{resolveServerNick(currentPlayer.user.id, guildMembers, currentPlayer.user.name)}</div>
+                        {currentPlayer.user.riotAccounts.map((a) => (
+                          <div key={a.gameName} className="mt-1 truncate whitespace-nowrap text-sm font-bold text-[#9aa8b3]">
+                            {a.region.toUpperCase()} · {a.gameName}#{a.tagLine}
+                            {a.cachedTierName && <span className="ml-2 text-[#7fffe6]">{a.cachedTierName}</span>}
+                          </div>
+                        ))}
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                          <div className="rounded bg-[#162232] p-3">
+                            <div className="whitespace-nowrap text-[11px] font-black text-[#9aa8b3]">최고 입찰</div>
+                            <div className="truncate text-3xl font-black text-[#f6c945]">{highestBid.toLocaleString()}P</div>
+                          </div>
+                          <div className="rounded bg-[#162232] p-3">
+                            <div className="whitespace-nowrap text-[11px] font-black text-[#9aa8b3]">입찰 팀</div>
+                            <div className="truncate whitespace-nowrap text-xl font-black text-white">{highestCaptainId ? resolveServerNick(highestCaptainId, guildMembers, playerMap.get(highestCaptainId)?.user.name) : "없음"}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-12 text-center text-sm font-bold text-[#7b8a96]">현재 경매 매물이 없습니다.</div>
+                  )}
+                </div>
+              </div>
+              {false && isAdmin && (
+                <div className="grid grid-cols-2 gap-2">
+                  {auction?.phase === "paused" ? (
+                    <button type="button" onClick={() => void auctionAdminAction("resume")} disabled={bidding} className="rounded bg-[#00e7c2] px-4 py-3 text-sm font-black text-black disabled:opacity-50">타이머 재개</button>
+                  ) : (
+                    <button type="button" onClick={() => void auctionAdminAction("pause")} disabled={bidding} className="rounded border border-[#7b8a96]/45 bg-[#7b8a96]/10 px-4 py-3 text-sm font-black text-[#c8d3db] disabled:opacity-50">타이머 일시정지</button>
+                  )}
+                  <button type="button" onClick={() => void manualResolve()} disabled={bidding || auction?.phase === "paused"} className="rounded bg-[#f6c945] px-4 py-3 text-sm font-black text-black disabled:opacity-50">낙찰 처리</button>
+                </div>
+              )}
+            </section>
+
+            <aside className="space-y-3">
+              <div className="rounded border border-[#2a3540] bg-[#111c24]">
+                <div className="flex items-center justify-between border-b border-[#2a3540] bg-[#162232] px-3 py-2 text-sm font-black text-white">
+                  <span>경매순서</span>
+                  <span>{queue.length + (auction.currentUserId ? 1 : 0)}명</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 p-3">
+                  {[auction.currentUserId, ...queue].filter(Boolean).slice(0, 18).map((uid, index) => {
+                    const player = playerMap.get(uid as string);
+                    const displayName = player ? resolveServerNick(player.user.id, guildMembers, player.user.name) : String(uid);
+                    return (
+                      <div key={`${uid}-${index}`} className={`rounded p-2 text-center ${index === 0 ? "bg-[#f6c945]/12 ring-1 ring-[#f6c945]/45" : "bg-[#0b141c]"}`}>
+                        {player?.user.image ? <img src={player.user.image} alt="" className="mx-auto h-12 w-12 rounded object-cover" /> : <div className="mx-auto h-12 w-12 rounded bg-[#24313c]" />}
+                        <div className="mt-1 truncate whitespace-nowrap text-[11px] font-black text-white" title={displayName}>{displayName}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      )}
+
+      {showLegacyAuctionPanel && (auction.phase === "auction" || auction.phase === "reauction") && (
+        <div className="mb-5 rounded-none border border-[#2a4b5d] bg-[#0b3346] p-3 text-white shadow-2xl shadow-black/30">
+          {auction.auctionDuration > 0 && (
+            <div className="mb-3 overflow-hidden bg-[#123f54]" style={{ height: 8 }}>
+              <div className="h-full transition-all duration-200" style={{ width: `${timerPct}%`, backgroundColor: timerColor }} />
+            </div>
+          )}
+          <div className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)_360px]">
+            <section className="space-y-2">
+              {captainIds.map((cId, i) => {
+                const tId = `team_${String.fromCharCode(97 + i)}`;
+                const captain = playerMap.get(cId);
+                const color = TEAM_COLORS[i % TEAM_COLORS.length];
+                const teamMembers = playersForAuctionTeam(tId, cId).slice(0, 5);
+                const slots = Array.from({ length: 5 }, (_, slotIndex) => teamMembers[slotIndex] ?? null);
+                return (
+                  <div key={cId} className="border border-[#27546a] bg-[#123f54]">
+                    <div className="flex items-center justify-between border-b border-[#27546a] bg-[#164a60] px-3 py-1.5">
+                      <div className="text-sm font-black" style={{ color }}>{getDefaultTeamName(i)}</div>
+                      <div className="bg-[#78eaff] px-3 py-0.5 text-sm font-black text-[#082838]">포인트 {(captainPoints[cId] ?? 0).toLocaleString()}</div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2 p-2">
+                      {slots.map((member, slotIndex) => {
+                        const pick = member ? auctionPicks.find((row) => row.userId === member.user.id) : null;
+                        const isCaptain = member?.user.id === cId;
+                        return (
+                          <div key={`${cId}-${slotIndex}`} className="min-h-[74px] bg-[#22323a] p-1 text-center">
+                            {member ? (
+                              <>
+                                {member.user.image ? <img src={member.user.image} alt="" className="mx-auto h-11 w-11 object-cover" /> : <div className="mx-auto flex h-11 w-11 items-center justify-center bg-[#314653] text-lg font-black">{(resolveServerNick(member.user.id, guildMembers, member.user.name) ?? "?").slice(0, 1)}</div>}
+                                <div className="mt-1 truncate text-[10px] font-black text-white">{resolveServerNick(member.user.id, guildMembers, member.user.name)}</div>
+                                <div className="text-[10px] font-black" style={{ color }}>{isCaptain ? "팀장" : pick ? `${pick.amount}P` : "멤버"}</div>
+                              </>
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-4xl font-black text-[#657179]">{slotIndex === 0 ? "C" : slotIndex === 1 ? "M" : "-"}</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="border-t border-[#27546a] px-3 py-1 text-[11px] font-bold text-[#b9d8e3]">
+                      팀장 {captain ? resolveServerNick(captain.user.id, guildMembers, captain.user.name) : "-"} · 현재 입찰 {(currentBids[cId] ?? 0).toLocaleString()}P
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+
+            <section className="grid content-start gap-3">
+              <div className="border border-[#27546a] bg-[#123f54] p-4">
+                <div className="mb-3 text-center text-lg font-black text-[#d9f6ff]">잔여포인트로 대전 선택</div>
+                <div className="border border-[#2d5a70] bg-[#0f2838] p-4">
+                  {currentPlayer ? (
+                    <div className="grid gap-4 sm:grid-cols-[150px_minmax(0,1fr)]">
+                      {currentPlayer.user.image ? <img src={currentPlayer.user.image} alt="" className="h-[150px] w-[150px] object-cover" /> : <div className="flex h-[150px] w-[150px] items-center justify-center bg-[#24313c] text-5xl font-black">?</div>}
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#78eaff]">GROUP / YOUR AGENT</div>
+                        <div className="mt-2 truncate text-3xl font-black text-white">{resolveServerNick(currentPlayer.user.id, guildMembers, currentPlayer.user.name)}</div>
+                        {currentPlayer.user.riotAccounts.map((a) => (
+                          <div key={a.gameName} className="mt-1 text-sm font-bold text-[#b9d8e3]">
+                            {a.region.toUpperCase()} · {a.gameName}#{a.tagLine}
+                            {a.cachedTierName && <span className="ml-2 text-[#78eaff]">{a.cachedTierName}</span>}
+                          </div>
+                        ))}
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                          <div className="bg-[#1c5368] p-3">
+                            <div className="text-[11px] font-black text-[#b9d8e3]">최고 입찰</div>
+                            <div className="text-3xl font-black text-[#ffd48b]">{highestBid.toLocaleString()}P</div>
+                          </div>
+                          <div className="bg-[#1c5368] p-3">
+                            <div className="text-[11px] font-black text-[#b9d8e3]">입찰 팀</div>
+                            <div className="truncate text-xl font-black text-white">{highestCaptainId ? resolveServerNick(highestCaptainId, guildMembers, playerMap.get(highestCaptainId)?.user.name) : "없음"}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-12 text-center text-sm font-bold text-[#b9d8e3]">현재 경매 매물이 없습니다.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border border-[#27546a] bg-[#123f54] p-3">
+                <div className="mb-2 text-sm font-black text-[#d9f6ff]">입찰 현황</div>
+                <div className="max-h-[116px] space-y-1 overflow-y-auto pr-1 custom-scrollbar">
+                  {currentLotBidHistory.length === 0 ? (
+                    <div className="bg-[#0f2838] px-3 py-3 text-center text-xs font-bold text-[#8eb2c0]">입찰 대기 중</div>
+                  ) : currentLotBidHistory.map((bid) => (
+                    <div key={bid.id} className="flex justify-between bg-[#0f2838] px-3 py-1.5 text-sm font-bold">
+                      <span className="truncate">{resolveServerNick(bid.captainId, guildMembers, playerMap.get(bid.captainId)?.user.name)}</span>
+                      <span className="text-[#ffd48b]">{bid.amount.toLocaleString()}P</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <aside className="space-y-3">
+              <div className="border border-[#27546a] bg-[#123f54]">
+                <div className="flex items-center justify-between bg-[#164a60] px-3 py-1.5 text-sm font-black text-[#d9f6ff]">
+                  <span>경매순서</span>
+                  <span>{queue.length}명</span>
+                </div>
+                <div className="grid grid-cols-3 gap-px bg-[#27546a] p-px">
+                  {[auction.currentUserId, ...queue].filter(Boolean).slice(0, 18).map((uid, index) => {
+                    const player = playerMap.get(uid as string);
+                    return (
+                      <div key={`${uid}-${index}`} className="bg-[#17272e] p-2 text-center">
+                        {player?.user.image ? <img src={player.user.image} alt="" className="mx-auto h-12 w-12 object-cover" /> : <div className="mx-auto h-12 w-12 bg-[#314653]" />}
+                        <div className="mt-1 truncate text-[11px] font-black text-white">{player ? resolveServerNick(player.user.id, guildMembers, player.user.name) : uid}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="border border-[#27546a] bg-[#123f54]">
+                <div className="bg-[#164a60] px-3 py-1.5 text-sm font-black text-[#d9f6ff]">유찰순서</div>
+                <div className="min-h-[92px] space-y-1 p-2">
+                  {failedQueue.length === 0 ? (
+                    <div className="py-8 text-center text-xs font-bold text-[#8eb2c0]">유찰자 없음</div>
+                  ) : failedQueue.map((uid) => {
+                    const player = playerMap.get(uid);
+                    return <div key={uid} className="bg-[#0f2838] px-3 py-2 text-sm font-bold text-white">{player ? resolveServerNick(player.user.id, guildMembers, player.user.name) : uid}</div>;
+                  })}
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      )}
+
+      {showLegacyAuctionPanel && (auction.phase === "auction" || auction.phase === "reauction") && (
         <div className="mb-5">
           {/* 타이머 바 */}
           {auction.auctionDuration > 0 && (
@@ -1845,7 +2428,43 @@ function AuctionScrimPage({
             </div>
           )}
 
-          <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+          <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)_380px]">
+            <section className="space-y-3">
+              {captainIds.map((cId, i) => {
+                const tId = `team_${String.fromCharCode(97 + i)}`;
+                const captain = playerMap.get(cId);
+                const color = TEAM_COLORS[i % TEAM_COLORS.length];
+                const teamMembers = playersForAuctionTeam(tId, cId);
+                return (
+                  <div key={cId} className="val-card p-4" style={{ borderTop: `4px solid ${color}` }}>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-black" style={{ color }}>{getDefaultTeamName(i)}</div>
+                        <div className="truncate text-sm font-black text-white">{captain ? resolveServerNick(captain.user.id, guildMembers, captain.user.name) : "팀장"}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-black text-white">{(captainPoints[cId] ?? 0).toLocaleString()}<span className="ml-1 text-xs text-[#7b8a96]">P</span></div>
+                        {(currentBids[cId] ?? 0) > 0 && <div className="text-xs font-bold text-[#f6c945]">입찰 {currentBids[cId].toLocaleString()}P</div>}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      {teamMembers.map((member) => {
+                        const pick = auctionPicks.find((row) => row.userId === member.user.id);
+                        return (
+                          <div key={member.id} className="flex items-center gap-2 rounded bg-[#0b141c]/80 px-2 py-1.5">
+                            {member.user.image ? <img src={member.user.image} alt="" className="h-6 w-6 rounded-full object-cover" /> : <div className="h-6 w-6 rounded-full bg-[#24313c]" />}
+                            <span className="min-w-0 flex-1 truncate text-xs font-bold text-[#dce7ef]">{resolveServerNick(member.user.id, guildMembers, member.user.name) ?? "이름 없음"}</span>
+                            {member.user.id === cId && <span className="text-[10px] font-black text-[#f6c945]">C</span>}
+                            {pick && <span className="text-[10px] font-black text-[#7fffe6]">{pick.amount}P</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+
             {/* 현재 매물 */}
             <section className="val-card p-6">
               <div className="mb-1 flex items-center justify-between">
@@ -1921,7 +2540,7 @@ function AuctionScrimPage({
                 const myBid = currentBids[cId] ?? 0;
                 const myPoints = captainPoints[cId] ?? 0;
                 const color = TEAM_COLORS[i % TEAM_COLORS.length];
-                const teamMembers = scrim.players.filter((p) => p.team === tId && (p.role === "member" || p.role === "captain"));
+                const teamMembers = playersForAuctionTeam(tId, cId);
 
                 return (
                   <div key={cId} className="val-card p-4" style={{ borderTop: `3px solid ${color}` }}>
@@ -1939,7 +2558,7 @@ function AuctionScrimPage({
                       </div>
                     </div>
                     <div className="mb-2 text-[11px] text-[#7b8a96]">팀원 {teamMembers.length - 1}명 배정됨</div>
-                    {isAdmin && (
+                    {false && isAdmin && (
                       <div className="flex gap-2">
                         <input
                           type="number" min={1} max={myPoints} placeholder="입찰 금액"
@@ -1949,6 +2568,15 @@ function AuctionScrimPage({
                           className="min-w-0 flex-1 rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
                         />
                         <button type="button" onClick={() => void submitBid(cId)} disabled={bidding} className="rounded bg-[#f6c945] px-3 py-2 text-xs font-black text-black disabled:opacity-50">입찰</button>
+                        <button
+                          type="button"
+                          onClick={() => void auctionAdminAction("forceAssign", { captainId: cId, bidAmount: parseInt(bidAmounts[cId] ?? "0", 10) || 0 })}
+                          disabled={bidding}
+                          className="rounded border border-[#00e7c2]/35 bg-[#00e7c2]/10 px-3 py-2 text-xs font-black text-[#7fffe6] hover:border-[#00e7c2] disabled:opacity-50"
+                          title="입력한 금액으로 즉시 낙찰합니다. 금액이 비어 있으면 0P 처리됩니다."
+                        >
+                          강제낙찰
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1967,7 +2595,7 @@ function AuctionScrimPage({
             {captainIds.map((cId, i) => {
               const tId = `team_${String.fromCharCode(97 + i)}`;
               const color = TEAM_COLORS[i % TEAM_COLORS.length];
-              const members = scrim.players.filter((p) => p.team === tId);
+              const members = playersForAuctionTeam(tId, cId);
               const remainPoints = captainPoints[cId] ?? 0;
               return (
                 <div key={cId} className="rounded border border-[#2a3540] overflow-hidden">
@@ -1994,13 +2622,13 @@ function AuctionScrimPage({
       )}
 
       {/* 포인트 현황 (진행 중일 때) */}
-      {(auction.phase === "auction" || auction.phase === "reauction") && (
+      {showLegacyAuctionPanel && (auction.phase === "auction" || auction.phase === "reauction") && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-5">
           {captainIds.map((cId, i) => {
             const captain = playerMap.get(cId);
             const color = TEAM_COLORS[i % TEAM_COLORS.length];
             const tId = `team_${String.fromCharCode(97 + i)}`;
-            const memberCount = scrim.players.filter((p) => p.team === tId && p.role === "member").length;
+            const memberCount = playersForAuctionTeam(tId, cId).filter((p) => p.user.id !== cId).length;
             return (
               <div key={cId} className="val-card p-4" style={{ borderTop: `3px solid ${color}` }}>
                 <div className="text-xs font-black" style={{ color }}>{getDefaultTeamName(i)}</div>
@@ -2030,7 +2658,62 @@ function AuctionScrimPage({
           </div>
         </div>
       )}
+
+      {(bidLog.length > 0 || auditLog.length > 0) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <AuctionLogPanel title="입찰 로그" logs={bidLog} guildMembers={guildMembers} playerMap={playerMap} emptyText="아직 입찰 기록이 없습니다." />
+          <AuctionLogPanel title="운영 로그" logs={auditLog} guildMembers={guildMembers} playerMap={playerMap} emptyText="아직 운영 기록이 없습니다." />
+        </div>
+      )}
     </div>
+  );
+}
+
+function AuctionLogPanel({
+  title,
+  logs,
+  guildMembers,
+  playerMap,
+  emptyText,
+}: {
+  title: string;
+  logs: AuctionLogEntry[];
+  guildMembers: GuildMemberOption[];
+  playerMap: Map<string, ScrimPlayer>;
+  emptyText: string;
+}) {
+  function name(userId?: string) {
+    if (!userId) return "-";
+    const player = playerMap.get(userId);
+    return resolveServerNick(userId, guildMembers, player?.user.name);
+  }
+
+  return (
+    <section className="val-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">{title}</div>
+        <div className="text-[11px] font-bold text-[#56636f]">{logs.length}건</div>
+      </div>
+      {logs.length === 0 ? (
+        <div className="rounded border border-dashed border-[#2a3540] py-6 text-center text-xs font-bold text-[#7b8a96]">{emptyText}</div>
+      ) : (
+        <div className="max-h-72 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
+          {logs.slice().reverse().map((log) => (
+            <div key={log.id} className="rounded-lg border border-[#2a3540] bg-[#0b141c]/70 px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-black text-white">{log.message}</span>
+                <span className="text-[10px] font-bold text-[#56636f]">{new Date(log.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div className="mt-1 text-[11px] font-bold text-[#7b8a96]">
+                {log.captainId && <span>팀장 {name(log.captainId)} </span>}
+                {log.targetUserId && <span>대상 {name(log.targetUserId)} </span>}
+                {typeof log.amount === "number" && <span>{log.amount}P</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2109,8 +2792,8 @@ function ParticipantList({
     "minmax(150px,1.15fr)",
     showRiot ? "minmax(170px,1.05fr)" : null,
     showTier ? "86px" : null,
-    "66px",
-    showRole ? "86px" : null,
+    "78px",
+    showRole ? "minmax(190px,1fr)" : null,
     showAgents ? "minmax(86px,0.65fr)" : null,
     captainMode ? "60px" : null,
     "28px",
@@ -2122,7 +2805,7 @@ function ParticipantList({
     <div className="overflow-hidden rounded border border-[#2a3540] bg-[#0b141c]/50">
       <div className="overflow-x-auto">
         <div style={{ minWidth: "400px" }}>
-          <div className="items-center gap-1.5 border-b border-[#2a3540] bg-[#0f1923] px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]"
+          <div className="items-center gap-3 border-b border-[#2a3540] bg-[#0f1923] px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-[#7b8a96]"
             style={{ display: "grid", gridTemplateColumns: gridCols }}>
             <div>Player</div>
             {showRiot && <div>Riot ID</div>}
@@ -2196,8 +2879,8 @@ function ParticipantRow({
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", player.id);
       }}
-      className={`cursor-grab items-center gap-1.5 px-2 py-1.5 transition active:cursor-grabbing ${isSelected ? "bg-[#f6c945]/8 hover:bg-[#f6c945]/12" : "hover:bg-[#13212b]"}`}
-      style={{ display: "grid", gridTemplateColumns: gridCols ?? "minmax(150px,1.15fr) minmax(170px,1.05fr) 86px 66px 86px minmax(86px,0.65fr) 28px" }}
+      className={`cursor-grab items-center gap-3 px-2 py-1.5 transition active:cursor-grabbing ${isSelected ? "bg-[#f6c945]/8 hover:bg-[#f6c945]/12" : "hover:bg-[#13212b]"}`}
+      style={{ display: "grid", gridTemplateColumns: gridCols ?? "minmax(150px,1.15fr) minmax(170px,1.05fr) 86px 78px minmax(190px,1fr) minmax(86px,0.65fr) 28px" }}
     >
       <div className="flex min-w-0 items-center gap-1.5">
         {player.user.image ? (
@@ -2238,20 +2921,22 @@ function ParticipantRow({
       <div className="text-right">
         {kd ? (
           <div>
-            <div className={kd.kd >= 1 ? "text-sm font-black text-[#00e7c2]" : "text-sm font-black text-[#ff4655]"}>
+            <div className="text-sm font-black text-white">
               {kd.kd.toFixed(2)}
             </div>
-            <div className="text-[9px] font-bold uppercase text-[#7b8a96]">{kd.source === "scrim" ? "내전" : "랭크"}</div>
+            <div className={`text-[9px] font-black uppercase ${kd.source === "scrim" ? "text-[#00e7c2]" : "text-[#b8a7ff]"}`}>
+              {kd.source === "scrim" ? "내전" : "랭크"}
+            </div>
           </div>
         ) : (
           <span className="text-xs font-bold text-[#52616d]">-</span>
         )}
       </div>
       {showRole && (
-        <div className="flex min-w-0 flex-wrap gap-1">
+        <div className="flex min-w-0 flex-nowrap gap-1 overflow-hidden">
           {roleLabels.length > 0 ? (
-            roleLabels.slice(0, 2).map((role) => (
-              <span key={role} className="rounded bg-[#24313c] px-1.5 py-0.5 text-[10px] font-bold text-[#c8d3db]">
+            roleLabels.map((role) => (
+              <span key={role} className="shrink-0 rounded bg-[#24313c] px-1.5 py-0.5 text-[10px] font-bold text-[#c8d3db]">
                 {role}
               </span>
             ))
@@ -2340,16 +3025,27 @@ function TeamBoard({ teamId, name, color, captain, members, onDropCaptain, onDro
           <span className="rounded border border-[#2a3540] px-2 py-1 text-[11px] font-black text-[#7b8a96]">{members.length + (captain ? 1 : 0)}명</span>
         </div>
       </div>
-      <div className="grid gap-4 p-4">
+      <div className="p-4 space-y-4">
         {onDropCaptain && (
-          <DropAreaMini label="팀장" onDrop={onDropCaptain}>{captain ? <PlayerCard player={captain} guildMembers={guildMembers} settings={settings} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}</DropAreaMini>
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDropCaptain(id); }}
+          >
+            <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">팀장</div>
+            {captain ? <PlayerCard player={captain} guildMembers={guildMembers} settings={settings} onRemove={onRemove ? () => onRemove(captain.id) : undefined} /> : <EmptyState text="팀장 배치" />}
+          </div>
         )}
-        <DropAreaMini label="팀원" onDrop={onDropMember}>
+        {onDropCaptain && <div className="border-t border-[#2a3540]" />}
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) onDropMember(id); }}
+        >
+          <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">팀원</div>
           <div className="grid gap-2">
             {members.map((p) => <PlayerCard key={p.id} player={p} guildMembers={guildMembers} settings={settings} onRemove={onRemove ? () => onRemove(p.id) : undefined} />)}
             {members.length === 0 && <EmptyState text="팀원 배치" />}
           </div>
-        </DropAreaMini>
+        </div>
       </div>
       <span className="sr-only">{teamId}</span>
     </article>
@@ -2366,7 +3062,7 @@ function DropAreaMini({ label, children, onDrop }: { label: string; children: Re
         const id = e.dataTransfer.getData("text/plain"); 
         if (id) onDrop(id); 
       }}>
-      <div className="mb-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#7b8a96]">{label}</div>
+      <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">{label}</div>
       {children}
     </div>
   );
@@ -2386,9 +3082,9 @@ function PlayerCard({ player, compact = false, onRemove, guildMembers = [], sett
   const showAgents = settings?.showFavoriteAgents !== false;
 
   return (
-    <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab flex flex-col h-full min-h-[120px] rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
+    <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
       <div className="flex items-center gap-3">
-        {player.user.image ? <img src={player.user.image} alt="" className={compact ? "h-9 w-9 rounded-full object-cover" : "h-12 w-12 rounded object-cover"} /> : <div className={compact ? "h-9 w-9 rounded-full bg-[#24313c]" : "h-12 w-12 rounded bg-[#24313c]"} />}
+        {player.user.image ? <img src={player.user.image} alt="" className={compact ? "h-9 w-9 rounded object-cover" : "h-12 w-12 rounded object-cover"} /> : <div className={compact ? "h-9 w-9 rounded bg-[#24313c]" : "h-12 w-12 rounded bg-[#24313c]"} />}
         <div className="min-w-0 flex-1">
           {showDiscord && <div className="truncate text-sm font-black text-white">{resolveServerNick(player.user.id, guildMembers, player.user.name)}</div>}
           {showRiot && <div className="truncate text-[11px] text-[#7b8a96]">{riotNames.join(" · ") || "Riot 계정 미연동"}</div>}

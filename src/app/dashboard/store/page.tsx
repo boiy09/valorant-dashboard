@@ -23,11 +23,20 @@ interface StoreResponse {
 
 const REGION_LABELS: Record<RiotRegion, string> = { KR: "한섭", AP: "아섭" };
 
+function regionPriority(region: string) {
+  const normalized = region.toUpperCase();
+  if (normalized === "KR") return 0;
+  if (normalized === "AP") return 1;
+  return 2;
+}
+
 function formatCountdown(seconds: number) {
   if (seconds <= 0) return "갱신됨";
-  const h = Math.floor(seconds / 3600);
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
+  if (d > 0) return h > 0 ? `${d}일 ${h}시간` : `${d}일`;
   if (h > 0) return `${h}시간 ${m}분`;
   if (m > 0) return `${m}분 ${s}초`;
   return `${s}초`;
@@ -82,9 +91,9 @@ function SkinCard({ offer }: { offer: StoreOffer }) {
   );
 }
 
-function BundleCard({ bundle }: { bundle: StoreBundle }) {
+function BundleCard({ bundle, onOpen }: { bundle: StoreBundle; onOpen: () => void }) {
   return (
-    <div className="val-card overflow-hidden">
+    <button type="button" onClick={onOpen} className="val-card block w-full overflow-hidden text-left transition-colors hover:border-[#ff4655]/60">
       <div className="relative flex h-44 items-center justify-center bg-[#0a1520]">
         {bundle.displayIcon ? (
           <img
@@ -109,33 +118,131 @@ function BundleCard({ bundle }: { bundle: StoreBundle }) {
               </span>
             )}
           </div>
+          {bundle.items?.length > 0 && (
+            <div className="mt-1 text-[10px] font-bold text-[#9aa8b3]">구성품 {bundle.items.length}개 보기</div>
+          )}
         </div>
+      </div>
+    </button>
+  );
+}
+
+function BundleDetailModal({ bundle, onClose }: { bundle: StoreBundle; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/80 px-4 py-6" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="w-full max-w-5xl overflow-hidden rounded border border-[#2a3540] bg-[#0f1923] shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-[#2a3540] px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ff4655]">Bundle Details</div>
+            <div className="truncate text-lg font-black text-white">{bundle.name}</div>
+            <div className="mt-1 flex items-center gap-1.5 text-sm font-bold text-[#0bc4b4]">
+              <VpIcon />
+              {bundle.cost.toLocaleString()}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="rounded border border-[#2a3540] bg-[#111c24] px-3 py-2 text-xs font-black text-[#9aa8b3] hover:border-[#ff4655]/60 hover:text-white">
+            닫기
+          </button>
+        </div>
+
+        {bundle.items?.length ? (
+          <div className="grid max-h-[72vh] gap-3 overflow-auto p-4 sm:grid-cols-2 lg:grid-cols-3">
+            {bundle.items.map((item, index) => (
+              <article key={`${item.name}-${index}`} className="overflow-hidden rounded border border-[#263442] bg-[#0b141c]">
+                <div className="flex h-32 items-center justify-center bg-[#08131d]">
+                  {item.displayIcon ? (
+                    <img src={item.displayIcon} alt={item.name} className="h-full w-full object-contain p-3" loading="lazy" />
+                  ) : (
+                    <span className="text-xs font-black text-[#4a5a68]">{item.type}</span>
+                  )}
+                </div>
+                <div className="border-t border-[#263442] p-3">
+                  <div className="truncate text-sm font-black text-white" title={item.name}>{item.name}</div>
+                  <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-[#7b8a96]">{item.type}</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="flex items-center gap-1 font-black text-[#0bc4b4]">
+                      <VpIcon />
+                      {item.discountedPrice.toLocaleString()}
+                    </span>
+                    {item.basePrice !== item.discountedPrice && (
+                      <span className="text-[#7b8a96] line-through">{item.basePrice.toLocaleString()}</span>
+                    )}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-sm text-[#7b8a96]">구성품 정보를 불러오지 못했습니다.</div>
+        )}
       </div>
     </div>
   );
 }
 
 function BattlepassBar({ bp }: { bp: BattlepassData }) {
+  const objectiveXp = Math.max(1, bp.objectiveXp ?? 2000);
+  const currentXp = Math.min(bp.progressionTowardsObjective, objectiveXp);
+  const percent = Math.min(100, Math.round((currentXp / objectiveXp) * 1000) / 10);
+
   return (
     <div className="val-card p-4">
       <div className="mb-3 flex items-center justify-between">
-        <div className="text-xs uppercase tracking-widest text-[#7b8a96]">배틀패스</div>
-        <div className="text-sm font-black text-white">레벨 {bp.totalLevelsCompleted}</div>
+        <div>
+          <div className="text-xs uppercase tracking-widest text-[#7b8a96]">배틀패스</div>
+          {bp.displayName && <div className="mt-1 text-sm font-black text-white">{bp.displayName}</div>}
+        </div>
+        <div className="rounded border border-[#2a3540] bg-[#0f1923] px-3 py-1 text-sm font-black text-white">
+          {bp.currentTier}티어 진행 중
+        </div>
       </div>
 
       {/* 현재 레벨 진행도 */}
       <div className="mb-3">
         <div className="mb-1 flex items-center justify-between text-[11px] text-[#7b8a96]">
-          <span>현재 레벨 진행도</span>
-          <span className="font-bold text-[#ece8e1]">{bp.progressionTowardsObjective.toLocaleString()} XP</span>
+          <span>현재 티어 진행도</span>
+          <span className="font-bold text-[#ece8e1]">
+            {currentXp.toLocaleString()} / {objectiveXp.toLocaleString()} XP
+          </span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#1a2d3e]">
           <div
             className="h-full rounded-full bg-[#ff4655] transition-all"
-            style={{ width: `${Math.min(100, (bp.progressionTowardsObjective / 2000) * 100)}%` }}
+            style={{ width: `${percent}%` }}
           />
         </div>
+        <div className="mt-1 text-right text-[10px] font-bold text-[#7b8a96]">{percent}%</div>
       </div>
+
+      {bp.rewards?.length > 0 && (
+        <div className="mb-3 border-t border-[#1a2d3e] pt-3">
+          <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-[#7b8a96]">보상 미리보기</div>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+            {bp.rewards.map((reward) => (
+              <div
+                key={`${reward.tier}-${reward.type}-${reward.name}`}
+                className={`overflow-hidden rounded border bg-[#0f1923] ${
+                  reward.isCurrent ? "border-[#f6c945]" : "border-[#2a3540]"
+                }`}
+              >
+                <div className="flex aspect-square items-center justify-center bg-[#0a1520]">
+                  {reward.icon ? (
+                    <img src={reward.icon} alt={reward.name} className="h-full w-full object-contain p-2" loading="lazy" />
+                  ) : (
+                    <span className="px-1 text-center text-[10px] font-black text-[#7b8a96]">{reward.type}</span>
+                  )}
+                </div>
+                <div className="border-t border-[#2a3540] px-1.5 py-1.5">
+                  <div className="text-[10px] font-black text-[#7b8a96]">{reward.tier}티어</div>
+                  <div className="truncate text-[10px] font-bold text-white" title={reward.name}>
+                    {reward.amount > 1 ? `${reward.name} x${reward.amount}` : reward.name}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 시즌 누적 XP */}
       <div className="border-t border-[#1a2d3e] pt-3 flex items-center justify-between text-[11px] text-[#7b8a96]">
@@ -192,6 +299,7 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
   const [tick, setTick] = useState(0);
   const [sharing, setSharing] = useState(false);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const [selectedBundle, setSelectedBundle] = useState<StoreBundle | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60000);
@@ -304,7 +412,7 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
               </div>
               <div className={`grid gap-3 ${data.store!.bundles.length === 1 ? "grid-cols-1" : data.store!.bundles.length === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
                 {data.store!.bundles.map((bundle, i) => (
-                  <BundleCard key={i} bundle={bundle} />
+                  <BundleCard key={i} bundle={bundle} onOpen={() => setSelectedBundle(bundle)} />
                 ))}
               </div>
             </div>
@@ -314,6 +422,7 @@ function AccountStoreSection({ data }: { data: AccountStore }) {
           {data.battlepass && <BattlepassBar bp={data.battlepass} />}
         </>
       )}
+      {selectedBundle && <BundleDetailModal bundle={selectedBundle} onClose={() => setSelectedBundle(null)} />}
     </section>
   );
 }
@@ -372,7 +481,7 @@ export default function StorePage() {
           연동된 라이엇 계정이 없습니다. 라이엇 연동 탭에서 계정을 연결해 주세요.
         </div>
       ) : (
-        data?.accounts?.map((account) => (
+        [...(data?.accounts ?? [])].sort((a, b) => regionPriority(a.region) - regionPriority(b.region)).map((account) => (
           <AccountStoreSection key={`${account.region}-${account.riotId}`} data={account} />
         ))
       )}

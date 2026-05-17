@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 
 interface VctMatch {
   leagueName: string;
@@ -14,7 +15,6 @@ interface VctMatch {
   score: string;
   vodUrl?: string | null;
 }
-import { useRealtime } from "@/hooks/useRealtime";
 
 type CalendarType = "schedule" | "scrim" | "auction";
 
@@ -144,6 +144,14 @@ export default function SchedulePage() {
   }, [visibleItems]);
   const selectedItems = byDay.get(dayKey(selectedDate)) ?? [];
   const days = useMemo(() => buildMonthDays(cursor), [cursor]);
+  const groupedVctMatches = useMemo(() => {
+    const map = new Map<string, VctMatch[]>();
+    for (const match of vctMatches) {
+      const key = match.leagueName || match.leagueCode || "VCT";
+      map.set(key, [...(map.get(key) ?? []), match]);
+    }
+    return Array.from(map.entries()).map(([leagueName, matches]) => ({ leagueName, matches }));
+  }, [vctMatches]);
 
   function moveMonth(amount: number) {
     setCursor((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
@@ -225,19 +233,47 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      {!vctLoading && vctMatches.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded border border-[#2a3540] bg-[#111c24]">
+      <div className="mb-6 overflow-hidden rounded border border-[#2a3540] bg-[#111c24]">
           <div className="flex items-center justify-between border-b border-[#2a3540] px-4 py-3">
             <div className="text-xs font-black uppercase tracking-widest text-[#ff4655]">VCT 대회 일정</div>
-            <div className="text-xs text-[#7b8a96]">{vctMatches.length}경기</div>
+            <div className="text-xs text-[#7b8a96]">{vctLoading ? "불러오는 중" : `${vctMatches.length}경기`}</div>
           </div>
-          <div className="divide-y divide-[#1a2830]">
-            {vctMatches.slice(0, 10).map((match, i) => (
-              <VctMatchRow key={i} match={match} />
+          {vctLoading ? (
+            <div className="grid gap-3 p-3 lg:grid-cols-3">
+              {["VCT Pacific", "VCT Americas", "VCT EMEA"].map((league) => (
+                <section key={league} className="overflow-hidden rounded border border-[#263442] bg-[#0b141c]">
+                  <div className="flex items-center justify-between border-b border-[#263442] bg-[#111c24] px-4 py-2">
+                    <div className="text-xs font-black text-white">{league}</div>
+                    <div className="h-3 w-10 animate-pulse rounded bg-[#263442]" />
+                  </div>
+                  <div className="space-y-2 p-3">
+                    {[0, 1, 2].map((item) => (
+                      <div key={item} className="h-10 animate-pulse rounded bg-[#14212b]" />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : groupedVctMatches.length === 0 ? (
+            <div className="p-6 text-center text-sm text-[#7b8a96]">표시할 VCT 일정이 없습니다.</div>
+          ) : (
+            <div className="grid gap-3 p-3 lg:grid-cols-3">
+            {groupedVctMatches.map((group) => (
+              <section key={group.leagueName} className="overflow-hidden rounded border border-[#263442] bg-[#0b141c]">
+                <div className="flex items-center justify-between border-b border-[#263442] bg-[#111c24] px-4 py-2">
+                  <div className="text-xs font-black text-white">{group.leagueName}</div>
+                  <div className="text-[10px] font-bold text-[#7b8a96]">{group.matches.length}경기</div>
+                </div>
+                <div className="divide-y divide-[#1a2830]">
+                  {group.matches.slice(0, 6).map((match, i) => (
+                    <VctMatchRow key={`${group.leagueName}-${match.startsAt}-${i}`} match={match} />
+                  ))}
+                </div>
+              </section>
             ))}
-          </div>
+            </div>
+          )}
         </div>
-      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="val-card overflow-hidden">
@@ -343,20 +379,13 @@ function VctMatchRow({ match }: { match: VctMatch }) {
         <span className="truncate text-xs font-bold text-white">{match.teamTwo}</span>
       </div>
       <div className="flex flex-shrink-0 items-center gap-2">
-        {isLive && (
-          <span className="rounded bg-[#ff4655] px-1.5 py-0.5 text-[10px] font-black text-white">LIVE</span>
-        )}
+        <span className="whitespace-nowrap text-[10px] text-[#9aa8b3]">{dateStr} {timeStr}</span>
+        {isLive && <span className="rounded bg-[#ff4655] px-1.5 py-0.5 text-[10px] font-black text-white">LIVE</span>}
         {isDone && match.vodUrl && (
-          <a href={match.vodUrl} target="_blank" rel="noopener noreferrer" className="rounded border border-[#2a3540] px-1.5 py-0.5 text-[10px] text-[#7b8a96] hover:text-white">
-            VOD
-          </a>
+          <a href={match.vodUrl} target="_blank" rel="noopener noreferrer" className="rounded border border-[#2a3540] px-1.5 py-0.5 text-[10px] text-[#7b8a96] hover:text-white">VOD</a>
         )}
-        {isUpcoming && (
-          <span className="text-[10px] text-[#7b8a96]">{dateStr} {timeStr}</span>
-        )}
-        {isDone && !match.vodUrl && (
-          <span className="text-[10px] text-[#4a5a68]">종료</span>
-        )}
+        {isUpcoming && <span className="rounded border border-[#2a3540] px-1.5 py-0.5 text-[10px] font-black text-[#7fffe6]">예정</span>}
+        {isDone && !match.vodUrl && <span className="text-[10px] text-[#4a5a68]">종료</span>}
       </div>
     </div>
   );

@@ -152,8 +152,8 @@ export function registerEvents(client: BotClient) {
 
           await prisma.guildMember.upsert({
             where: { userId_guildId: { userId: user.id, guildId: dbGuild.id } },
-            update: { roles, nickname: member.nickname ?? undefined },
-            create: { userId: user.id, guildId: dbGuild.id, roles, nickname: member.nickname ?? undefined },
+            update: { roles, nickname: member.nickname ?? undefined, joinedAt: member.joinedAt ?? undefined },
+            create: { userId: user.id, guildId: dbGuild.id, roles, nickname: member.nickname ?? undefined, joinedAt: member.joinedAt ?? undefined },
           });
         }
 
@@ -252,17 +252,23 @@ export function registerEvents(client: BotClient) {
       });
 
       if (message.member) {
+        const roles = message.member.roles.cache
+          .filter((role) => role.name !== "@everyone")
+          .map((role) => role.name)
+          .join(",");
         await prisma.guildMember.upsert({
           where: { userId_guildId: { userId: user.id, guildId: guild.id } },
           update: {
-            roles: message.member.roles.cache.map((role) => role.name),
+            roles,
             nickname: message.member.nickname ?? undefined,
+            joinedAt: message.member.joinedAt ?? undefined,
           },
           create: {
             userId: user.id,
             guildId: guild.id,
-            roles: message.member.roles.cache.map((role) => role.name),
+            roles,
             nickname: message.member.nickname ?? undefined,
+            joinedAt: message.member.joinedAt ?? undefined,
           },
         });
       }
@@ -372,8 +378,8 @@ export function registerEvents(client: BotClient) {
 
         await prisma.guildMember.upsert({
           where: { userId_guildId: { userId: user.id, guildId: dbGuild.id } },
-          update: { roles, nickname: member.nickname ?? undefined },
-          create: { userId: user.id, guildId: dbGuild.id, roles, nickname: member.nickname ?? undefined },
+          update: { roles, nickname: member.nickname ?? undefined, joinedAt: member.joinedAt ?? undefined },
+          create: { userId: user.id, guildId: dbGuild.id, roles, nickname: member.nickname ?? undefined, joinedAt: member.joinedAt ?? undefined },
         });
       }
     } catch (error) {
@@ -401,8 +407,8 @@ export function registerEvents(client: BotClient) {
 
     await prisma.guildMember.upsert({
       where: { userId_guildId: { userId: user.id, guildId: guild.id } },
-      update: {},
-      create: { userId: user.id, guildId: guild.id },
+      update: { joinedAt: member.joinedAt ?? undefined },
+      create: { userId: user.id, guildId: guild.id, joinedAt: member.joinedAt ?? undefined },
     });
 
     await recordMemberJoin(user.id, guild.id).catch((error) => {
@@ -507,8 +513,8 @@ export function registerEvents(client: BotClient) {
 
     await prisma.guildMember.upsert({
       where: { userId_guildId: { userId: user.id, guildId: guild.id } },
-      update: { roles, nickname: member.nickname ?? undefined },
-      create: { userId: user.id, guildId: guild.id, roles, nickname: member.nickname ?? undefined },
+      update: { roles, nickname: member.nickname ?? undefined, joinedAt: member.joinedAt ?? undefined },
+      create: { userId: user.id, guildId: guild.id, roles, nickname: member.nickname ?? undefined, joinedAt: member.joinedAt ?? undefined },
     });
   });
 }

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { getRankIconByTier } from "@/lib/valorant";
 import { ensureValidTokens, fetchRank, fetchProfile } from "@/lib/rankFetcher";
 
+export const maxDuration = 60;
+
 type MemberAccount = {
   puuid: string;
   gameName: string;
@@ -34,6 +36,9 @@ type MemberRow = {
     discordId: string | null;
     riotGameName: string | null;
     riotTagLine: string | null;
+    profileBio: string | null;
+    valorantRole: string | null;
+    favoriteAgents: string | null;
     riotAccounts: MemberAccount[];
   };
 };
@@ -48,6 +53,24 @@ type VoiceActivitySummary = {
 
 function toRegionLabel(region: string) {
   return region.toUpperCase() === "AP" ? "AP" : "KR";
+}
+
+function regionPriority(region: string) {
+  const normalized = toRegionLabel(region);
+  if (normalized === "KR") return 0;
+  if (normalized === "AP") return 1;
+  return 2;
+}
+
+function parseFavoriteAgents(value: string | null) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
 }
 
 async function settleInBatches<T, R>(items: T[], size: number, task: (item: T) => Promise<R>) {
@@ -83,6 +106,9 @@ export async function GET(req: NextRequest) {
           discordId: true,
           riotGameName: true,
           riotTagLine: true,
+          profileBio: true,
+          valorantRole: true,
+          favoriteAgents: true,
           riotAccounts: {
             select: {
               puuid: true,
@@ -100,7 +126,7 @@ export async function GET(req: NextRequest) {
               cachedCard: true,
               rankCachedAt: true,
             },
-            orderBy: { region: "asc" },
+            orderBy: { createdAt: "asc" },
           },
         },
       },
@@ -218,7 +244,10 @@ export async function GET(req: NextRequest) {
       riotId: member.user.riotGameName
         ? `${member.user.riotGameName}#${member.user.riotTagLine}`
         : null,
-      riotAccounts: member.user.riotAccounts.map((account) => accountDetails.get(account.puuid) ?? {
+      profileBio: member.user.profileBio,
+      valorantRole: member.user.valorantRole,
+      favoriteAgents: parseFavoriteAgents(member.user.favoriteAgents),
+      riotAccounts: [...member.user.riotAccounts].sort((a, b) => regionPriority(a.region) - regionPriority(b.region)).map((account) => accountDetails.get(account.puuid) ?? {
         region: toRegionLabel(account.region),
         riotId: `${account.gameName}#${account.tagLine}`,
         level: null,

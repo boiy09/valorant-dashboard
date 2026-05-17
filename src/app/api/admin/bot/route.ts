@@ -1,4 +1,5 @@
 import { getAdminSession } from "@/lib/admin";
+import { graduateExpiredNewbies } from "@/lib/adminAutomation";
 import { prisma } from "@/lib/prisma";
 
 type DiscordRole = {
@@ -7,6 +8,7 @@ type DiscordRole = {
 };
 
 type DiscordGuildMember = {
+  joined_at?: string | null;
   nick?: string | null;
   roles?: string[];
   user?: {
@@ -114,18 +116,22 @@ async function syncDiscordMembers() {
       .map((roleId) => roleNameById.get(roleId))
       .filter((roleName): roleName is string => Boolean(roleName) && roleName !== "@everyone")
       .join(",");
+    const joinedAt = member.joined_at ? new Date(member.joined_at) : null;
+    const validJoinedAt = joinedAt && !Number.isNaN(joinedAt.getTime()) ? joinedAt : undefined;
 
     await prisma.guildMember.upsert({
       where: { userId_guildId: { userId: user.id, guildId: guild.id } },
       update: {
         roles: roleNames,
         nickname: member.nick ?? undefined,
+        joinedAt: validJoinedAt,
       },
       create: {
         userId: user.id,
         guildId: guild.id,
         roles: roleNames,
         nickname: member.nick ?? undefined,
+        joinedAt: validJoinedAt,
       },
     });
     synced += 1;
@@ -184,6 +190,11 @@ export async function POST(req: Request) {
 
     if (action === "restart-bot") {
       const result = await restartBot();
+      return Response.json(result, { status: result.status });
+    }
+
+    if (action === "graduate-newbies") {
+      const result = await graduateExpiredNewbies();
       return Response.json(result, { status: result.status });
     }
 

@@ -290,6 +290,15 @@ export interface StoreBundle {
   displayIcon: string;
   cost: number;
   remainingSeconds: number;
+  items: StoreBundleItem[];
+}
+
+export interface StoreBundleItem {
+  name: string;
+  displayIcon: string;
+  type: string;
+  basePrice: number;
+  discountedPrice: number;
 }
 
 export interface StoreData {
@@ -304,9 +313,22 @@ export interface WalletData {
 
 export interface BattlepassData {
   contractId: string;
+  displayName: string | null;
   progressionTowardsObjective: number;
+  objectiveXp: number;
   progressionEarnedThisAct: number;
   totalLevelsCompleted: number;
+  currentTier: number;
+  rewards: BattlepassReward[];
+}
+
+export interface BattlepassReward {
+  tier: number;
+  name: string;
+  type: string;
+  icon: string | null;
+  amount: number;
+  isCurrent: boolean;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -390,6 +412,24 @@ let bundleListCache: BundleInfo[] | null = null;
 let bundleListCachedAt = 0;
 const BUNDLE_LIST_TTL = 30 * 60 * 1000;
 
+type BattlepassContractLevel = {
+  reward?: { type?: string; uuid?: string; amount?: number };
+  xp?: number;
+};
+
+type BattlepassContractInfo = {
+  displayName: string | null;
+  levels: BattlepassContractLevel[];
+};
+
+type RewardInfo = {
+  name: string;
+  icon: string | null;
+};
+
+let battlepassContractsCache: { data: Map<string, BattlepassContractInfo>; cachedAt: number } | null = null;
+const rewardInfoCache = new Map<string, RewardInfo>();
+
 async function getBundleList(): Promise<Array<{ uuid: string } & BundleInfo>> {
   if (bundleListCache && Date.now() - bundleListCachedAt < BUNDLE_LIST_TTL) {
     return bundleListCache as Array<{ uuid: string } & BundleInfo>;
@@ -414,6 +454,124 @@ async function getBundleList(): Promise<Array<{ uuid: string } & BundleInfo>> {
   }
 }
 
+async function getBattlepassContracts(): Promise<Map<string, BattlepassContractInfo>> {
+  const now = Date.now();
+  if (battlepassContractsCache && now - battlepassContractsCache.cachedAt < CONTENT_TTL) {
+    return battlepassContractsCache.data;
+  }
+
+  const response = await fetch(`${VALORANT_API_BASE}/contracts?language=ko-KR`, { cache: "force-cache" }).catch(() => null);
+  const map = new Map<string, BattlepassContractInfo>();
+  if (response?.ok) {
+    const payload = await response.json() as {
+      data?: Array<{
+        uuid?: string;
+        displayName?: string;
+        content?: {
+          chapters?: Array<{
+            levels?: BattlepassContractLevel[];
+          }>;
+        };
+      }>;
+    };
+
+    for (const contract of payload.data ?? []) {
+      if (!contract.uuid) continue;
+      const levels: BattlepassContractLevel[] = [];
+      for (const chapter of contract.content?.chapters ?? []) {
+        levels.push(...(chapter.levels ?? []));
+      }
+      map.set(contract.uuid.toLowerCase(), {
+        displayName: contract.displayName ?? null,
+        levels,
+      });
+    }
+  }
+
+  battlepassContractsCache = { data: map, cachedAt: now };
+  return map;
+}
+
+function rewardEndpoint(type: string) {
+  const normalized = type.toLowerCase();
+  if (normalized === "playercard") return "playercards";
+  if (normalized === "spray") return "sprays";
+  if (normalized === "title") return "playertitles";
+  if (normalized === "equippablecharmlevel") return "buddies/levels";
+  if (normalized === "equippableskinlevel") return "weapons/skinlevels";
+  if (normalized === "currency") return "currencies";
+  return null;
+}
+
+async function resolveBattlepassReward(type: string, uuid: string, amount: number): Promise<RewardInfo> {
+  const key = `${type}:${uuid}`.toLowerCase();
+  const cached = rewardInfoCache.get(key);
+  if (cached) return cached;
+
+  const endpoint = rewardEndpoint(type);
+  if (!endpoint) return { name: type, icon: null };
+
+  const response = await fetch(`${VALORANT_API_BASE}/${endpoint}/${uuid}?language=ko-KR`, {
+    cache: "force-cache",
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => null);
+
+  let info: RewardInfo = { name: amount > 1 ? `${type} x${amount}` : type, icon: null };
+  if (response?.ok) {
+    const payload = await response.json() as {
+      data?: {
+        displayName?: string;
+        titleText?: string;
+        displayIcon?: string;
+        largeArt?: string;
+        smallIcon?: string;
+      };
+    };
+    const data = payload.data;
+    info = {
+      name: data?.displayName ?? data?.titleText ?? info.name,
+      icon: data?.displayIcon ?? data?.largeArt ?? data?.smallIcon ?? null,
+    };
+  }
+
+  rewardInfoCache.set(key, info);
+  return info;
+}
+
+async function enrichBattlepassData(
+  base: Omit<BattlepassData, "displayName" | "objectiveXp" | "currentTier" | "rewards">
+): Promise<BattlepassData> {
+  const contracts = await getBattlepassContracts();
+  const contract = contracts.get(base.contractId.toLowerCase()) ?? null;
+  const currentTier = Math.max(1, base.totalLevelsCompleted + 1);
+  const currentIndex = Math.max(0, currentTier - 1);
+  const objectiveXp = contract?.levels[currentIndex]?.xp ?? 2000;
+  const rewardLevels = contract?.levels.slice(currentIndex, currentIndex + 7) ?? [];
+  const rewards = await Promise.all(
+    rewardLevels.map(async (level, index) => {
+      const reward = level.reward;
+      if (!reward?.uuid || !reward.type) return null;
+      const info = await resolveBattlepassReward(reward.type, reward.uuid, reward.amount ?? 1);
+      return {
+        tier: currentTier + index,
+        name: info.name,
+        type: reward.type,
+        icon: info.icon,
+        amount: reward.amount ?? 1,
+        isCurrent: index === 0,
+      };
+    })
+  );
+
+  return {
+    ...base,
+    displayName: contract?.displayName ?? null,
+    objectiveXp,
+    currentTier,
+    rewards: rewards.filter((reward): reward is BattlepassReward => reward !== null),
+  };
+}
+
 async function checkCdnImage(uuid: string): Promise<string | null> {
   // GET 요청으로 실제 파일 존재 여부 확인 (HEAD는 CDN에서 막힐 수 있음)
   // 성공하면 브라우저 hotlink 차단 우회를 위해 프록시 URL 반환
@@ -431,6 +589,11 @@ async function checkCdnImage(uuid: string): Promise<string | null> {
   return null;
 }
 
+function proxyBundleImage(url: string) {
+  if (!url || url.startsWith("/api/bundle-image")) return url;
+  return `/api/bundle-image?u=${encodeURIComponent(url)}`;
+}
+
 async function resolveBundle(uuid: string): Promise<BundleInfo | null> {
   // 1. valorant-api.com 직접 UUID 조회
   try {
@@ -442,7 +605,7 @@ async function resolveBundle(uuid: string): Promise<BundleInfo | null> {
       if (data.data?.displayName) {
         return {
           name: data.data.displayName,
-          displayIcon: data.data.displayIcon ?? "",
+          displayIcon: proxyBundleImage(data.data.displayIcon ?? ""),
           price: data.data.price ?? 0,
         };
       }
@@ -481,7 +644,7 @@ export async function getStore(
   const headers = await pvpHeaders(accessToken, entitlementsToken);
 
   // v3 POST (최신 방식)
-  let response = await fetch(
+  const response = await fetch(
     `https://pd.${shard}.a.pvp.net/store/v3/storefront/${puuid}`,
     { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: "{}" }
   );
@@ -508,6 +671,28 @@ export async function getStore(
     DurationRemainingInSeconds?: number;
     Items?: BundleItem[];
   };
+
+  function isBundlePayload(value: unknown): value is BundlePayload {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as BundlePayload;
+    return Array.isArray(candidate.Items) && Boolean(candidate.DataAssetID || candidate.ID || candidate.TotalDiscountedCost);
+  }
+
+  function collectBundlePayloads(value: unknown, output: BundlePayload[] = []): BundlePayload[] {
+    if (!value || typeof value !== "object") return output;
+    if (isBundlePayload(value)) {
+      output.push(value);
+      return output;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) collectBundlePayloads(item, output);
+      return output;
+    }
+    for (const item of Object.values(value as Record<string, unknown>)) {
+      collectBundlePayloads(item, output);
+    }
+    return output;
+  }
 
   const data = await response.json() as {
     SkinsPanelLayout?: {
@@ -556,6 +741,60 @@ export async function getStore(
     "d5f120f8-ff8c-4aac-92ea-f2b5acbe9475": "sprays",
   };
 
+  async function resolveBundleItem(item: BundleItem): Promise<StoreBundleItem> {
+    const itemId = item.Item?.ItemID ?? "";
+    const itemTypeId = item.Item?.ItemTypeID?.toLowerCase() ?? "";
+    const endpoint = ITEM_TYPE_ENDPOINTS[itemTypeId];
+    const fallback = {
+      name: itemId || "구성품",
+      displayIcon: "",
+      type: endpoint ?? "item",
+      basePrice: item.BasePrice ?? 0,
+      discountedPrice: item.DiscountedPrice ?? item.BasePrice ?? 0,
+    };
+
+    if (!itemId) return fallback;
+
+    if (endpoint === "weapons/skinlevels") {
+      const skin = await resolveSkinLevel(itemId).catch(() => null);
+      if (skin) {
+        return {
+          ...fallback,
+          name: skin.name || fallback.name,
+          displayIcon: skin.displayIcon || fallback.displayIcon,
+          type: "스킨",
+        };
+      }
+    }
+
+    if (!endpoint) return fallback;
+
+    try {
+      const response = await fetch(`${VALORANT_API_BASE}/${endpoint}/${itemId}?language=ko-KR`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!response.ok) return fallback;
+
+      const data = await response.json() as {
+        data?: {
+          displayName?: string;
+          titleText?: string;
+          displayIcon?: string;
+          largeArt?: string;
+          smallIcon?: string;
+        };
+      };
+      return {
+        ...fallback,
+        name: data.data?.displayName ?? data.data?.titleText ?? fallback.name,
+        displayIcon: data.data?.displayIcon ?? data.data?.largeArt ?? data.data?.smallIcon ?? "",
+        type: endpoint,
+      };
+    } catch {
+      return fallback;
+    }
+  }
+
   async function processBundleRaw(bundleRaw: BundlePayload): Promise<StoreBundle | null> {
     const candidates = [bundleRaw.DataAssetID, bundleRaw.ID].filter(Boolean) as string[];
     let bundleInfo: BundleInfo | null = null;
@@ -602,22 +841,25 @@ export async function getStore(
       bundleRaw.TotalDiscountedCost?.[VP_CURRENCY] ??
       bundleInfo?.price ??
       (bundleRaw.Items ?? []).reduce((sum, item) => sum + (item.DiscountedPrice ?? item.BasePrice ?? 0), 0);
+    const items = await Promise.all((bundleRaw.Items ?? []).map(resolveBundleItem));
 
     return {
       name: bundleInfo?.name || fallbackName || "번들",
-      displayIcon: bundleInfo?.displayIcon || fallbackIcon,
+      displayIcon: proxyBundleImage(bundleInfo?.displayIcon || fallbackIcon),
       cost: totalCost,
       remainingSeconds: bundleRaw.DurationRemainingInSeconds ?? 0,
+      items,
     };
   }
 
   // 번들: v3 FeaturedBundles(복수) → v2 FeaturedBundle(단일) 순으로 모든 번들 처리
-  const allBundlesRaw: BundlePayload[] =
-    data.FeaturedBundles?.Bundles?.length
-      ? data.FeaturedBundles.Bundles
-      : data.FeaturedBundle?.Bundle
-        ? [data.FeaturedBundle.Bundle]
-        : [];
+  const seenBundleIds = new Set<string>();
+  const allBundlesRaw = collectBundlePayloads(data).filter((bundle) => {
+    const id = (bundle.DataAssetID || bundle.ID || JSON.stringify(bundle)).toLowerCase();
+    if (seenBundleIds.has(id)) return false;
+    seenBundleIds.add(id);
+    return true;
+  });
 
   const bundles = (await Promise.all(allBundlesRaw.map(processBundleRaw)))
     .filter((b): b is StoreBundle => b !== null);
@@ -700,12 +942,12 @@ export async function getBattlepass(
   if (activeId && data.Contracts) {
     const contract = data.Contracts.find((c) => c.ContractDefinitionID === activeId);
     if (contract) {
-      return {
+      return enrichBattlepassData({
         contractId: activeId,
         progressionTowardsObjective: contract.ProgressionTowardsNextLevel ?? 0,
         progressionEarnedThisAct: contract.ContractProgression?.TotalProgressionEarned ?? 0,
         totalLevelsCompleted: contract.ProgressionLevelReached ?? 0,
-      };
+      });
     }
   }
 
@@ -716,12 +958,12 @@ export async function getBattlepass(
     const towards = bte.ProgressionTowardsNextMilestone ?? bte.ProgressionTowardsNextLevel ?? 0;
     const total = bte.TotalProgressionEarned ?? 0;
     if (level > 0 || towards > 0 || total > 0) {
-      return {
+      return enrichBattlepassData({
         contractId: "bte",
         progressionTowardsObjective: towards,
         progressionEarnedThisAct: total,
         totalLevelsCompleted: level,
-      };
+      });
     }
   }
 
@@ -734,12 +976,12 @@ export async function getBattlepass(
         (a.ContractProgression?.TotalProgressionEarned ?? 0)
       )[0];
     if (best) {
-      return {
+      return enrichBattlepassData({
         contractId: best.ContractDefinitionID,
         progressionTowardsObjective: best.ProgressionTowardsNextLevel ?? 0,
         progressionEarnedThisAct: best.ContractProgression?.TotalProgressionEarned ?? 0,
         totalLevelsCompleted: best.ProgressionLevelReached ?? 0,
-      };
+      });
     }
   }
 

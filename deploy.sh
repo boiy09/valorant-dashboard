@@ -29,7 +29,11 @@ echo "[deploy] generating Prisma client..."
 npx prisma generate
 node scripts/link-prisma-client.cjs
 
-echo "[deploy] stopping unused web process..."
+echo "[deploy] building web app..."
+npm run build
+
+echo "[deploy] restarting web..."
+pm2 restart valorant-web --update-env 2>/dev/null || PORT=3000 pm2 start npm --name "valorant-web" -- start -- --hostname 0.0.0.0 --port 3000
 pm2 delete valorant-dashboard 2>/dev/null || true
 
 echo "[deploy] restarting bot..."
@@ -56,5 +60,16 @@ if [ "$PROXY_STATUS" != "online" ]; then
   pm2 logs proxy --lines 80 --nostream || true
   exit 1
 fi
+
+echo "[deploy] checking web health..."
+pm2 describe valorant-web >/dev/null
+WEB_STATUS="$(pm2 jlist | node -e "let input=''; process.stdin.on('data', c => input += c); process.stdin.on('end', () => { const apps = JSON.parse(input || '[]'); const app = apps.find((item) => item.name === 'valorant-web'); process.stdout.write(app?.pm2_env?.status || 'missing'); });")"
+if [ "$WEB_STATUS" != "online" ]; then
+  echo "[deploy] valorant-web is not online: $WEB_STATUS"
+  pm2 logs valorant-web --lines 80 --nostream || true
+  exit 1
+fi
+
+curl -fsS http://127.0.0.1:3000/api/bot-status >/dev/null
 
 echo "[deploy] done"

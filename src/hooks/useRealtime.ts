@@ -7,6 +7,9 @@ type RealtimeHandler = (data: Record<string, unknown>) => void;
 const subscribers = new Map<string, Set<RealtimeHandler>>();
 let lastEventId = 0;
 let polling = false;
+let socket: WebSocket | null = null;
+let socketConnecting = false;
+let socketEnabled = true;
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -32,7 +35,7 @@ async function startPolling() {
       const res = await fetch(`/api/events?since=${lastEventId}`, {
         signal: AbortSignal.timeout(30000),
       });
-      if (!res.ok) { await sleep(3000); continue; }
+      if (!res.ok) { await sleep(1000); continue; }
 
       const data = (await res.json()) as { events?: Array<{ id: number; type: string; data: Record<string, unknown> }>; lastId?: number };
       const events = data.events ?? [];
@@ -43,17 +46,59 @@ async function startPolling() {
         dispatch(event.type, event.data);
       }
     } catch {
-      await sleep(3000);
+      await sleep(1000);
     }
   }
 
   polling = false;
 }
 
+async function connectWebSocket() {
+  if (typeof window === "undefined") return false;
+  if (!socketEnabled || socketConnecting) return false;
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return true;
+
+  socketConnecting = true;
+  try {
+    const configRes = await fetch("/api/events/config", { cache: "no-store" });
+    const config = (await configRes.json().catch(() => null)) as { wsUrl?: string | null } | null;
+    if (!config?.wsUrl) return false;
+
+    socket = new WebSocket(config.wsUrl);
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as { type?: string; data?: Record<string, unknown> };
+        if (payload.type && payload.type !== "connected") dispatch(payload.type, payload.data ?? {});
+      } catch {
+        // Ignore malformed realtime payloads.
+      }
+    };
+    socket.onclose = () => {
+      socket = null;
+      if (subscribers.size > 0) {
+        window.setTimeout(() => {
+          void connectWebSocket().then((ok) => { if (!ok) void startPolling(); });
+        }, 500);
+      }
+    };
+    socket.onerror = () => {
+      socketEnabled = false;
+      socket?.close();
+      void startPolling();
+    };
+    return true;
+  } catch {
+    socketEnabled = false;
+    return false;
+  } finally {
+    socketConnecting = false;
+  }
+}
+
 function subscribe(type: string, handler: RealtimeHandler) {
   if (!subscribers.has(type)) subscribers.set(type, new Set());
   subscribers.get(type)!.add(handler);
-  startPolling();
+  void connectWebSocket().then((ok) => { if (!ok) void startPolling(); });
 }
 
 function unsubscribe(type: string, handler: RealtimeHandler) {
@@ -63,7 +108,10 @@ function unsubscribe(type: string, handler: RealtimeHandler) {
 
 export function useRealtime(type: string | string[], handler: RealtimeHandler) {
   const handlerRef = useRef(handler);
-  handlerRef.current = handler;
+
+  useEffect(() => {
+    handlerRef.current = handler;
+  }, [handler]);
 
   const stableHandler = useCallback((data: Record<string, unknown>) => {
     handlerRef.current(data);

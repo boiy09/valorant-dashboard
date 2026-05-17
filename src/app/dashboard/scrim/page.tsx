@@ -87,7 +87,7 @@ function getWinnerLabel(winnerId: string | null) {
   if (winnerId === "team_a") return "Team A 승리";
   if (winnerId === "team_b") return "Team B 승리";
   if (winnerId === "draw") return "무승부";
-  return "모집/진행 중";
+  return "기록 없음";
 }
 
 function parseSettings(value: string | null): ScrimSettings {
@@ -358,7 +358,7 @@ export default function ScrimPage() {
                         </div>
                         <div className="mt-1 text-[10px] text-[#7b8a96]">
                           {formatDate(scrim.createdAt)} 생성
-                          {scrim.scheduledAt ? ` · 시작 ${new Date(scrim.scheduledAt).toLocaleString("ko-KR")}` : ""}
+                          {scrim.scheduledAt ? ` · ${new Date(scrim.scheduledAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}` : ""}
                         </div>
                       </div>
                     </div>
@@ -562,7 +562,7 @@ export default function ScrimPage() {
               </section>
 
               <section>
-                <h3 className="mb-2 text-sm font-black text-white">시작 시간 <span className="text-[11px] font-normal text-[#7b8a96]">(optional)</span></h3>
+                <h3 className="mb-2 text-sm font-black text-white">내전 날짜 <span className="text-[11px] font-normal text-[#7b8a96]">(optional)</span></h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="mb-1 block text-[11px] font-black text-[#7b8a96]">날짜</label>

@@ -1,0 +1,2 @@
+ALTER TABLE "AuctionState"
+ADD COLUMN IF NOT EXISTS "joinedCaptains" TEXT NOT NULL DEFAULT '[]';

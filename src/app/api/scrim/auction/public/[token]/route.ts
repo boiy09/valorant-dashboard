@@ -603,6 +603,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
   const existingBid = Math.max(0, currentBids[captainId] ?? 0);
   const otherBids = Object.entries(currentBids).filter(([key]) => key !== captainId);
   const highestOtherBid = Math.max(0, ...otherBids.map(([, value]) => value).filter((value) => value > 0));
+
+  // 이미 최고가 입찰자면 재입찰 불가
+  const allPositiveBids = Object.entries(currentBids).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  if (allPositiveBids.length > 0 && allPositiveBids[0][0] === captainId) {
+    return Response.json({ error: "이미 최고가 입찰 중입니다." }, { status: 400 });
+  }
   const minimumBid = Math.max(MIN_BID_INCREMENT, highestOtherBid + MIN_BID_INCREMENT, existingBid > 0 ? existingBid + MIN_BID_INCREMENT : MIN_BID_INCREMENT);
   if (bidAmount < minimumBid) {
     return Response.json({ error: `최소 입찰가는 ${minimumBid}P입니다.` }, { status: 400 });

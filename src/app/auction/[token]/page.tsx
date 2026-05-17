@@ -307,7 +307,8 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
   const hasPassedCurrentLot = !!myCaptainId && currentBids[myCaptainId] === -1;
   const highestOtherBid = myCaptainId ? Math.max(0, ...currentBidRows.filter((row) => row.captainId !== myCaptainId).map((row) => row.amount)) : highestBid;
   const minimumBid = Math.max(MIN_BID_INCREMENT, highestOtherBid + MIN_BID_INCREMENT, myBid > 0 ? myBid + MIN_BID_INCREMENT : MIN_BID_INCREMENT);
-  const canBid = access.role === "captain" && room.viewer?.matchesCaptain === true && !hasPassedCurrentLot && (auction.phase === "auction" || auction.phase === "reauction") && !!auction.currentUserId;
+  const isLeading = !!myCaptainId && myCaptainId === highestCaptainId && myBid > 0;
+  const canBid = access.role === "captain" && room.viewer?.matchesCaptain === true && !hasPassedCurrentLot && !isLeading && (auction.phase === "auction" || auction.phase === "reauction") && !!auction.currentUserId;
   const timerPct = auction.auctionDuration > 0 ? Math.max(0, Math.min(100, (timeLeft / auction.auctionDuration) * 100)) : 0;
   const timerColor = timerPct > 45 ? "#00e7c2" : timerPct > 20 ? "#f6c945" : "#ff4655";
   const currentLotBids = bidHistory.filter((bid) => bid.lotUserId === auction.currentUserId).slice(-8).reverse();

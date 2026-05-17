@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
-import { getRecentMatches, getRiotOfficialRecentMatches, type MatchStats } from "@/lib/valorant";
+import { getRecentMatches, getRiotOfficialRecentMatches, getTrackerCustomMatchIds, getTrackerWebMatches, getHenrikMatchById, type MatchStats, type TrackerWebMatch, type ScoreboardPlayer, type ScoreboardTeam } from "@/lib/valorant";
 import { getPrivateRecentMatches } from "@/lib/riotPrivateApi";
 import { ensureValidTokens } from "@/lib/rankFetcher";
 
@@ -223,7 +223,81 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
   }
 
   if (recentMatches.length === 0) {
-    const debugSuffix = tokenDebug ? ` [토큰 진단: ${tokenDebug}]` : "";
+    trackerFallback: for (const candidate of orderedParticipants.slice(0, 5)) {
+      if (!candidate.gameName || !candidate.tagLine) continue;
+      try {
+        const matchIds = await getTrackerCustomMatchIds(candidate.gameName, candidate.tagLine);
+        if (matchIds.length === 0) continue;
+        const region = (candidate.region === "AP" ? "ap" : "kr") as "ap" | "kr";
+        for (const mId of matchIds.slice(0, 10)) {
+          const m = await getHenrikMatchById(mId, region);
+          if (m) { recentMatches = [m]; break trackerFallback; }
+        }
+      } catch { continue; }
+    }
+  }
+
+  // tracker.gg 웹 직접 조회 폴백 — Henrik match-by-ID 실패 시 TrackerWebMatch 데이터를 직접 사용
+  if (recentMatches.length === 0) {
+    for (const candidate of orderedParticipants.slice(0, 5)) {
+      if (!candidate.gameName || !candidate.tagLine) continue;
+      try {
+        const webMatches = await getTrackerWebMatches(candidate.gameName, candidate.tagLine, undefined, 20);
+        const customWebMatches = webMatches.filter((m) => {
+          const mode = (m.mode ?? "").toLowerCase();
+          return mode.includes("custom") || mode === "커스텀";
+        });
+        if (customWebMatches.length > 0) {
+          recentMatches = customWebMatches.map(trackerWebMatchToMatchStats);
+          console.log("[sync-match] tracker.gg 웹 직접 폴백 성공:", candidate.gameName, customWebMatches.length, "커스텀 경기");
+          break;
+        }
+      } catch (e) {
+        console.warn("[sync-match] tracker.gg 웹 직접 폴백 실패:", candidate.gameName, e instanceof Error ? e.message : String(e));
+      }
+    }
+  }
+
+  // op.gg 커스텀 폴백 — Henrik 전역 차단 시에도 작동
+  if (recentMatches.length === 0) {
+    for (const candidate of orderedParticipants.slice(0, 5)) {
+      if (!candidate.gameName || !candidate.tagLine) continue;
+      try {
+        const opggMatches = await getOpGgCustomMatches(candidate.gameName, candidate.tagLine, 20);
+        if (opggMatches.length > 0) {
+          recentMatches = opggMatches.map(opggMatchToMatchStats);
+          console.log("[sync-match] op.gg 커스텀 폴백 성공:", candidate.gameName, opggMatches.length, "경기");
+          break;
+        }
+      } catch (e) {
+        console.warn("[sync-match] op.gg 커스텀 폴백 실패:", candidate.gameName, e instanceof Error ? e.message : String(e));
+      }
+    }
+  }
+
+  // op.gg 일반 매치 폴백 — 커스텀 필터 없이 전체 조회 후 custom 필터링
+  if (recentMatches.length === 0) {
+    for (const candidate of orderedParticipants.slice(0, 5)) {
+      if (!candidate.gameName || !candidate.tagLine) continue;
+      try {
+        const opggMatches = await getOpGgRecentMatches(candidate.gameName, candidate.tagLine, 30);
+        const customOnly = opggMatches.filter((m) => {
+          const q = (m.queueId ?? "").toLowerCase();
+          return q.includes("custom") || q === "커스텀";
+        });
+        if (customOnly.length > 0) {
+          recentMatches = customOnly.map(opggMatchToMatchStats);
+          console.log("[sync-match] op.gg 일반→커스텀 폴백 성공:", candidate.gameName, customOnly.length, "경기");
+          break;
+        }
+      } catch (e) {
+        console.warn("[sync-match] op.gg 일반 폴백 실패:", candidate.gameName, e instanceof Error ? e.message : String(e));
+      }
+    }
+  }
+
+  if (recentMatches.length === 0) {
+    const debugSuffix = tokenDebug ? ` [토큰 진단: ${tokenDebug.trim()}]` : "";
     const errorMsg = rateLimited
       ? `Henrik API 요청 한도 초과입니다. 잠시 후 다시 시도하거나 라이엇 계정을 재연동해 주세요.${debugSuffix}`
       : `전적 데이터를 가져오는 데 실패했습니다.${lastFetchError ? ` (${lastFetchError})` : " 라이엇 계정이 연동된 참가자를 확인해 주세요."}${debugSuffix}`;
@@ -431,3 +505,102 @@ async function handleSyncMatch(context: { params: Promise<{ id: string }> }) {
     message: `전적 자동 연동 완료: ${mapName} / ${winnerId === "team_a" ? "팀A 승리" : winnerId === "team_b" ? "팀B 승리" : winnerId === "draw" ? "무승부" : "승패 미정"} / KDA ${kdaUpdates.length}명 기록`,
   });
 }
+
+function resolvePrivateTokens(
+  candidate: { puuid: string; accessToken?: string | null; entitlementsToken?: string | null; tokenExpiresAt?: Date | null },
+  sharedTokens: { accessToken: string; entitlementsToken: string } | null,
+  tokenHolderPuuid: string | null,
+): { accessToken: string; entitlementsToken: string } | null {
+  if (sharedTokens && tokenHolderPuuid === candidate.puuid) return sharedTokens;
+  if (candidate.accessToken && candidate.entitlementsToken) {
+    const exp = candidate.tokenExpiresAt;
+    if (!exp || exp.getTime() > Date.now() + 30_000) {
+      return { accessToken: candidate.accessToken, entitlementsToken: candidate.entitlementsToken };
+    }
+  }
+  return null;
+}
+
+function trackerWebMatchToMatchStats(m: TrackerWebMatch): MatchStats {
+  return {
+    matchId: m.matchId,
+    map: m.map || "Unknown",
+    mode: m.mode,
+    agent: m.agentName || "Unknown",
+    agentIcon: m.agentIcon ?? "",
+    result: m.isWin ? "승리" : "패배",
+    kills: m.kills,
+    deaths: m.deaths,
+    assists: m.assists,
+    score: m.acs,
+    teamScore: m.teamRoundsWon,
+    enemyScore: m.enemyRoundsWon,
+    headshots: 0,
+    bodyshots: 0,
+    legshots: 0,
+    adr: m.damagePerRound > 0 ? m.damagePerRound : null,
+    playedAt: m.startedAt ? new Date(m.startedAt) : new Date(0),
+    scoreboard: null,
+  };
+}
+
+function opggMatchToMatchStats(m: OpGgMatch): MatchStats {
+  const players: ScoreboardPlayer[] = m.participants.map((p) => ({
+    puuid: p.puuid,
+    name: p.gameName,
+    tag: p.tagLine,
+    isPrivate: false,
+    teamId: p.teamId,
+    level: null,
+    cardIcon: "",
+    agent: p.agentName,
+    agentIcon: "",
+    tierName: "",
+    tierId: 0,
+    tierIcon: null,
+    acs: p.acs,
+    kills: p.kills,
+    deaths: p.deaths,
+    assists: p.assists,
+    plusMinus: p.kills - p.deaths,
+    kd: p.deaths > 0 ? p.kills / p.deaths : p.kills,
+    hsPercent: 0,
+    adr: null,
+  }));
+  const teams: ScoreboardTeam[] = m.teams.map((t) => ({
+    teamId: t.teamId,
+    roundsWon: t.roundsWon,
+    won: t.isWin,
+  }));
+  const totalRounds = m.teams.reduce((s, t) => s + t.roundsWon, 0);
+  return {
+    matchId: m.id,
+    map: m.mapName,
+    mode: m.queueId,
+    agent: "",
+    agentIcon: "",
+    result: "무효",
+    kills: 0,
+    deaths: 0,
+    assists: 0,
+    score: 0,
+    teamScore: null,
+    enemyScore: null,
+    headshots: 0,
+    bodyshots: 0,
+    legshots: 0,
+    adr: null,
+    playedAt: m.gameStartedAt ? new Date(m.gameStartedAt) : new Date(0),
+    scoreboard: {
+      map: m.mapName,
+      mode: m.queueId,
+      startedAt: m.gameStartedAt,
+      gameLengthMs: m.gameDuration * 1000,
+      totalRounds,
+      players,
+      teams,
+      rounds: [],
+    },
+  };
+}
+

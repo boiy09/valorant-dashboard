@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RankData, MatchStats, ScoreboardPlayer } from "@/lib/valorant";
 import { normalizeTierName } from "@/lib/tierName";
 import MatchDetailScoreboard from "./MatchDetailScoreboard";
@@ -650,18 +650,23 @@ export default function ValorantPage() {
     }
   }
 
+  const dataRef = useRef<{ accounts: RegionStats[] } | null>(null);
+  dataRef.current = data;
+
   useEffect(() => {
     const cached = readStatsCache();
     if (cached) {
       setData(cached);
     }
 
-    fetch("/api/valorant/stats", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: ValorantStatsResponse) => {
+    async function fetchStats(force = false) {
+      try {
+        const url = force ? "/api/valorant/stats?force=1" : "/api/valorant/stats";
+        const r = await fetch(url, { cache: "no-store" });
+        const d = await r.json() as ValorantStatsResponse;
         handleAuthState(d);
         if (d.error) {
-          if (!cached) setError(d.error);
+          if (!dataRef.current) setError(d.error);
           return;
         }
         setError(null);
@@ -670,10 +675,16 @@ export default function ValorantPage() {
           setData(next);
           writeStatsCache(next);
         }
-      })
-      .catch(() => {
-        if (!cached) setError("데이터를 불러오지 못했습니다.");
-      });
+      } catch {
+        if (!dataRef.current) setError("데이터를 불러오지 못했습니다.");
+      }
+    }
+
+    void fetchStats();
+    // 5분마다 백그라운드 갱신
+    const timer = window.setInterval(() => void fetchStats(true), 5 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const sortedStats = (data?.accounts ?? []).sort(

@@ -516,6 +516,30 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
     refreshGames().catch(() => {});
   }, [refreshGames]);
 
+  // 게임 로드 후 미연동 경기 자동 전적 연동 (페이지당 1회)
+  const autoSyncDoneRef = useRef(false);
+  useEffect(() => {
+    if (autoSyncDoneRef.current || games.length === 0) return;
+    const unsynced = games.filter((g) => !g.matchId);
+    if (unsynced.length === 0) return;
+    autoSyncDoneRef.current = true;
+    (async () => {
+      for (const game of unsynced) {
+        try {
+          const res = await fetch(`/api/scrim/${id}/sync-match`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ gameId: game.id }),
+          });
+          if (res.ok) {
+            const gRes = await fetch(`/api/scrim/${id}/games`, { cache: "no-store" });
+            const gData = await gRes.json();
+            setGames(gData.games ?? []);
+          }
+        } catch { /* 조용히 실패 */ }
+      }
+    })();
+  }, [games, id]);
+
   // 실시간 업데이트
   useRealtime(`scrim:${id}`, () => {
     refreshScrim().catch(() => {});

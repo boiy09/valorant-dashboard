@@ -960,7 +960,7 @@ export default function ScrimDetailPage({ params }: { params: Promise<{ id: stri
           </DropArea>
           
           {settings.useTeamBoard && (
-            <section className="grid gap-4 lg:grid-cols-2">
+            <section className="grid gap-4 md:grid-cols-2">
               {teamIds.map((tId, i) => {
                 const captain = settings.useCaptain ? scrim.players.find((p) => p.team === tId && p.role === "captain") : undefined;
                 const members = scrim.players.filter((p) => p.team === tId && (settings.useCaptain ? p.role === "member" : true));
@@ -1916,24 +1916,25 @@ function AuctionScrimPage({
                   </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">입찰 타이머</label>
-                    <button
-                      type="button"
-                      onClick={() => setTimerEnabled((v) => !v)}
-                      className={`relative mt-0.5 h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus:outline-none ${timerEnabled ? "bg-[#00e7c2]" : "bg-[#2a3540]"}`}
-                    >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${timerEnabled ? "translate-x-6" : "translate-x-1"}`} />
-                    </button>
-                  </div>
-                  {timerEnabled && (
-                    <div>
-                      <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">타이머 시간 (초)</label>
-                      <input
-                        type="number" min={10} max={120} step={5} value={timerSeconds}
-                        onChange={(e) => setTimerSeconds(parseInt(e.target.value, 10))}
-                        className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
-                      />
+                    <div className="flex h-[38px] items-center">
+                      <button
+                        type="button"
+                        onClick={() => setTimerEnabled((v) => !v)}
+                        className={`relative h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus:outline-none ${timerEnabled ? "bg-[#00e7c2]" : "bg-[#2a3540]"}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${timerEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
                     </div>
-                  )}
+                  </div>
+                  <div className={timerEnabled ? "" : "pointer-events-none opacity-40"}>
+                    <label className="mb-1.5 block text-xs font-black text-[#9aa8b3]">타이머 시간 (초)</label>
+                    <input
+                      type="number" min={10} max={300} step={5} value={timerSeconds}
+                      onChange={(e) => setTimerSeconds(parseInt(e.target.value, 10))}
+                      disabled={!timerEnabled}
+                      className="w-full rounded border border-[#2a3540] bg-[#0b141c] px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#f6c945]"
+                    />
+                  </div>
                 </div>
                 <div className="mb-1 text-xs font-black text-white">팀장 선택 <span className="ml-1 font-normal text-[#7b8a96]">{Object.keys(captainSelections).length}명 선택됨 · 아래 참가자 목록에서 팀장 버튼을 눌러 선택하세요</span></div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -3026,7 +3027,7 @@ function DropAreaMini({ label, children, onDrop }: { label: string; children: Re
         const id = e.dataTransfer.getData("text/plain"); 
         if (id) onDrop(id); 
       }}>
-      <div className="mb-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#7b8a96]">{label}</div>
+      <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#7b8a96]">{label}</div>
       {children}
     </div>
   );
@@ -3048,7 +3049,7 @@ function PlayerCard({ player, compact = false, onRemove, guildMembers = [], sett
   return (
     <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", player.id); }} className="cursor-grab flex flex-col h-full min-h-[120px] rounded border border-[#2a3540] bg-[#111c24] px-3 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition hover:border-[#7fffe6]/60 active:cursor-grabbing">
       <div className="flex items-center gap-3">
-        {player.user.image ? <img src={player.user.image} alt="" className={compact ? "h-9 w-9 rounded-full object-cover" : "h-12 w-12 rounded object-cover"} /> : <div className={compact ? "h-9 w-9 rounded-full bg-[#24313c]" : "h-12 w-12 rounded bg-[#24313c]"} />}
+        {player.user.image ? <img src={player.user.image} alt="" className={compact ? "h-9 w-9 rounded object-cover" : "h-12 w-12 rounded object-cover"} /> : <div className={compact ? "h-9 w-9 rounded bg-[#24313c]" : "h-12 w-12 rounded bg-[#24313c]"} />}
         <div className="min-w-0 flex-1">
           {showDiscord && <div className="truncate text-sm font-black text-white">{resolveServerNick(player.user.id, guildMembers, player.user.name)}</div>}
           {showRiot && <div className="truncate text-[11px] text-[#7b8a96]">{riotNames.join(" · ") || "Riot 계정 미연동"}</div>}

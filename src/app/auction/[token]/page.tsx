@@ -359,7 +359,7 @@ export default function AuctionAccessPage({ params }: { params: Promise<{ token:
           </div>
         )}
 
-        <section className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)_360px]">
+        <section className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_360px]">
           <aside className="space-y-3">
             {captainIds.map((captainId, index) => {
               const color = TEAM_COLORS[index % TEAM_COLORS.length];

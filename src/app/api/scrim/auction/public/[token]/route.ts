@@ -5,6 +5,7 @@ import { verifyAuctionAccessToken } from "@/lib/auctionAccess";
 import { auth } from "@/lib/auth";
 
 type AuctionPhase = "setup" | "auction" | "reauction" | "paused" | "done";
+const MIN_BID_INCREMENT = 10;
 
 interface AuctionRow {
   id: string;
@@ -408,6 +409,45 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
     return Response.json({ success: true, auction: updated });
   }
 
+  if (action === "captainPass") {
+    if (access.role !== "captain" || !access.captainId) {
+      return Response.json({ error: "팀장 링크로만 유찰할 수 있습니다." }, { status: 403 });
+    }
+    if ((auction.phase !== "auction" && auction.phase !== "reauction") || !auction.currentUserId) {
+      return Response.json({ error: "유찰할 현재 매물이 없습니다." }, { status: 400 });
+    }
+
+    const captainPoints = parseJson<Record<string, number>>(auction.captainPoints, {});
+    const captainIds = Object.keys(captainPoints);
+    const captainId = access.captainId;
+    if (!captainIds.includes(captainId)) return Response.json({ error: "유효한 팀장이 아닙니다." }, { status: 400 });
+
+    const currentBids = parseJson<Record<string, number>>(auction.currentBids, {});
+    currentBids[captainId] = -1;
+    const positiveBids = Object.entries(currentBids).filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1]);
+    const activeCaptainIds = captainIds.filter((id) => currentBids[id] !== -1);
+    const auctionWithPass = { ...auction, currentBids: JSON.stringify(currentBids) };
+
+    let updated: AuctionRow | null;
+    if (activeCaptainIds.length === 0 || (positiveBids.length > 0 && activeCaptainIds.length === 1 && activeCaptainIds[0] === positiveBids[0][0])) {
+      updated = await finalizeCurrentLot(auctionWithPass, captainId);
+    } else {
+      updated = await updateAuction(access.sessionId, {
+        currentBids: JSON.stringify(currentBids),
+        bidLog: appendLog(auction.bidLog, {
+          actorId: captainId,
+          action: "captain_pass",
+          captainId,
+          targetUserId: auction.currentUserId,
+          message: "팀장이 현재 매물 경매를 포기했습니다.",
+        }),
+      });
+    }
+
+    broadcast(`scrim:${access.sessionId}`, { action: "auction_captain_passed", auction: updated }).catch(() => {});
+    return Response.json({ success: true, auction: updated });
+  }
+
   if (action !== "bid") {
     if (access.role !== "host") return Response.json({ error: "주최자 링크가 필요합니다." }, { status: 403 });
 
@@ -557,8 +597,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ to
   }
 
   const currentBids = parseJson<Record<string, number>>(auction.currentBids, {});
-  const existingBid = currentBids[captainId] ?? 0;
+  if (currentBids[captainId] === -1) {
+    return Response.json({ error: "이미 이 매물 경매를 포기했습니다." }, { status: 400 });
+  }
+  const existingBid = Math.max(0, currentBids[captainId] ?? 0);
   const otherBids = Object.entries(currentBids).filter(([key]) => key !== captainId);
+  const highestOtherBid = Math.max(0, ...otherBids.map(([, value]) => value).filter((value) => value > 0));
+  const minimumBid = Math.max(MIN_BID_INCREMENT, highestOtherBid + MIN_BID_INCREMENT, existingBid > 0 ? existingBid + MIN_BID_INCREMENT : MIN_BID_INCREMENT);
+  if (bidAmount < minimumBid) {
+    return Response.json({ error: `최소 입찰가는 ${minimumBid}P입니다.` }, { status: 400 });
+  }
   if (otherBids.some(([, value]) => value === bidAmount)) {
     return Response.json({ error: "다른 팀과 같은 금액은 입찰할 수 없습니다." }, { status: 400 });
   }
